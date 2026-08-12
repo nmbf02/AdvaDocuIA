@@ -1,0 +1,8 @@
+{
+  "name": "Copy of Advansys DocGen",
+  "description": "Plataforma de generación de documentación técnica y propuestas de desarrollo para Advansys con IA y exportación a Word (.docx)",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

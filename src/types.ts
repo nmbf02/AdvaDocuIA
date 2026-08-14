@@ -1,3 +1,11 @@
+export interface BrandingSettings {
+  logoDataUrl?: string;
+  logoMimeType?: string;
+  logoFileName?: string;
+  logoWidth?: number;
+  logoHeight?: number;
+}
+
 export interface MetadataHeader {
   cliente: string;
   fecha: string;
@@ -9,7 +17,14 @@ export interface MetadataHeader {
   headerBrandTag?: string;
   headerSubtitle?: string;
   footerText?: string;
+  logoDataUrl?: string;
+  logoMimeType?: string;
+  logoFileName?: string;
+  logoWidth?: number;
+  logoHeight?: number;
   technicalLevel?: number; // 1 to 10 scale (1 = Alta Gerencia, 10 = TI & Desarrollo)
+  detailLevel?: number; // 1 to 10 scale (1 = conciso, 10 = exhaustivo)
+  paraphraseLevel?: number; // 1 to 10 scale (1 = conservar texto original, 10 = reescritura libre)
 }
 
 export interface UploadedImage {

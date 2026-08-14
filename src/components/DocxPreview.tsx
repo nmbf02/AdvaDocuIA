@@ -17,7 +17,7 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
 
   return (
     <div className="w-full overflow-x-auto py-2">
-      <div className="max-w-4xl min-w-[320px] w-full mx-auto bg-white shadow-2xl rounded-sm border border-slate-300 p-4 sm:p-8 md:p-10 text-slate-900 font-sans leading-relaxed text-sm relative">
+      <div className="max-w-4xl min-w-0 w-full mx-auto bg-white shadow-2xl rounded-sm border border-slate-300 p-4 sm:p-8 md:p-10 text-slate-900 font-sans leading-relaxed text-sm relative overflow-x-hidden">
       
       {/* Header Banner Fixed at top of Page 1 */}
       <div className="-mx-4 sm:-mx-8 md:-mx-10 -mt-4 sm:-mt-8 md:-mt-10 mb-6 border-b-4 border-[#2ECC71] shadow-md overflow-hidden rounded-t-sm relative bg-[#021024]">
@@ -26,6 +26,15 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
           alt="Advansys Header Cover Banner" 
           className="w-full h-auto object-cover object-center"
         />
+        {metadata.logoDataUrl && (
+          <div className="absolute top-3 right-3 sm:top-5 sm:right-6 bg-white/95 rounded-md p-1.5 shadow-sm max-w-[38%] sm:max-w-[160px]">
+            <img
+              src={metadata.logoDataUrl}
+              alt="Logo corporativo"
+              className="h-9 sm:h-12 w-auto max-w-full object-contain"
+            />
+          </div>
+        )}
       </div>
 
       {/* Main Document Title */}
@@ -115,7 +124,7 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
             </div>
 
             <div>
-              <h3 className="font-bold text-amber-800 mb-1">3.2 Exclusiones (Fuera de Alcance):</h3>
+              <h3 className="font-bold text-[#0A3D62] mb-1">3.2 Exclusiones (Fuera de Alcance):</h3>
               <ul className="list-disc list-inside space-y-0.5 text-slate-700 pl-2">
                 {proposal.alcanceExclusionesEntregables?.exclusiones?.map((item, idx) => (
                   <li key={idx}>{item}</li>

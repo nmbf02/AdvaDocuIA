@@ -1,8 +1,36 @@
+# Dependencies
 node_modules/
-build/
+
+# Build
 dist/
+build/
 coverage/
-.DS_Store
-*.log
-.env*
+*.tsbuildinfo
+
+# Env / secrets (AI Studio inyecta GEMINI_API_KEY)
+.env
+.env.*
 !.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor / local
+.vscode/
+.idea/
+*.swp
+.cursor/
+
+# Vite / cache
+.vite/
+.cache/
+tmp/
+temp/

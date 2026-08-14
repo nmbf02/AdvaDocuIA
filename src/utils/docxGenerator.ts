@@ -29,7 +29,15 @@ const COLOR_SECONDARY_BLUE = '1E5F8A'; // #1E5F8A Tech Blue Accent
 const COLOR_ACCENT_GREEN = '2ECC71'; // #2ECC71 Advansys Emerald Green
 const COLOR_TEXT_DARK = '1E293B'; // #1E293B Slate Dark
 const COLOR_MUTED_GRAY = '64748B'; // #64748B Slate Muted
-const COLOR_BORDER = 'CBD5E1'; // #CBD5E1 Soft Border
+function fitLogoSize(srcW: number | undefined, srcH: number | undefined, maxW: number, maxH: number) {
+  const w = srcW && srcW > 0 ? srcW : maxW;
+  const h = srcH && srcH > 0 ? srcH : maxH;
+  const scale = Math.min(maxW / w, maxH / h, 1);
+  return {
+    width: Math.max(16, Math.round(w * scale)),
+    height: Math.max(12, Math.round(h * scale)),
+  };
+}
 
 /**
  * Converts a Base64 or SVG Data URL to Uint8Array for docx ImageRun
@@ -259,6 +267,18 @@ export async function generateAdvansysDocx(
 
   // Process banner SVG image and construct full-bleed Page 1 Header
   let firstPageHeader: Header | undefined = undefined;
+  let logoBytes: Uint8Array | null = null;
+  if (metadata.logoDataUrl) {
+    try {
+      const processedLogo = await dataUrlToUint8Array(metadata.logoDataUrl);
+      if (processedLogo.data && processedLogo.data.length > 0) {
+        logoBytes = processedLogo.data;
+      }
+    } catch (err) {
+      console.error('Error processing corporate logo:', err);
+    }
+  }
+
   try {
     const bannerSvg = getAdvansysBannerSvg(
       metadata.headerBrandTag || 'ADVANSYS',
@@ -266,36 +286,69 @@ export async function generateAdvansysDocx(
     );
     const bannerImgData = await dataUrlToUint8Array(bannerSvg);
     if (bannerImgData && bannerImgData.data && bannerImgData.data.length > 0) {
-      firstPageHeader = new Header({
-        children: [
+      const firstPageChildren = [
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          spacing: { before: 0, after: 0 },
+          children: [
+            new ImageRun({
+              data: bannerImgData.data,
+              type: 'png',
+              transformation: {
+                width: 816, // 8.5 inches at 96 DPI (Full page width)
+                height: 204, // Aspect ratio 4:1
+              },
+              floating: {
+                horizontalPosition: {
+                  relative: HorizontalPositionRelativeFrom.PAGE,
+                  offset: 0,
+                },
+                verticalPosition: {
+                  relative: VerticalPositionRelativeFrom.PAGE,
+                  offset: 0,
+                },
+                wrap: {
+                  type: TextWrappingType.TOP_AND_BOTTOM,
+                },
+              },
+            }),
+          ],
+        }),
+      ];
+
+      if (logoBytes) {
+        const coverLogo = fitLogoSize(metadata.logoWidth, metadata.logoHeight, 120, 52);
+        firstPageChildren.push(
           new Paragraph({
-            alignment: AlignmentType.CENTER,
-            spacing: { before: 0, after: 0 },
             children: [
               new ImageRun({
-                data: bannerImgData.data,
+                data: logoBytes,
                 type: 'png',
                 transformation: {
-                  width: 816, // 8.5 inches at 96 DPI (Full page width)
-                  height: 204, // Aspect ratio 4:1
+                  width: coverLogo.width,
+                  height: coverLogo.height,
                 },
                 floating: {
                   horizontalPosition: {
                     relative: HorizontalPositionRelativeFrom.PAGE,
-                    offset: 0,
+                    offset: 6229360,
                   },
                   verticalPosition: {
                     relative: VerticalPositionRelativeFrom.PAGE,
-                    offset: 0,
+                    offset: 182880,
                   },
                   wrap: {
-                    type: TextWrappingType.TOP_AND_BOTTOM,
+                    type: TextWrappingType.NONE,
                   },
                 },
               }),
             ],
-          }),
-        ],
+          })
+        );
+      }
+
+      firstPageHeader = new Header({
+        children: firstPageChildren,
       });
     }
   } catch (err) {
@@ -645,6 +698,10 @@ export async function generateAdvansysDocx(
   );
 
   // Build Advansys Header Banner
+  const headerLogo = logoBytes
+    ? fitLogoSize(metadata.logoWidth, metadata.logoHeight, 78, 28)
+    : null;
+
   const header = new Header({
     children: [
       new Table({
@@ -660,8 +717,32 @@ export async function generateAdvansysDocx(
         rows: [
           new TableRow({
             children: [
+              ...(logoBytes && headerLogo
+                ? [
+                    new TableCell({
+                      width: { size: 18, type: WidthType.PERCENTAGE },
+                      shading: { fill: COLOR_PRIMARY_BLUE, type: ShadingType.CLEAR },
+                      margins: { top: 60, bottom: 60, left: 120, right: 80 },
+                      verticalAlign: 'center' as any,
+                      children: [
+                        new Paragraph({
+                          children: [
+                            new ImageRun({
+                              data: logoBytes,
+                              type: 'png',
+                              transformation: {
+                                width: headerLogo.width,
+                                height: headerLogo.height,
+                              },
+                            }),
+                          ],
+                        }),
+                      ],
+                    }),
+                  ]
+                : []),
               new TableCell({
-                width: { size: 100, type: WidthType.PERCENTAGE },
+                width: { size: logoBytes ? 82 : 100, type: WidthType.PERCENTAGE },
                 shading: { fill: COLOR_PRIMARY_BLUE, type: ShadingType.CLEAR },
                 margins: { top: 100, bottom: 100, left: 160, right: 160 },
                 children: [

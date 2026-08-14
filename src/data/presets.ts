@@ -7,7 +7,10 @@ export const ADVANSYS_SAMPLE_METADATA: MetadataHeader = {
   guiaNo: "GUI-ADV-042",
   propuestaNo: "PROP-ADV-2026-0158",
   nombreProyecto: "Módulo Autónomo de Conciliación Bancaria y Facturación Electrónica",
-  moduloAplicacion: "Advansys Core Banking Integrator v4.2"
+  moduloAplicacion: "Advansys Core Banking Integrator v4.2",
+  technicalLevel: 7,
+  detailLevel: 7,
+  paraphraseLevel: 4,
 };
 
 export const ADVANSYS_SAMPLE_REQUIREMENTS = `1. PREMISA:

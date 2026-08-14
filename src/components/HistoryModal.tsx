@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { SavedProposal } from '../types';
-import { X, Calendar, Building2, FileText, Trash2, ArrowRight, Copy, GitBranch, Search, Check, Tag } from 'lucide-react';
+import { X, Calendar, Building2, FileText, Trash2, ArrowRight, Copy, GitBranch, Search, Check, Tag, Sparkles, Filter, RotateCcw } from 'lucide-react';
 
 interface HistoryModalProps {
   isOpen: boolean;
@@ -21,21 +21,109 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [filterCliente, setFilterCliente] = useState('all');
+  const [filterTicket, setFilterTicket] = useState('all');
+  const [filterVersion, setFilterVersion] = useState('all');
+  const [filterPeriod, setFilterPeriod] = useState<'all' | 'today' | '7d' | '30d' | 'month'>('all');
+  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'client' | 'project'>('newest');
+
+  const uniqueClientes = useMemo(() => {
+    const set = new Set<string>();
+    proposals.forEach((p) => {
+      const v = (p.metadata.cliente || '').trim();
+      if (v) set.add(v);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'));
+  }, [proposals]);
+
+  const uniqueTickets = useMemo(() => {
+    const set = new Set<string>();
+    proposals.forEach((p) => {
+      const v = (p.metadata.ticketNo || p.metadata.propuestaNo || '').trim();
+      if (v) set.add(v);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'));
+  }, [proposals]);
+
+  const uniqueVersions = useMemo(() => {
+    const set = new Set<string>();
+    proposals.forEach((p) => {
+      const v = (p.version || 'v1.0').trim();
+      if (v) set.add(v);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'));
+  }, [proposals]);
+
+  const hasActiveFilters =
+    filterCliente !== 'all' ||
+    filterTicket !== 'all' ||
+    filterVersion !== 'all' ||
+    filterPeriod !== 'all' ||
+    sortBy !== 'newest' ||
+    searchQuery.trim() !== '';
+
+  const clearFilters = () => {
+    setSearchQuery('');
+    setFilterCliente('all');
+    setFilterTicket('all');
+    setFilterVersion('all');
+    setFilterPeriod('all');
+    setSortBy('newest');
+  };
 
   if (!isOpen) return null;
 
-  // Filter proposals
-  const filteredProposals = proposals.filter((p) => {
-    const q = searchQuery.toLowerCase().trim();
-    if (!q) return true;
-    return (
-      (p.metadata.cliente || '').toLowerCase().includes(q) ||
-      (p.metadata.nombreProyecto || '').toLowerCase().includes(q) ||
-      (p.metadata.ticketNo || '').toLowerCase().includes(q) ||
-      (p.version || '').toLowerCase().includes(q) ||
-      (p.versionNote || '').toLowerCase().includes(q)
-    );
-  });
+  const matchesPeriod = (timestamp: string) => {
+    if (filterPeriod === 'all') return true;
+    const t = new Date(timestamp).getTime();
+    if (Number.isNaN(t)) return false;
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    if (filterPeriod === 'today') return t >= startOfToday;
+    if (filterPeriod === '7d') return t >= now.getTime() - 7 * 24 * 60 * 60 * 1000;
+    if (filterPeriod === '30d') return t >= now.getTime() - 30 * 24 * 60 * 60 * 1000;
+    if (filterPeriod === 'month') {
+      return (
+        new Date(timestamp).getFullYear() === now.getFullYear() &&
+        new Date(timestamp).getMonth() === now.getMonth()
+      );
+    }
+    return true;
+  };
+
+  const filteredProposals = proposals
+    .filter((p) => {
+      const q = searchQuery.toLowerCase().trim();
+      const ticketKey = (p.metadata.ticketNo || p.metadata.propuestaNo || '').trim();
+      const versionKey = (p.version || 'v1.0').trim();
+      const clienteKey = (p.metadata.cliente || '').trim();
+
+      if (filterCliente !== 'all' && clienteKey !== filterCliente) return false;
+      if (filterTicket !== 'all' && ticketKey !== filterTicket) return false;
+      if (filterVersion !== 'all' && versionKey !== filterVersion) return false;
+      if (!matchesPeriod(p.timestamp)) return false;
+
+      if (!q) return true;
+      return (
+        clienteKey.toLowerCase().includes(q) ||
+        (p.metadata.nombreProyecto || '').toLowerCase().includes(q) ||
+        (p.metadata.ticketNo || '').toLowerCase().includes(q) ||
+        (p.metadata.propuestaNo || '').toLowerCase().includes(q) ||
+        (p.metadata.moduloAplicacion || '').toLowerCase().includes(q) ||
+        versionKey.toLowerCase().includes(q) ||
+        (p.versionNote || '').toLowerCase().includes(q)
+      );
+    })
+    .sort((a, b) => {
+      if (sortBy === 'oldest') return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+      if (sortBy === 'client') {
+        return (a.metadata.cliente || '').localeCompare(b.metadata.cliente || '', 'es');
+      }
+      if (sortBy === 'project') {
+        return (a.metadata.nombreProyecto || '').localeCompare(b.metadata.nombreProyecto || '', 'es');
+      }
+      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+    });
 
   // Copy proposal contents to clipboard
   const handleCopyTextToClipboard = (item: SavedProposal) => {
@@ -76,16 +164,16 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[88vh]">
+      <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col h-[88vh] max-h-[88vh]">
         
         {/* Modal Header */}
-        <div className="bg-[#0A3D62] text-white p-4 px-6 flex items-center justify-between border-b border-[#1E5F8A]">
+        <div className="bg-[#0A3D62] text-white p-4 px-4 sm:px-6 flex items-center justify-between border-b border-[#1E5F8A] shrink-0">
           <div className="flex items-center space-x-2">
             <GitBranch className="w-5 h-5 text-[#2ECC71]" />
             <div>
-              <h2 className="text-base font-bold">Historial de Versiones y Propuestas</h2>
+              <h2 className="text-base font-bold">Historial</h2>
               <p className="text-[11px] text-blue-200">
-                Gestiona versiones (v1, v2...), duplica análisis alternativos y copia contenidos
+                Busca, filtra y vuelve a abrir documentos guardados
               </p>
             </div>
           </div>
@@ -97,27 +185,117 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
           </button>
         </div>
 
-        {/* Search Bar */}
-        {proposals.length > 0 && (
-          <div className="p-3 px-6 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3">
-            <div className="relative flex-1">
+        {/* Search + Filters — always visible, never collapsed */}
+        <div className="shrink-0 p-3 px-4 sm:px-6 bg-slate-100 border-b border-slate-300 space-y-2.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 min-w-0">
+            <div className="relative flex-1 min-w-0">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Buscar por cliente, proyecto, versión o ticket..."
-                className="w-full pl-9 pr-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-800"
+                className="w-full min-w-0 pl-9 pr-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-800"
               />
             </div>
-            <span className="text-xs font-semibold text-slate-500 shrink-0">
-              {filteredProposals.length} de {proposals.length} versión(es)
-            </span>
+            <div className="flex items-center gap-2 shrink-0">
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-[#0A3D62] bg-white hover:bg-slate-50 border border-slate-300 rounded-lg"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Limpiar
+                </button>
+              )}
+              <span className="text-xs font-semibold text-slate-600">
+                {filteredProposals.length} de {proposals.length}
+              </span>
+            </div>
           </div>
-        )}
+
+          <div className="flex items-center gap-1.5 text-[11px] font-bold text-[#0A3D62] uppercase tracking-wide">
+            <Filter className="w-3.5 h-3.5" />
+            Filtros
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 min-w-0">
+            <label className="min-w-0">
+              <span className="block text-[10px] font-bold text-[#0A3D62] mb-1">Cliente</span>
+              <select
+                value={filterCliente}
+                onChange={(e) => setFilterCliente(e.target.value)}
+                className="w-full min-w-0 px-2 py-2 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
+              >
+                <option value="all">Todos</option>
+                {uniqueClientes.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className="min-w-0">
+              <span className="block text-[10px] font-bold text-[#0A3D62] mb-1">Ticket / Propuesta</span>
+              <select
+                value={filterTicket}
+                onChange={(e) => setFilterTicket(e.target.value)}
+                className="w-full min-w-0 px-2 py-2 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
+              >
+                <option value="all">Todos</option>
+                {uniqueTickets.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className="min-w-0">
+              <span className="block text-[10px] font-bold text-[#0A3D62] mb-1">Versión</span>
+              <select
+                value={filterVersion}
+                onChange={(e) => setFilterVersion(e.target.value)}
+                className="w-full min-w-0 px-2 py-2 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
+              >
+                <option value="all">Todas</option>
+                {uniqueVersions.map((v) => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className="min-w-0">
+              <span className="block text-[10px] font-bold text-[#0A3D62] mb-1">Periodo</span>
+              <select
+                value={filterPeriod}
+                onChange={(e) => setFilterPeriod(e.target.value as typeof filterPeriod)}
+                className="w-full min-w-0 px-2 py-2 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
+              >
+                <option value="all">Cualquier fecha</option>
+                <option value="today">Hoy</option>
+                <option value="7d">Últimos 7 días</option>
+                <option value="30d">Últimos 30 días</option>
+                <option value="month">Este mes</option>
+              </select>
+            </label>
+
+            <label className="min-w-0 col-span-2 md:col-span-1">
+              <span className="block text-[10px] font-bold text-[#0A3D62] mb-1">Ordenar</span>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                className="w-full min-w-0 px-2 py-2 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
+              >
+                <option value="newest">Más reciente</option>
+                <option value="oldest">Más antiguo</option>
+                <option value="client">Cliente A-Z</option>
+                <option value="project">Proyecto A-Z</option>
+              </select>
+            </label>
+          </div>
+        </div>
 
         {/* Modal Content List */}
-        <div className="p-6 overflow-y-auto flex-1 space-y-3">
+        <div className="p-4 sm:p-6 overflow-y-auto min-h-0 flex-1 space-y-3">
           {proposals.length === 0 ? (
             <div className="text-center py-12 text-slate-400">
               <FileText className="w-12 h-12 mx-auto mb-3 opacity-30 text-[#0A3D62]" />
@@ -129,7 +307,7 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
           ) : filteredProposals.length === 0 ? (
             <div className="text-center py-8 text-slate-400">
               <Search className="w-8 h-8 mx-auto mb-2 opacity-30" />
-              <p className="text-xs font-semibold text-slate-600">No se encontraron versiones que coincidan con la búsqueda.</p>
+              <p className="text-xs font-semibold text-slate-600">No hay versiones con esos filtros.</p>
             </div>
           ) : (
             filteredProposals.map((item) => {
@@ -159,8 +337,9 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
 
                     {/* Version Note if exists */}
                     {item.versionNote && (
-                      <p className="text-xs text-slate-600 italic bg-white px-2.5 py-1 rounded border border-slate-200">
-                        💬 Nota de versión: {item.versionNote}
+                      <p className="text-xs text-slate-600 italic bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 flex items-start gap-1.5">
+                        <FileText className="w-3.5 h-3.5 mt-0.5 text-slate-400 shrink-0" />
+                        <span>Nota de versión: {item.versionNote}</span>
                       </p>
                     )}
 
@@ -204,10 +383,10 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
                         onClick={() => {
                           onDuplicateProposal(item);
                         }}
-                        className="inline-flex items-center px-2.5 py-1.5 text-xs font-bold text-purple-900 bg-purple-100 hover:bg-purple-200 border border-purple-300 rounded-lg transition-colors shadow-xs"
+                        className="inline-flex items-center px-2.5 py-1.5 text-xs font-bold text-[#0A3D62] bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors shadow-xs"
                         title="Duplicar y crear una versión nueva derivada de esta"
                       >
-                        <Copy className="w-3.5 h-3.5 mr-1 text-purple-700" />
+                        <Copy className="w-3.5 h-3.5 mr-1 text-[#1E5F8A]" />
                         <span>Duplicar Versión</span>
                       </button>
                     )}
@@ -252,9 +431,10 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
         </div>
 
         {/* Modal Footer */}
-        <div className="bg-slate-50 p-4 border-t border-slate-200 flex items-center justify-between text-xs">
-          <span className="text-slate-500">
-            💡 Puedes mantener múltiples versiones (ej. v1 para Vía API, v2 para Vía Webhook) de un mismo ticket.
+        <div className="shrink-0 bg-slate-50 p-3 sm:p-4 border-t border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+          <span className="text-slate-500 flex items-start gap-1.5 min-w-0">
+            <Sparkles className="w-3.5 h-3.5 mt-0.5 text-[#2ECC71] shrink-0" />
+            <span>Puedes mantener múltiples versiones (ej. v1 para Vía API, v2 para Vía Webhook) de un mismo ticket.</span>
           </span>
           <button
             onClick={onClose}

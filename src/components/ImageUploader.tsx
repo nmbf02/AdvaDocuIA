@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { UploadedImage } from '../types';
-import { UploadCloud, Image as ImageIcon, Trash2, ArrowUp, ArrowDown, Info } from 'lucide-react';
+import { UploadCloud, Trash2, ArrowUp, ArrowDown, Info } from 'lucide-react';
 
 interface ImageUploaderProps {
   images: UploadedImage[];
@@ -74,15 +74,15 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ images, onChange }
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-      <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
-        <div className="flex items-center space-x-2">
-          <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#0A3D62] flex items-center justify-center font-bold text-sm border border-blue-200">
+    <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-sm border border-white p-3 sm:p-4 min-w-0 max-w-full overflow-x-hidden">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3 mb-4">
+        <div className="flex items-center space-x-2 min-w-0">
+          <div className="w-8 h-8 rounded-xl bg-blue-50 text-[#0A3D62] flex items-center justify-center font-bold text-sm border border-blue-200 shrink-0">
             3
           </div>
-          <div>
-            <h2 className="text-base font-bold text-[#0A3D62]">Cargador Multimodal de Imágenes y Diagramas</h2>
-            <p className="text-xs text-slate-500">Sube capturas de pantalla, flujos UI o diagramas de arquitectura para el Análisis Operativo</p>
+          <div className="min-w-0">
+            <h2 className="text-base font-bold text-[#0A3D62] truncate">Imágenes</h2>
+            <p className="text-xs text-slate-500">Capturas o diagramas que irán en el documento (opcional)</p>
           </div>
         </div>
 
@@ -111,10 +111,10 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ images, onChange }
             <UploadCloud className="w-6 h-6 text-[#0A3D62]" />
           </div>
           <p className="text-sm font-semibold text-slate-700">
-            Arrastra y suelta tus imágenes aquí, o <span className="text-[#0A3D62] underline">haz clic para explorar</span>
+            Arrastra las imágenes aquí o <span className="text-[#0A3D62] underline">haz clic para elegirlas</span>
           </p>
           <p className="text-xs text-slate-400 mt-1">
-            Soporta PNG, JPG, SVG, WEBP (Diagramas de arquitectura, bocetos UI, capturas de pantalla)
+            PNG, JPG o SVG. Se insertan en el análisis del documento.
           </p>
         </div>
       </div>

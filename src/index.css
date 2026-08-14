@@ -1,22 +1,93 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --color-brand: #0a3d62;
+  --color-brand-mid: #1e5f8a;
+  --color-accent: #2ecc71;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  overflow-x: hidden;
+  font-family: var(--font-sans);
+  background-color: #e8eef4;
+  background-image:
+    radial-gradient(ellipse 90% 55% at 8% -12%, rgba(10, 61, 98, 0.14), transparent 55%),
+    radial-gradient(ellipse 70% 45% at 100% 0%, rgba(46, 204, 113, 0.1), transparent 50%),
+    linear-gradient(180deg, #eef3f8 0%, #e4ebf3 100%);
+  background-attachment: fixed;
+}
+
+/* Minimalist Lucide stroke */
+.lucide {
+  stroke-width: 1.7;
+}
+
 /* Custom smooth scrollbars for dense editor panels */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: #cbd5e1;
-  border-radius: 4px;
+  border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
 
-/* Ensure no accidental horizontal page overflow */
-body {
-  overflow-x: hidden;
+/* Sticky bars: more visible lift + brand accent */
+.sticky-bar {
+  box-shadow:
+    0 8px 24px -12px rgba(10, 61, 98, 0.28),
+    0 1px 0 rgba(255, 255, 255, 0.35) inset;
+}
+
+.sticky-bar::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #2ecc71 0%, #1e5f8a 55%, transparent 100%);
+}
+
+/* Prevent native controls from blowing past narrow side panels */
+input,
+textarea,
+select {
+  max-width: 100%;
+}
+input[type="date"] {
+  min-width: 0;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.toast-in {
+  animation: toast-in 0.25s ease-out;
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MetadataHeader, UploadedImage, ProposalSection, SavedProposal } from './types';
+import { MetadataHeader, UploadedImage, ProposalSection, SavedProposal, BrandingSettings } from './types';
 import { Header } from './components/Header';
 import { MetadataForm } from './components/MetadataForm';
 import { RequirementsInput } from './components/RequirementsInput';
@@ -7,11 +7,26 @@ import { ImageUploader } from './components/ImageUploader';
 import { ProposalEditor } from './components/ProposalEditor';
 import { HistoryModal } from './components/HistoryModal';
 import { ConfirmModal } from './components/ConfirmModal';
+import { SettingsModal } from './components/SettingsModal';
 import { ADVANSYS_SAMPLE_METADATA, ADVANSYS_SAMPLE_REQUIREMENTS, ADVANSYS_SAMPLE_IMAGES, EMPTY_MANUAL_PROPOSAL } from './data/presets';
-import { Sparkles, Loader2, FileText, CheckCircle2, AlertCircle, Cpu, ArrowRight, Edit3, Wand2, PlusCircle } from 'lucide-react';
+import { Sparkles, Loader2, FileText, AlertCircle, Cpu, Columns2, ClipboardList, Maximize2, Image as ImageIcon, PenLine, NotebookPen, Layers, X, Check } from 'lucide-react';
 
 const STORAGE_KEY_HISTORY = 'advansys_docgen_history_v1';
 const STORAGE_KEY_DRAFT = 'advansys_docgen_current_draft_v1';
+const STORAGE_KEY_SETTINGS = 'advansys_docgen_settings_v1';
+
+const extractBranding = (source?: Partial<BrandingSettings> | null): BrandingSettings => ({
+  logoDataUrl: source?.logoDataUrl,
+  logoMimeType: source?.logoMimeType,
+  logoFileName: source?.logoFileName,
+  logoWidth: source?.logoWidth,
+  logoHeight: source?.logoHeight,
+});
+
+const stripDocumentLogo = (meta: MetadataHeader): MetadataHeader => {
+  const { logoDataUrl, logoMimeType, logoFileName, logoWidth, logoHeight, ...rest } = meta;
+  return rest;
+};
 
 export default function App() {
   // Form State
@@ -27,6 +42,8 @@ export default function App() {
     headerSubtitle: '',
     footerText: 'Advansys SRL',
     technicalLevel: 7,
+    detailLevel: 6,
+    paraphraseLevel: 3,
   });
 
   const [rawRequirements, setRawRequirements] = useState<string>('');
@@ -50,6 +67,10 @@ export default function App() {
   const [history, setHistory] = useState<SavedProposal[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
 
+  // Branding / Settings (logo global para todos los documentos)
+  const [branding, setBranding] = useState<BrandingSettings>({});
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+
   // Confirm Reset Modal State
   const [isConfirmResetOpen, setIsConfirmResetOpen] = useState<boolean>(false);
 
@@ -57,7 +78,7 @@ export default function App() {
   const [layoutMode, setLayoutMode] = useState<'split' | 'inputs' | 'editor'>('split');
   const [inputTab, setInputTab] = useState<'metadatos' | 'requerimientos' | 'imagenes' | 'all'>('requerimientos');
 
-  // Load History and Draft from localStorage
+  // Load History, Draft and Settings from localStorage
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_HISTORY);
@@ -66,9 +87,13 @@ export default function App() {
       }
 
       const savedDraft = localStorage.getItem(STORAGE_KEY_DRAFT);
+      let draftMetadata: MetadataHeader | undefined;
       if (savedDraft) {
         const parsed = JSON.parse(savedDraft);
-        if (parsed.metadata) setMetadata(parsed.metadata);
+        if (parsed.metadata) {
+          draftMetadata = parsed.metadata;
+          setMetadata(stripDocumentLogo(parsed.metadata));
+        }
         if (parsed.rawRequirements !== undefined) setRawRequirements(parsed.rawRequirements);
         if (parsed.images) setImages(parsed.images);
         if (parsed.proposal) setProposal(parsed.proposal);
@@ -79,10 +104,30 @@ export default function App() {
           setLastSavedTime(t);
         }
       }
+
+      const savedSettings = localStorage.getItem(STORAGE_KEY_SETTINGS);
+      if (savedSettings) {
+        setBranding(JSON.parse(savedSettings));
+      } else if (draftMetadata?.logoDataUrl) {
+        const migrated = extractBranding(draftMetadata);
+        setBranding(migrated);
+        localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(migrated));
+      }
     } catch (e) {
       console.error("Failed to load initial storage:", e);
     }
   }, []);
+
+  const brandedMetadata: MetadataHeader = { ...metadata, ...branding };
+
+  const handleBrandingChange = (updated: BrandingSettings) => {
+    setBranding(updated);
+    try {
+      localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(updated));
+    } catch (e) {
+      console.error("Failed to save settings:", e);
+    }
+  };
 
   // Save Changes Helper
   const handleSaveChanges = () => {
@@ -183,7 +228,7 @@ export default function App() {
     }
 
     // Load duplicated item into active workspace editor
-    setMetadata(newEntry.metadata);
+    setMetadata(stripDocumentLogo(newEntry.metadata));
     setRawRequirements(newEntry.rawRequirements);
     setImages(newEntry.images);
     setProposal(newEntry.content);
@@ -217,6 +262,12 @@ export default function App() {
       propuestaNo: '',
       nombreProyecto: '',
       moduloAplicacion: '',
+      headerBrandTag: 'ADVANSYS',
+      headerSubtitle: '',
+      footerText: 'Advansys SRL',
+      technicalLevel: 7,
+      detailLevel: 6,
+      paraphraseLevel: 3,
     });
     setRawRequirements('');
     setImages([]);
@@ -240,10 +291,10 @@ export default function App() {
 
     setError(null);
     setIsGenerating(true);
-    setGenerationStep("Iniciando análisis arquitectónico de Advansys con Gemini 1.5 Pro / Flash...");
+        setGenerationStep("Leyendo tus notas y datos del documento...");
 
     try {
-      setGenerationStep("Procesando metadatos e imágenes para estructurar el Análisis Operativo...");
+      setGenerationStep("Armando el borrador de la propuesta...");
       
       const response = await fetch('/api/generate-proposal', {
         method: 'POST',
@@ -261,7 +312,7 @@ export default function App() {
         throw new Error(data.error || "No se pudo generar la propuesta. Revisa la clave GEMINI_API_KEY.");
       }
 
-      setGenerationStep("Sintetizando secciones técnicas corporativas y validando referencias...");
+      setGenerationStep("Revisando secciones y referencias de imágenes...");
       setProposal(data.proposal);
       saveToHistory(data.proposal);
 
@@ -274,23 +325,30 @@ export default function App() {
     }
   };
 
+  const hasDatos = Boolean(
+    metadata.cliente.trim() || metadata.ticketNo.trim() || metadata.nombreProyecto.trim()
+  );
+  const hasNotas = Boolean(rawRequirements.trim());
+
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-800 flex flex-col font-sans">
+    <div className="h-dvh max-md:h-auto max-md:min-h-dvh text-slate-800 flex flex-col font-sans overflow-hidden max-md:overflow-visible">
       
       {/* Top Header */}
       <Header
         onLoadPreset={handleLoadPreset}
         onReset={handleReset}
         onOpenHistory={() => setIsHistoryOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
         historyCount={history.length}
+        logoDataUrl={branding.logoDataUrl}
       />
 
       {/* Main Container */}
-      <main className="flex-1 max-w-[1800px] w-full mx-auto px-3 sm:px-6 lg:px-8 py-5 space-y-5">
+      <main className="flex-1 min-h-0 max-w-[1800px] w-full mx-auto px-3 sm:px-6 lg:px-8 py-3 sm:py-4 flex flex-col gap-3 overflow-hidden max-md:overflow-visible">
         
         {/* Banner Alert if Error */}
         {error && (
-          <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-xl shadow-sm flex items-start space-x-3">
+          <div className="bg-red-50 border-l-4 border-red-500 p-3 sm:p-4 rounded-2xl shadow-sm flex items-start gap-3 shrink-0">
             <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
             <div className="flex-1 text-xs text-red-800">
               <strong className="font-bold text-red-900">Atención: </strong>
@@ -298,116 +356,136 @@ export default function App() {
             </div>
             <button
               onClick={() => setError(null)}
-              className="text-xs font-bold text-red-600 hover:underline"
+              className="p-1 rounded-lg text-red-600 hover:bg-red-100 transition-colors"
+              title="Descartar"
             >
-              Descartar
+              <X className="w-4 h-4" />
             </button>
           </div>
         )}
 
         {/* Workspace Mode Bar Switcher */}
-        <div className="bg-white rounded-xl p-2.5 shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center space-x-2 text-xs font-bold text-slate-700">
-            <span className="bg-blue-50 text-[#0A3D62] px-2.5 py-1 rounded-lg border border-blue-200">
-              Modo de Trabajo:
-            </span>
-            <span className="text-slate-500 hidden sm:inline">Ajusta la vista para mayor comodidad de edición</span>
+        <div className="relative sticky top-14 sm:top-16 lg:top-0 z-40 bg-white/90 backdrop-blur-md rounded-2xl p-1.5 sm:p-2 shadow-sm border border-white/80 sticky-bar flex flex-wrap items-center justify-between gap-2 shrink-0">
+          <div className="flex items-center gap-2 text-xs px-1.5 min-w-0">
+            <span className="font-bold text-[#0A3D62]">Vista</span>
+            <span className="text-slate-500 hidden md:inline">Elige si ves los datos, el documento o ambos</span>
           </div>
 
-          <div className="bg-slate-100 p-1 rounded-lg flex items-center space-x-1 border border-slate-200 text-xs">
+          <div className="bg-slate-100/90 p-1 rounded-xl flex items-center gap-0.5 border border-slate-200/80 text-xs w-full sm:w-auto overflow-x-auto no-scrollbar">
             <button
               onClick={() => setLayoutMode('split')}
-              className={`px-3 py-1.5 font-semibold rounded-md transition-all flex items-center space-x-1 ${
+              className={`px-3 py-2 font-semibold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
                 layoutMode === 'split'
                   ? 'bg-[#0A3D62] text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white'
               }`}
             >
-              <span>🌓 Vista Dividida</span>
+              <Columns2 className="w-3.5 h-3.5" />
+              <span>Datos + documento</span>
             </button>
 
             <button
               onClick={() => setLayoutMode('inputs')}
-              className={`px-3 py-1.5 font-semibold rounded-md transition-all flex items-center space-x-1 ${
+              className={`px-3 py-2 font-semibold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
                 layoutMode === 'inputs'
                   ? 'bg-[#0A3D62] text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white'
               }`}
             >
-              <span>📋 Formulario Completo</span>
+              <ClipboardList className="w-3.5 h-3.5" />
+              <span>Solo datos</span>
             </button>
 
             {proposal && (
               <button
                 onClick={() => setLayoutMode('editor')}
-                className={`px-3 py-1.5 font-semibold rounded-md transition-all flex items-center space-x-1 ${
+                className={`px-3 py-2 font-semibold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
                   layoutMode === 'editor'
                     ? 'bg-[#0A3D62] text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white'
                 }`}
               >
-                <span>📄 Editor / Vista Previa Expandida</span>
+                <Maximize2 className="w-3.5 h-3.5" />
+                <span>Solo documento</span>
               </button>
             )}
           </div>
         </div>
 
         {/* Workspace Layout Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start min-w-0">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 items-stretch min-w-0 flex-1 min-h-0 overflow-hidden max-md:overflow-x-hidden max-md:overflow-y-visible">
           
           {/* LEFT COLUMN: Input Panels */}
           {(layoutMode === 'split' || layoutMode === 'inputs') && (
             <div className={`${
               layoutMode === 'inputs'
                 ? 'lg:col-span-12 max-w-4xl mx-auto w-full'
-                : 'lg:col-span-5 xl:col-span-4 2xl:col-span-4'
-            } space-y-4 min-w-0 max-h-[calc(100vh-140px)] overflow-y-auto pr-1`}>
+                : 'lg:col-span-5 xl:col-span-5 2xl:col-span-4'
+            } @container space-y-3 min-w-0 max-w-full h-full overflow-x-hidden overflow-y-auto max-md:max-h-none max-md:overflow-x-hidden overscroll-contain pr-1`}>
               
               {/* Input Navigation Tabs to Prevent Endlessly Scrolling Down */}
-              <div className="bg-white p-1.5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between text-xs overflow-x-auto">
-                <div className="flex items-center space-x-1 w-full">
+              <div className="relative sticky top-14 sm:top-16 lg:top-0 z-20 bg-white/95 backdrop-blur-md p-1.5 rounded-2xl border border-white/80 shadow-sm sticky-bar text-xs">
+                <p className="px-1.5 pb-1.5 text-[11px] text-slate-500">
+                  Completa los pasos de izquierda a derecha. En Notas puedes subir un Word, TXT o Markdown.
+                </p>
+                <div className="grid grid-cols-4 gap-1 w-full min-w-0">
                   <button
                     type="button"
                     onClick={() => setInputTab('metadatos')}
-                    className={`flex-1 min-w-[90px] py-1.5 px-2 font-bold rounded-lg transition-all text-center ${
+                    title="Datos del documento"
+                    className={`min-w-0 py-2 px-1 font-semibold rounded-xl transition-all inline-flex flex-col items-center justify-center gap-0.5 ${
                       inputTab === 'metadatos'
-                        ? 'bg-[#0A3D62] text-white shadow-xs'
+                        ? 'bg-[#0A3D62] text-white shadow-sm'
                         : 'text-slate-600 hover:bg-slate-100'
                     }`}
                   >
-                    📋 Metadatos
+                    <span className="inline-flex items-center gap-1">
+                      <ClipboardList className="w-3.5 h-3.5 shrink-0" />
+                      {hasDatos && <Check className="w-3 h-3 text-[#2ECC71]" />}
+                    </span>
+                    <span className="truncate w-full text-center text-[10px] sm:text-xs">1. Datos</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setInputTab('requerimientos')}
-                    className={`flex-1 min-w-[110px] py-1.5 px-2 font-bold rounded-lg transition-all text-center ${
+                    title="Notas y requerimientos"
+                    className={`min-w-0 py-2 px-1 font-semibold rounded-xl transition-all inline-flex flex-col items-center justify-center gap-0.5 ${
                       inputTab === 'requerimientos'
-                        ? 'bg-[#0A3D62] text-white shadow-xs'
+                        ? 'bg-[#0A3D62] text-white shadow-sm'
                         : 'text-slate-600 hover:bg-slate-100'
                     }`}
                   >
-                    📝 Requerimientos
+                    <span className="inline-flex items-center gap-1">
+                      <NotebookPen className="w-3.5 h-3.5 shrink-0" />
+                      {hasNotas && <Check className="w-3 h-3 text-[#2ECC71]" />}
+                    </span>
+                    <span className="truncate w-full text-center text-[10px] sm:text-xs">2. Notas</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setInputTab('imagenes')}
-                    className={`flex-1 min-w-[90px] py-1.5 px-2 font-bold rounded-lg transition-all text-center ${
+                    title="Imágenes del documento"
+                    className={`min-w-0 py-2 px-1 font-semibold rounded-xl transition-all inline-flex flex-col items-center justify-center gap-0.5 ${
                       inputTab === 'imagenes'
-                        ? 'bg-[#0A3D62] text-white shadow-xs'
+                        ? 'bg-[#0A3D62] text-white shadow-sm'
                         : 'text-slate-600 hover:bg-slate-100'
                     }`}
                   >
-                    🖼️ Adjuntos ({images.length})
+                    <ImageIcon className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate w-full text-center text-[10px] sm:text-xs">
+                      3. Imágenes{images.length > 0 ? ` (${images.length})` : ''}
+                    </span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setInputTab('all')}
-                    className={`py-1.5 px-2 font-semibold rounded-lg transition-all text-slate-500 hover:bg-slate-100 ${
-                      inputTab === 'all' ? 'bg-slate-200 text-slate-900 font-bold' : ''
+                    title="Ver todos los paneles"
+                    className={`min-w-0 py-2 px-1 font-semibold rounded-xl transition-all inline-flex flex-col items-center justify-center gap-0.5 ${
+                      inputTab === 'all' ? 'bg-slate-200 text-slate-900' : 'text-slate-500 hover:bg-slate-100'
                     }`}
-                    title="Ver todos los paneles desplegados"
                   >
-                    👁️ Ver Todo
+                    <Layers className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate w-full text-center text-[10px] sm:text-xs">Todo</span>
                   </button>
                 </div>
               </div>
@@ -427,6 +505,7 @@ export default function App() {
                   onChange={setRawRequirements}
                   images={images}
                   onImagesChange={setImages}
+                  metadata={metadata}
                 />
               )}
 
@@ -439,31 +518,16 @@ export default function App() {
               )}
 
               {/* Panel 4: Actions (Manual First + AI Assist) */}
-              <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm space-y-2.5">
-                <div className="flex items-center justify-between mb-1">
+              <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-4 border border-white shadow-sm space-y-2.5 min-w-0 max-w-full overflow-x-hidden">
+                <div className="min-w-0 mb-1">
                   <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">
-                    Acciones de Documentación
+                    Crear documento
                   </span>
-                  <span className="text-[10px] bg-emerald-50 text-emerald-700 font-semibold px-2 py-0.5 rounded border border-emerald-200">
-                    Manual + IA
-                  </span>
+                  <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                    Con las notas listas, genera un borrador o escribe tú el contenido.
+                  </p>
                 </div>
 
-                {/* Primary Action: Start Manual Creation */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleStartManualDraft();
-                    if (layoutMode === 'inputs') setLayoutMode('split');
-                  }}
-                  disabled={isGenerating}
-                  className="w-full py-3 px-4 rounded-xl font-bold text-xs text-slate-900 bg-[#2ECC71] hover:bg-[#27ae60] active:scale-[0.99] transition-all shadow-md flex items-center justify-center space-x-2 border border-emerald-400 disabled:opacity-50"
-                >
-                  <Edit3 className="w-4 h-4 text-slate-950" />
-                  <span>✍️ Redactar Documento Manualmente</span>
-                </button>
-
-                {/* Secondary Action: Full AI Generation */}
                 <button
                   type="button"
                   onClick={async () => {
@@ -471,29 +535,42 @@ export default function App() {
                     if (layoutMode === 'inputs') setLayoutMode('split');
                   }}
                   disabled={isGenerating}
-                  className="w-full py-3 px-4 rounded-xl font-bold text-xs text-white bg-[#0A3D62] hover:bg-[#1E5F8A] active:scale-[0.99] transition-all shadow-md flex items-center justify-center space-x-2 border border-blue-400/30 disabled:opacity-50"
+                  className="w-full py-3 px-3 rounded-xl font-bold text-sm text-white bg-[#0A3D62] hover:bg-[#1E5F8A] active:scale-[0.99] transition-all shadow-md flex items-center justify-center gap-2 border border-blue-400/30 disabled:opacity-50"
                 >
                   {isGenerating ? (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin text-[#2ECC71]" />
-                      <span>Generando con IA...</span>
+                      <Loader2 className="w-4 h-4 animate-spin text-[#2ECC71] shrink-0" />
+                      <span>Generando borrador...</span>
                     </>
                   ) : (
                     <>
-                      <Sparkles className="w-4 h-4 text-[#2ECC71]" />
-                      <span>Generar Borrador Completo con IA</span>
+                      <Sparkles className="w-4 h-4 text-[#2ECC71] shrink-0" />
+                      <span className="text-center leading-tight">Generar con IA</span>
                     </>
                   )}
                 </button>
 
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleStartManualDraft();
+                    if (layoutMode === 'inputs') setLayoutMode('split');
+                  }}
+                  disabled={isGenerating}
+                  className="w-full py-2.5 px-3 rounded-xl font-semibold text-xs text-[#0A3D62] bg-white hover:bg-slate-50 active:scale-[0.99] transition-all flex items-center justify-center gap-2 border border-slate-300 disabled:opacity-50"
+                >
+                  <PenLine className="w-4 h-4 shrink-0" />
+                  <span className="text-center leading-tight">Escribir a mano</span>
+                </button>
+
                 {isGenerating && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center space-y-1">
-                    <div className="flex items-center justify-center space-x-2 text-xs font-semibold text-[#0A3D62]">
-                      <Cpu className="w-4 h-4 text-[#2ECC71] animate-pulse" />
-                      <span>{generationStep}</span>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center space-y-1 toast-in">
+                    <div className="flex items-start justify-center gap-2 text-xs font-semibold text-[#0A3D62]">
+                      <Cpu className="w-4 h-4 text-[#2ECC71] animate-pulse shrink-0 mt-0.5" />
+                      <span className="min-w-0 break-words">{generationStep}</span>
                     </div>
                     <p className="text-[11px] text-slate-500">
-                      Sintetizando estructura corporativa Advansys conforme al manual técnico...
+                      Esto puede tardar unos segundos. No cierres la ventana.
                     </p>
                   </div>
                 )}
@@ -507,12 +584,12 @@ export default function App() {
             <div className={`${
               layoutMode === 'editor'
                 ? 'lg:col-span-12 max-w-6xl mx-auto w-full'
-                : 'lg:col-span-7 xl:col-span-8 2xl:col-span-8'
-            } min-w-0`}>
+                : 'lg:col-span-7 xl:col-span-7 2xl:col-span-8'
+            } min-w-0 max-w-full h-full overflow-x-hidden overflow-y-auto max-md:overflow-x-hidden`}>
               {proposal ? (
                 <ProposalEditor
                   proposal={proposal}
-                  metadata={metadata}
+                  metadata={brandedMetadata}
                   images={images}
                   rawRequirements={rawRequirements}
                   onChange={setProposal}
@@ -524,52 +601,55 @@ export default function App() {
                 />
               ) : (
                 /* Initial State Placeholder */
-                <div className="bg-white rounded-xl border-2 border-dashed border-slate-300 p-8 sm:p-12 text-center min-h-[500px] flex flex-col items-center justify-center space-y-5">
-                  <div className="w-16 h-16 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center text-[#0A3D62] shadow-inner">
+                <div className="bg-white/90 backdrop-blur-sm rounded-2xl border border-dashed border-slate-300/80 p-6 sm:p-10 text-center min-h-[420px] lg:min-h-full flex flex-col items-center justify-center gap-5">
+                  <div className="w-16 h-16 rounded-2xl bg-[#0A3D62]/6 border border-[#0A3D62]/10 flex items-center justify-center text-[#0A3D62]">
                     <FileText className="w-8 h-8 text-[#0A3D62]" />
                   </div>
 
-                <div className="max-w-md space-y-3">
+                <div className="max-w-md space-y-2">
                   <h3 className="text-lg font-bold text-[#0A3D62]">
-                    Generador & Editor de Propuestas Advansys
+                    Tu documento aparecerá aquí
                   </h3>
-                  <p className="text-xs text-slate-600 leading-relaxed">
-                    Puedes redactar la propuesta <strong>100% manualmente</strong> usando nuestro editor estructurado o usar la <strong>IA de Gemini</strong> para generar borradores y perfeccionar secciones.
+                  <p className="text-sm text-slate-600 leading-relaxed">
+                    Completa los datos y las notas a la izquierda. Luego genera un borrador con IA o escríbelo tú.
                   </p>
+                </div>
 
-                  <div className="flex flex-col sm:flex-row items-center justify-center gap-2 pt-2">
+                <div className="w-full max-w-lg grid grid-cols-1 sm:grid-cols-3 gap-2 text-left text-[11px] text-slate-500">
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    <span className="w-6 h-6 rounded-lg bg-[#0A3D62] text-white text-xs font-bold inline-flex items-center justify-center mb-1.5">1</span>
+                    <span className="block font-bold text-slate-800">Datos</span>
+                    <span>Cliente, ticket y nombre del proyecto.</span>
+                  </div>
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    <span className="w-6 h-6 rounded-lg bg-[#0A3D62] text-white text-xs font-bold inline-flex items-center justify-center mb-1.5">2</span>
+                    <span className="block font-bold text-slate-800">Notas</span>
+                    <span>Qué pide el cliente y cómo funciona hoy.</span>
+                  </div>
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    <span className="w-6 h-6 rounded-lg bg-[#2ECC71] text-slate-950 text-xs font-bold inline-flex items-center justify-center mb-1.5">3</span>
+                    <span className="block font-bold text-slate-800">Generar</span>
+                    <span>Borrador con IA o escritura a mano, y Word.</span>
+                  </div>
+                </div>
+
+                  <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
                     <button
                       onClick={handleStartManualDraft}
-                      className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2.5 text-xs font-bold text-slate-950 bg-[#2ECC71] hover:bg-[#27ae60] rounded-xl shadow transition-all border border-emerald-400"
+                      className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2.5 text-xs font-bold text-white bg-[#0A3D62] hover:bg-[#1E5F8A] rounded-xl shadow transition-all"
                     >
-                      <Edit3 className="w-4 h-4 mr-1.5" />
-                      <span>Iniciar Redacción Manual</span>
+                      <PenLine className="w-4 h-4 mr-1.5" />
+                      <span>Empezar a escribir</span>
                     </button>
 
                     <button
                       onClick={handleLoadPreset}
-                      className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2.5 text-xs font-semibold text-[#0A3D62] bg-blue-50 hover:bg-blue-100 rounded-xl border border-blue-200 transition-colors shadow-sm"
+                      className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2.5 text-xs font-semibold text-[#0A3D62] bg-white hover:bg-blue-50 rounded-xl border border-slate-200 transition-colors"
                     >
                       <Sparkles className="w-4 h-4 mr-1.5 text-emerald-600" />
-                      <span>Cargar Ejemplo Advansys</span>
+                      <span>Probar con un ejemplo</span>
                     </button>
                   </div>
-                </div>
-
-                <div className="pt-6 border-t border-slate-200 w-full max-w-lg grid grid-cols-3 gap-2 text-[11px] text-slate-500 font-medium">
-                  <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-center">
-                    <span className="block font-bold text-slate-800">1. Redacción Manual</span>
-                    <span>Control total del analista</span>
-                  </div>
-                  <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-center">
-                    <span className="block font-bold text-slate-800">2. Potenciado por IA</span>
-                    <span>Polido y corrección activa</span>
-                  </div>
-                  <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-center">
-                    <span className="block font-bold text-slate-800">3. Formato Word</span>
-                    <span>Exportación .docx 1:1</span>
-                  </div>
-                </div>
               </div>
             )}
           </div>
@@ -585,7 +665,7 @@ export default function App() {
         onClose={() => setIsHistoryOpen(false)}
         proposals={history}
         onSelectProposal={(saved) => {
-          setMetadata(saved.metadata);
+          setMetadata(stripDocumentLogo(saved.metadata));
           setRawRequirements(saved.rawRequirements || '');
           setImages(saved.images || []);
           setProposal(saved.content);
@@ -600,12 +680,19 @@ export default function App() {
         onDuplicateProposal={handleDuplicateProposal}
       />
 
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        branding={branding}
+        onChange={handleBrandingChange}
+        onClose={() => setIsSettingsOpen(false)}
+      />
+
       {/* Confirmation Modal for Reset/Clear */}
       <ConfirmModal
         isOpen={isConfirmResetOpen}
-        title="¿Limpiar Formulario y Propuesta?"
-        message="Esta acción restablecerá los metadatos, borrará el texto de requerimientos, eliminará las imágenes adjuntas y cerrará la propuesta actual. ¿Deseas continuar?"
-        confirmText="Sí, Limpiar Formulario"
+        title="¿Empezar de cero?"
+        message="Se vaciarán los datos, las notas, las imágenes y el documento actual. El logo de Ajustes se mantiene."
+        confirmText="Sí, vaciar"
         cancelText="Cancelar"
         onConfirm={handleConfirmReset}
         onCancel={() => setIsConfirmResetOpen(false)}

@@ -11,16 +11,28 @@ function escapeSvgText(str: string): string {
 
 export function getAdvansysBannerSvg(
   brandTag: string = 'ADVANSYS',
-  subtitle: string = ''
+  subtitle: string = '',
+  logoDataUrl?: string
 ): string {
   const safeBrandTag = escapeSvgText(brandTag || 'ADVANSYS');
   const safeSubtitle = subtitle ? escapeSvgText(subtitle) : '';
 
   const subtitleElement = safeSubtitle
-    ? `<text x="0" y="102" font-family="'Segoe UI', Roboto, Helvetica, sans-serif" font-size="15" font-weight="600" fill="#A0AEC0" letter-spacing="0.5">${safeSubtitle}</text>`
+    ? `<text x="0" y="124" font-family="'Segoe UI', Roboto, Helvetica, sans-serif" font-size="14" font-weight="600" fill="#A0AEC0" letter-spacing="0.5">${safeSubtitle}</text>`
     : '';
 
-  const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300">
+  const brandingElement = logoDataUrl
+    ? `<!-- Logo replacing ADVANSYS text badge directly without white background -->
+    <g transform="translate(0, 0)">
+      <image href="${logoDataUrl}" xlink:href="${logoDataUrl}" x="0" y="0" width="180" height="42" preserveAspectRatio="xMinYMid meet" />
+    </g>`
+    : `<!-- Label Badge: White text inside Advansys pill -->
+    <rect x="0" y="6" width="150" height="28" rx="14" fill="#2ECC71" opacity="0.25" stroke="#2ECC71" stroke-width="1.5" />
+    <text x="75" y="24" font-family="'Segoe UI', Roboto, Helvetica, sans-serif" font-size="11" font-weight="bold" fill="#FFFFFF" text-anchor="middle" letter-spacing="2">
+      ${safeBrandTag}
+    </text>`;
+
+  const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1200 300" width="1200" height="300">
   <defs>
     <!-- Background Gradient -->
     <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -57,20 +69,16 @@ export function getAdvansysBannerSvg(
   <circle cx="750" cy="120" r="180" fill="#1E5F8A" opacity="0.18" filter="url(#glow)"/>
 
   <!-- LEFT SIDE: Corporate Branding Title Overlay -->
-  <g transform="translate(60, 80)">
-    <!-- Label Badge: White text inside Advansys pill -->
-    <rect x="0" y="0" width="150" height="28" rx="14" fill="#2ECC71" opacity="0.25" stroke="#2ECC71" stroke-width="1.5" />
-    <text x="75" y="18" font-family="'Segoe UI', Roboto, Helvetica, sans-serif" font-size="11" font-weight="bold" fill="#FFFFFF" text-anchor="middle" letter-spacing="2">
-      ${safeBrandTag}
-    </text>
+  <g transform="translate(60, 56)">
+    ${brandingElement}
 
-    <text x="0" y="70" font-family="'Segoe UI', Roboto, Helvetica, sans-serif" font-size="28" font-weight="900" fill="#FFFFFF" letter-spacing="1">
+    <text x="0" y="92" font-family="'Segoe UI', Roboto, Helvetica, sans-serif" font-size="28" font-weight="900" fill="#FFFFFF" letter-spacing="1">
       PROPUESTA TÉCNICA Y ARQUITECTURA
     </text>
     ${subtitleElement}
 
     <!-- Bottom Accent Ribbon -->
-    <rect x="0" y="130" width="380" height="4" fill="#2ECC71" rx="2" />
+    <rect x="0" y="142" width="380" height="4" fill="#2ECC71" rx="2" />
   </g>
 
   <!-- RIGHT SIDE: Futuristic Glassmorphic UI Dashboard Elements -->

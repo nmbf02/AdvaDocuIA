@@ -20,7 +20,7 @@ import {
   VerticalPositionRelativeFrom,
   TextWrappingType,
 } from 'docx';
-import { MetadataHeader, ProposalSection, UploadedImage, DocumentTable } from '../types';
+import { MetadataHeader, ProposalSection, UploadedImage, DocumentTable, getEffectiveTitles } from '../types';
 import { getAdvansysBannerSvg } from '../data/banner';
 
 // Advansys Corporate Palette
@@ -427,7 +427,8 @@ export async function generateAdvansysDocx(
   try {
     const bannerSvg = getAdvansysBannerSvg(
       metadata.headerBrandTag || 'ADVANSYS',
-      metadata.headerSubtitle ?? ''
+      metadata.headerSubtitle ?? '',
+      metadata.logoDataUrl
     );
     const bannerImgData = await dataUrlToUint8Array(bannerSvg);
     if (bannerImgData && bannerImgData.data && bannerImgData.data.length > 0) {
@@ -461,37 +462,6 @@ export async function generateAdvansysDocx(
         }),
       ];
 
-      if (logoBytes) {
-        const coverLogo = fitLogoSize(metadata.logoWidth, metadata.logoHeight, 120, 52);
-        firstPageChildren.push(
-          new Paragraph({
-            children: [
-              new ImageRun({
-                data: logoBytes,
-                type: 'png',
-                transformation: {
-                  width: coverLogo.width,
-                  height: coverLogo.height,
-                },
-                floating: {
-                  horizontalPosition: {
-                    relative: HorizontalPositionRelativeFrom.PAGE,
-                    offset: 6229360,
-                  },
-                  verticalPosition: {
-                    relative: VerticalPositionRelativeFrom.PAGE,
-                    offset: 182880,
-                  },
-                  wrap: {
-                    type: TextWrappingType.NONE,
-                  },
-                },
-              }),
-            ],
-          })
-        );
-      }
-
       firstPageHeader = new Header({
         children: firstPageChildren,
       });
@@ -500,6 +470,8 @@ export async function generateAdvansysDocx(
     console.error('Error rendering cover banner header:', err);
   }
 
+  const titles = getEffectiveTitles(metadata.customTitles);
+
   // Top Title Block (Positioned cleanly right below the cover header banner without empty gaps)
   docElements.push(
     new Paragraph({
@@ -507,7 +479,7 @@ export async function generateAdvansysDocx(
       spacing: { before: 180, after: 200 },
       children: [
         new TextRun({
-          text: 'ANÁLISIS DE CUMPLIMIENTO Y PROPUESTA DE DESARROLLO',
+          text: titles.mainTitle,
           bold: true,
           color: COLOR_PRIMARY_BLUE,
           size: 32, // 16pt
@@ -522,11 +494,11 @@ export async function generateAdvansysDocx(
   docElements.push(new Paragraph({ text: '', spacing: { after: 240 } }));
 
   // 1. Resumen Ejecutivo
-  docElements.push(createSectionHeader('Resumen Ejecutivo', '1'));
+  docElements.push(createSectionHeader(titles.section1, '1'));
   pushTextWithTables(docElements, proposal.resumenEjecutivo || 'Sin resumen provisto.', contentTables, usedTables);
 
   // 2. Beneficios de la Propuesta
-  docElements.push(createSectionHeader('Beneficios de la Propuesta', '2'));
+  docElements.push(createSectionHeader(titles.section2, '2'));
   if (proposal.beneficios && proposal.beneficios.length > 0) {
     proposal.beneficios.forEach((b) => {
       docElements.push(
@@ -554,7 +526,7 @@ export async function generateAdvansysDocx(
   }
 
   // 3. Alcance, Exclusiones y Entregables
-  docElements.push(createSectionHeader('Alcance, Exclusiones y Entregables', '3'));
+  docElements.push(createSectionHeader(titles.section3, '3'));
 
   // Alcance
   docElements.push(
@@ -562,7 +534,7 @@ export async function generateAdvansysDocx(
       spacing: { before: 120, after: 60 },
       children: [
         new TextRun({
-          text: '3.1 Alcance Técnico del Proyecto',
+          text: titles.section3_1.startsWith('3.1') ? titles.section3_1 : `3.1 ${titles.section3_1}`,
           bold: true,
           color: COLOR_SECONDARY_BLUE,
           size: 24,
@@ -594,7 +566,7 @@ export async function generateAdvansysDocx(
       spacing: { before: 120, after: 60 },
       children: [
         new TextRun({
-          text: '3.2 Exclusiones (Fuera de Alcance)',
+          text: titles.section3_2.startsWith('3.2') ? titles.section3_2 : `3.2 ${titles.section3_2}`,
           bold: true,
           color: COLOR_SECONDARY_BLUE,
           size: 24,
@@ -626,7 +598,7 @@ export async function generateAdvansysDocx(
       spacing: { before: 120, after: 60 },
       children: [
         new TextRun({
-          text: '3.3 Entregables Formales',
+          text: titles.section3_3.startsWith('3.3') ? titles.section3_3 : `3.3 ${titles.section3_3}`,
           bold: true,
           color: COLOR_SECONDARY_BLUE,
           size: 24,
@@ -653,15 +625,15 @@ export async function generateAdvansysDocx(
   });
 
   // 4. Objetivo (Starts on Page 2 after Section 3)
-  docElements.push(createSectionHeader('Objetivo General y Específicos', '4', true));
+  docElements.push(createSectionHeader(titles.section4, '4', true));
   pushTextWithTables(docElements, proposal.objetivo || '', contentTables, usedTables);
 
   // 5. Descripción
-  docElements.push(createSectionHeader('Descripción Solución Propuesta', '5'));
+  docElements.push(createSectionHeader(titles.section5, '5'));
   pushTextWithTables(docElements, proposal.descripcion || '', contentTables, usedTables);
 
   // 6. Índice Análisis Operativo
-  docElements.push(createSectionHeader('Índice de Análisis Operativo', '6'));
+  docElements.push(createSectionHeader(titles.section6, '6'));
   (proposal.indiceAnalisisOperativo || []).forEach((item, idx) => {
     docElements.push(
       new Paragraph({
@@ -686,7 +658,7 @@ export async function generateAdvansysDocx(
   });
 
   // 7. Análisis Operativo con Imágenes e Ilustraciones
-  docElements.push(createSectionHeader('Análisis Operativo Detallado', '7'));
+  docElements.push(createSectionHeader(titles.section7, '7'));
 
   if (proposal.analisisOperativo && proposal.analisisOperativo.length > 0) {
     proposal.analisisOperativo.forEach((step, idx) => {
@@ -798,7 +770,7 @@ export async function generateAdvansysDocx(
   }
 
   // 8. Descargo / Cláusula de Responsabilidad
-  docElements.push(createSectionHeader('Descargo y Cláusula Estándar Advansys', '8'));
+  docElements.push(createSectionHeader(titles.section8, '8'));
   pushTextWithTables(
     docElements,
     proposal.descargo ||

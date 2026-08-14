@@ -5,6 +5,79 @@
   --color-brand: #0a3d62;
   --color-brand-mid: #1e5f8a;
   --color-accent: #2ecc71;
+
+  /* Standard RGB/Hex color overrides to ensure html2canvas & PDF exports never encounter modern oklch */
+  --color-slate-50: #f8fafc;
+  --color-slate-100: #f1f5f9;
+  --color-slate-200: #e2e8f0;
+  --color-slate-300: #cbd5e1;
+  --color-slate-400: #94a3b8;
+  --color-slate-500: #64748b;
+  --color-slate-600: #475569;
+  --color-slate-700: #334155;
+  --color-slate-800: #1e293b;
+  --color-slate-900: #0f172a;
+  --color-slate-950: #020617;
+
+  --color-gray-50: #f9fafb;
+  --color-gray-100: #f3f4f6;
+  --color-gray-200: #e5e7eb;
+  --color-gray-300: #d1d5db;
+  --color-gray-400: #9ca3af;
+  --color-gray-500: #6b7280;
+  --color-gray-600: #4b5563;
+  --color-gray-700: #374151;
+  --color-gray-800: #1f2937;
+  --color-gray-900: #111827;
+  --color-gray-950: #030712;
+
+  --color-emerald-50: #ecfdf5;
+  --color-emerald-100: #d1fae5;
+  --color-emerald-200: #a7f3d0;
+  --color-emerald-300: #6ee7b7;
+  --color-emerald-400: #34d399;
+  --color-emerald-500: #10b981;
+  --color-emerald-600: #059669;
+  --color-emerald-700: #047857;
+  --color-emerald-800: #065f46;
+  --color-emerald-900: #064e3b;
+  --color-emerald-950: #022c22;
+
+  --color-blue-50: #eff6ff;
+  --color-blue-100: #dbeafe;
+  --color-blue-200: #bfdbfe;
+  --color-blue-300: #93c5fd;
+  --color-blue-400: #60a5fa;
+  --color-blue-500: #3b82f6;
+  --color-blue-600: #2563eb;
+  --color-blue-700: #1d4ed8;
+  --color-blue-800: #1e40af;
+  --color-blue-900: #1e3a8a;
+  --color-blue-950: #172554;
+
+  --color-amber-50: #fffbeb;
+  --color-amber-100: #fef3c7;
+  --color-amber-200: #fde68a;
+  --color-amber-300: #fcd34d;
+  --color-amber-400: #fbbf24;
+  --color-amber-500: #f59e0b;
+  --color-amber-600: #d97706;
+  --color-amber-700: #b45309;
+  --color-amber-800: #92400e;
+  --color-amber-900: #78350f;
+  --color-amber-950: #451a03;
+
+  --color-rose-50: #fff1f2;
+  --color-rose-100: #ffe4e6;
+  --color-rose-200: #fecdd3;
+  --color-rose-300: #fda4af;
+  --color-rose-400: #fb7185;
+  --color-rose-500: #f43f5e;
+  --color-rose-600: #e11d48;
+  --color-rose-700: #be123c;
+  --color-rose-800: #9f1239;
+  --color-rose-900: #881337;
+  --color-rose-950: #4c0519;
 }
 
 html {
@@ -91,3 +164,273 @@ select:focus {
 .toast-in {
   animation: toast-in 0.25s ease-out;
 }
+
+/* =========================================================================
+   DARK THEME WORKSPACE STYLING
+   Ensures clean dark UI while keeping Document Sheet and Exports 100% untouched
+   ========================================================================= */
+
+html.dark body {
+  background-color: #0b1120;
+  background-image:
+    radial-gradient(ellipse 90% 55% at 8% -12%, rgba(10, 61, 98, 0.45), transparent 55%),
+    radial-gradient(ellipse 70% 45% at 100% 0%, rgba(46, 204, 113, 0.18), transparent 50%),
+    linear-gradient(180deg, #0b1120 0%, #020617 100%);
+  color: #f8fafc;
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+html.dark .sticky-bar {
+  box-shadow:
+    0 8px 24px -12px rgba(0, 0, 0, 0.7),
+    0 1px 0 rgba(255, 255, 255, 0.1) inset;
+}
+
+/* Background surfaces in dark mode */
+html.dark .bg-white:not(.advansys-document-sheet):not(.advansys-document-sheet *):not([data-keep-light]) {
+  background-color: #1e293b;
+  color: #f8fafc;
+}
+
+html.dark .bg-white\/90:not(.advansys-document-sheet):not(.advansys-document-sheet *),
+html.dark .bg-white\/95:not(.advansys-document-sheet):not(.advansys-document-sheet *),
+html.dark .bg-white\/80:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  background-color: rgba(30, 41, 59, 0.95);
+  color: #f8fafc;
+}
+
+html.dark .bg-slate-50:not(.advansys-document-sheet):not(.advansys-document-sheet *),
+html.dark .bg-slate-50\/50:not(.advansys-document-sheet):not(.advansys-document-sheet *),
+html.dark .bg-slate-50\/70:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  background-color: #0f172a;
+  color: #e2e8f0;
+}
+
+html.dark .bg-slate-100:not(.advansys-document-sheet):not(.advansys-document-sheet *),
+html.dark .bg-slate-100\/90:not(.advansys-document-sheet):not(.advansys-document-sheet *),
+html.dark .bg-slate-100\/70:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  background-color: #1e293b;
+  color: #f1f5f9;
+}
+
+html.dark .bg-slate-200:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  background-color: #334155;
+  color: #f8fafc;
+}
+
+/* Tinted cards in dark mode */
+html.dark .bg-blue-50:not(.advansys-document-sheet):not(.advansys-document-sheet *),
+html.dark .bg-blue-50\/50:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  background-color: rgba(30, 58, 138, 0.35);
+  color: #93c5fd;
+}
+
+html.dark .bg-emerald-50:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  background-color: rgba(6, 78, 59, 0.4);
+  color: #a7f3d0;
+}
+
+html.dark .bg-red-50:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  background-color: rgba(127, 29, 29, 0.4);
+  color: #fca5a5;
+}
+
+html.dark .bg-amber-50:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  background-color: rgba(120, 53, 15, 0.4);
+  color: #fcd34d;
+}
+
+/* =========================================================================
+   TEXT CONTRAST OPTIMIZATION IN DARK MODE
+   Transforms low-contrast dark blues/slates into vibrant, clear readable text
+   ========================================================================= */
+
+/* Brand Dark Blues transformed to high-contrast Sky & Light Blue */
+html.dark .text-\[\#0A3D62\]:not(.advansys-document-sheet):not(.advansys-document-sheet *),
+html.dark .text-\[\#072a44\]:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  color: #60a5fa !important;
+}
+
+html.dark .text-\[\#1E5F8A\]:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  color: #93c5fd !important;
+}
+
+html.dark .text-\[\#021024\]:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  color: #f8fafc !important;
+}
+
+/* Slate / Gray Text Hierarchy */
+html.dark .text-slate-950:not(.advansys-document-sheet):not(.advansys-document-sheet *):not(.bg-\[\#2ECC71\] *),
+html.dark .text-slate-900:not(.advansys-document-sheet):not(.advansys-document-sheet *):not(.bg-\[\#2ECC71\] *) {
+  color: #ffffff !important;
+}
+
+html.dark .text-slate-800:not(.advansys-document-sheet):not(.advansys-document-sheet *):not(.bg-\[\#2ECC71\] *) {
+  color: #f8fafc !important;
+}
+
+html.dark .text-slate-700:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  color: #e2e8f0 !important;
+}
+
+html.dark .text-slate-600:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  color: #cbd5e1 !important;
+}
+
+html.dark .text-slate-500:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  color: #94a3b8 !important;
+}
+
+html.dark .text-slate-400:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  color: #94a3b8 !important;
+}
+
+html.dark .text-gray-900:not(.advansys-document-sheet):not(.advansys-document-sheet *),
+html.dark .text-gray-800:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  color: #f8fafc !important;
+}
+
+html.dark .text-gray-700:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  color: #e2e8f0 !important;
+}
+
+html.dark .text-gray-600:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  color: #cbd5e1 !important;
+}
+
+html.dark .text-gray-500:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  color: #94a3b8 !important;
+}
+
+/* Colored Texts */
+html.dark .text-blue-950:not(.advansys-document-sheet):not(.advansys-document-sheet *),
+html.dark .text-blue-900:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  color: #dbeafe !important;
+}
+
+html.dark .text-blue-800:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  color: #bfdbfe !important;
+}
+
+html.dark .text-blue-700:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  color: #93c5fd !important;
+}
+
+html.dark .text-blue-600:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  color: #60a5fa !important;
+}
+
+html.dark .text-emerald-900:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  color: #d1fae5 !important;
+}
+
+html.dark .text-emerald-800:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  color: #a7f3d0 !important;
+}
+
+html.dark .text-emerald-700:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  color: #6ee7b7 !important;
+}
+
+html.dark .text-red-900:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  color: #fee2e2 !important;
+}
+
+html.dark .text-red-800:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  color: #fecaca !important;
+}
+
+html.dark .text-red-700:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  color: #fca5a5 !important;
+}
+
+html.dark .text-amber-900:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  color: #fef3c7 !important;
+}
+
+html.dark .text-amber-800:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  color: #fde68a !important;
+}
+
+/* Borders in dark mode */
+html.dark .border-slate-100:not(.advansys-document-sheet):not(.advansys-document-sheet *),
+html.dark .border-slate-200:not(.advansys-document-sheet):not(.advansys-document-sheet *),
+html.dark .border-slate-300:not(.advansys-document-sheet):not(.advansys-document-sheet *),
+html.dark .border-white:not(.advansys-document-sheet):not(.advansys-document-sheet *),
+html.dark .border-white\/80:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  border-color: #334155;
+}
+
+html.dark .border-blue-200:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  border-color: rgba(96, 165, 250, 0.4);
+}
+
+html.dark .border-emerald-200:not(.advansys-document-sheet):not(.advansys-document-sheet *),
+html.dark .border-emerald-300:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  border-color: rgba(52, 211, 153, 0.4);
+}
+
+html.dark .border-red-200:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
+/* Inputs, Textareas, and Selects in dark mode */
+html.dark input:not(.advansys-document-sheet input):not([type="checkbox"]):not([type="radio"]),
+html.dark textarea:not(.advansys-document-sheet textarea),
+html.dark select:not(.advansys-document-sheet select) {
+  background-color: #0f172a !important;
+  color: #f8fafc !important;
+  border-color: #334155 !important;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #64748b !important;
+}
+
+/* Hover surfaces in dark mode */
+html.dark .hover\:bg-slate-100:hover:not(.advansys-document-sheet):not(.advansys-document-sheet *),
+html.dark .hover\:bg-slate-50:hover:not(.advansys-document-sheet):not(.advansys-document-sheet *),
+html.dark .hover\:bg-white:hover:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  background-color: #334155;
+  color: #ffffff;
+}
+
+html.dark .hover\:bg-blue-50:hover:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  background-color: rgba(30, 58, 138, 0.5);
+  color: #ffffff;
+}
+
+html.dark .hover\:bg-emerald-50:hover:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  background-color: rgba(6, 78, 59, 0.6);
+  color: #ffffff;
+}
+
+html.dark .hover\:bg-red-50:hover:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  background-color: rgba(127, 29, 29, 0.6);
+  color: #ffffff;
+}
+
+/* Modals background surface */
+html.dark .fixed .bg-white {
+  background-color: #1e293b !important;
+  color: #f8fafc !important;
+  border-color: #334155 !important;
+}
+
+/* DOCUMENT SHEET AUTHENTIC RENDERING PRESERVATION */
+.advansys-document-sheet {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+.advansys-document-sheet * {
+  color-scheme: light;
+}
+
+

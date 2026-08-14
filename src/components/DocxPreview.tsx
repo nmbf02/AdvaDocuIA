@@ -1,5 +1,5 @@
 import React from 'react';
-import { ProposalSection, MetadataHeader, UploadedImage, DocumentTable } from '../types';
+import { ProposalSection, MetadataHeader, UploadedImage, DocumentTable, getEffectiveTitles } from '../types';
 import { FileText, CheckCircle, ShieldAlert } from 'lucide-react';
 import { getAdvansysBannerSvg } from '../data/banner';
 
@@ -66,15 +66,17 @@ const RichTextBlock: React.FC<{ text?: string; tables?: DocumentTable[]; classNa
 };
 
 export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, images }) => {
+  const titles = getEffectiveTitles(metadata.customTitles);
   const bannerSvg = getAdvansysBannerSvg(
     metadata.headerBrandTag || 'ADVANSYS',
-    metadata.headerSubtitle ?? ''
+    metadata.headerSubtitle ?? '',
+    metadata.logoDataUrl
   );
   const tables = proposal.tables || [];
 
   return (
     <div className="w-full overflow-x-auto py-2">
-      <div className="max-w-4xl min-w-0 w-full mx-auto bg-white shadow-2xl rounded-sm border border-slate-300 p-4 sm:p-8 md:p-10 text-slate-900 font-sans leading-relaxed text-sm relative overflow-x-hidden">
+      <div className="advansys-document-sheet max-w-4xl min-w-0 w-full mx-auto bg-white shadow-2xl rounded-sm border border-slate-300 p-4 sm:p-8 md:p-10 text-slate-900 font-sans leading-relaxed text-sm relative overflow-x-hidden">
       
       {/* Header Banner Fixed at top of Page 1 */}
       <div className="-mx-4 sm:-mx-8 md:-mx-10 -mt-4 sm:-mt-8 md:-mt-10 mb-6 border-b-4 border-[#2ECC71] shadow-md overflow-hidden rounded-t-sm relative bg-[#021024]">
@@ -83,21 +85,12 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
           alt="Advansys Header Cover Banner" 
           className="w-full h-auto object-cover object-center"
         />
-        {metadata.logoDataUrl && (
-          <div className="absolute top-3 right-3 sm:top-5 sm:right-6 bg-white/95 rounded-md p-1.5 shadow-sm max-w-[38%] sm:max-w-[160px]">
-            <img
-              src={metadata.logoDataUrl}
-              alt="Logo corporativo"
-              className="h-9 sm:h-12 w-auto max-w-full object-contain"
-            />
-          </div>
-        )}
       </div>
 
       {/* Main Document Title */}
       <div className="text-center mb-6">
         <h1 className="text-lg font-bold text-[#0A3D62] uppercase tracking-tight">
-          ANÁLISIS DE CUMPLIMIENTO Y PROPUESTA DE DESARROLLO
+          {titles.mainTitle}
         </h1>
       </div>
 
@@ -145,7 +138,7 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
         {/* 1. Resumen Ejecutivo */}
         <div>
           <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
-            1. RESUMEN EJECUTIVO
+            1. {titles.section1.toUpperCase()}
           </h2>
           <RichTextBlock text={proposal.resumenEjecutivo} tables={tables} />
         </div>
@@ -153,7 +146,7 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
         {/* 2. Beneficios */}
         <div>
           <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
-            2. BENEFICIOS DE LA PROPUESTA
+            2. {titles.section2.toUpperCase()}
           </h2>
           <ul className="list-disc list-inside space-y-1 text-xs text-slate-700">
             {proposal.beneficios?.map((b, idx) => (
@@ -165,12 +158,14 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
         {/* 3. Alcance, Exclusiones y Entregables */}
         <div>
           <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
-            3. ALCANCE, EXCLUSIONES Y ENTREGABLES
+            3. {titles.section3.toUpperCase()}
           </h2>
 
           <div className="space-y-3 text-xs">
             <div>
-              <h3 className="font-bold text-[#1E5F8A] mb-1">3.1 Alcance Técnico del Proyecto:</h3>
+              <h3 className="font-bold text-[#1E5F8A] mb-1">
+                {titles.section3_1.startsWith('3.1') ? titles.section3_1 : `3.1 ${titles.section3_1}`}
+              </h3>
               <ul className="list-disc list-inside space-y-0.5 text-slate-700 pl-2">
                 {proposal.alcanceExclusionesEntregables?.alcance?.map((item, idx) => (
                   <li key={idx}>{item}</li>
@@ -179,7 +174,9 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
             </div>
 
             <div>
-              <h3 className="font-bold text-[#0A3D62] mb-1">3.2 Exclusiones (Fuera de Alcance):</h3>
+              <h3 className="font-bold text-[#0A3D62] mb-1">
+                {titles.section3_2.startsWith('3.2') ? titles.section3_2 : `3.2 ${titles.section3_2}`}
+              </h3>
               <ul className="list-disc list-inside space-y-0.5 text-slate-700 pl-2">
                 {proposal.alcanceExclusionesEntregables?.exclusiones?.map((item, idx) => (
                   <li key={idx}>{item}</li>
@@ -188,7 +185,9 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
             </div>
 
             <div>
-              <h3 className="font-bold text-emerald-800 mb-1">3.3 Entregables Formales:</h3>
+              <h3 className="font-bold text-emerald-800 mb-1">
+                {titles.section3_3.startsWith('3.3') ? titles.section3_3 : `3.3 ${titles.section3_3}`}
+              </h3>
               <ul className="list-disc list-inside space-y-0.5 text-slate-700 pl-2">
                 {proposal.alcanceExclusionesEntregables?.entregables?.map((item, idx) => (
                   <li key={idx}>{item}</li>
@@ -216,7 +215,7 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
         {/* 4. Objetivo */}
         <div>
           <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
-            4. OBJETIVO GENERAL Y ESPECÍFICOS
+            4. {titles.section4.toUpperCase()}
           </h2>
           <RichTextBlock text={proposal.objetivo} tables={tables} />
         </div>
@@ -224,7 +223,7 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
         {/* 5. Descripción */}
         <div>
           <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
-            5. DESCRIPCIÓN DE LA SOLUCIÓN PROPUESTA
+            5. {titles.section5.toUpperCase()}
           </h2>
           <RichTextBlock text={proposal.descripcion} tables={tables} />
         </div>
@@ -232,7 +231,7 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
         {/* 6. Índice Análisis Operativo */}
         <div>
           <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
-            6. ÍNDICE DE ANÁLISIS OPERATIVO
+            6. {titles.section6.toUpperCase()}
           </h2>
           <ol className="list-decimal list-inside space-y-1 text-xs text-slate-700 pl-2">
             {proposal.indiceAnalisisOperativo?.map((item, idx) => (
@@ -244,7 +243,7 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
         {/* 7. Análisis Operativo */}
         <div>
           <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-3">
-            7. ANÁLISIS OPERATIVO DETALLADO
+            7. {titles.section7.toUpperCase()}
           </h2>
 
           <div className="space-y-6 text-xs">
@@ -315,7 +314,7 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
         {/* 8. Descargo */}
         <div>
           <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
-            8. DESCARGO Y CLÁUSULA ESTÁNDAR
+            8. {titles.section8.toUpperCase()}
           </h2>
           <div className="text-slate-500 italic text-[11px] leading-relaxed bg-slate-50 p-3 rounded border border-slate-200">
             <RichTextBlock text={proposal.descargo} tables={tables} className="text-slate-500 italic text-[11px] leading-relaxed text-justify" />

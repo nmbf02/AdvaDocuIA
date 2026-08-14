@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import { createRoot } from 'react-dom/client';
-import { ProposalSection, MetadataHeader, UploadedImage, DocumentTable } from '../types';
+import { ProposalSection, MetadataHeader, UploadedImage, DocumentTable, getEffectiveTitles } from '../types';
 import { FileDown, FileText, Edit3, Eye, Plus, Trash2, Sparkles, Wand2, Loader2, Cpu, Save, Check, GitBranch, Tag, X, Layers, CheckCircle2 } from 'lucide-react';
 import { generateAdvansysDocx } from '../utils/docxGenerator';
-import { downloadElementAsPdf } from '../utils/pdfGenerator';
+import { downloadAdvansysPdf } from '../utils/pdfGenerator';
 import { DocxPreview } from './DocxPreview';
 import { DocumentTablesEditor, InsertTableButton, createEmptyDocumentTable, tableTag } from './DocumentTablesEditor';
 
@@ -43,6 +42,8 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
   const [isNewVersionModalOpen, setIsNewVersionModalOpen] = useState(false);
   const [newVersionTag, setNewVersionTag] = useState('v2.0');
   const [newVersionNote, setNewVersionNote] = useState('');
+
+  const titles = getEffectiveTitles(metadata.customTitles);
 
   // Field change helpers
   const handleStringChange = (field: keyof ProposalSection, value: string) => {
@@ -266,38 +267,13 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
   };
 
   const handleExportPdf = async () => {
-    const host = document.createElement('div');
-    Object.assign(host.style, {
-      position: 'fixed',
-      left: '-10000px',
-      top: '0',
-      width: '794px',
-      background: '#ffffff',
-      zIndex: '-1',
-    });
-    document.body.appendChild(host);
-    const root = createRoot(host);
-
     try {
       setIsExporting('pdf');
-      await new Promise<void>((resolve) => {
-        root.render(
-          <div data-pdf-root className="bg-white p-2">
-            <DocxPreview metadata={metadata} proposal={proposal} images={images} />
-          </div>
-        );
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-      });
-      await new Promise((r) => setTimeout(r, 350));
-      const el = host.querySelector('[data-pdf-root]') as HTMLElement | null;
-      if (!el) throw new Error('No se pudo preparar la vista del PDF.');
-      await downloadElementAsPdf(el, `${buildExportBasename()}.pdf`);
+      await downloadAdvansysPdf(metadata, proposal, images, buildExportBasename());
     } catch (err) {
       console.error("Error al exportar documento PDF:", err);
       alert("Hubo un error generando el PDF. Por favor intenta nuevamente.");
     } finally {
-      root.unmount();
-      host.remove();
       setIsExporting(null);
     }
   };
@@ -504,7 +480,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
             <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 space-y-2 min-w-0 max-w-full overflow-x-hidden">
               <div className="flex flex-wrap items-start justify-between gap-2 min-w-0">
                 <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide min-w-0 break-words">
-                  1. Resumen Ejecutivo
+                  1. {titles.section1}
                 </label>
                 <div className="flex flex-wrap items-center gap-2">
                 <InsertTableButton onClick={() => handleInsertTableInField('resumenEjecutivo')} />
@@ -534,7 +510,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
             <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 space-y-3 min-w-0 max-w-full overflow-x-hidden">
               <div className="flex flex-wrap items-start justify-between gap-2 min-w-0">
                 <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide min-w-0 break-words">
-                  2. Beneficios de la Propuesta
+                  2. {titles.section2}
                 </label>
                 <div className="flex flex-wrap items-center gap-2 min-w-0">
                   <button
@@ -586,7 +562,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
             <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 space-y-4 min-w-0 max-w-full overflow-x-hidden">
               <div className="flex flex-wrap items-start justify-between gap-2 min-w-0">
                 <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide min-w-0 break-words">
-                  3. Alcance, Exclusiones y Entregables
+                  3. {titles.section3}
                 </label>
                 <button
                   onClick={() => handleAIRefine('refine_section', 'alcanceExclusionesEntregables')}
@@ -601,7 +577,9 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
               {/* Sub-block Alcance */}
               <div className="bg-white p-3 rounded-lg border border-slate-200">
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-2 min-w-0">
-                  <span className="text-xs font-bold text-[#1E5F8A]">3.1 Alcance Técnico:</span>
+                  <span className="text-xs font-bold text-[#1E5F8A]">
+                    {titles.section3_1.startsWith('3.1') ? titles.section3_1 : `3.1 ${titles.section3_1}`}:
+                  </span>
                   <button
                     onClick={() => handleAddScopeItem('alcance')}
                     className="text-[11px] font-semibold text-blue-600 hover:underline"
@@ -632,7 +610,9 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
               {/* Sub-block Exclusiones */}
               <div className="bg-white p-3 rounded-lg border border-slate-200">
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-2 min-w-0">
-                  <span className="text-xs font-bold text-slate-700">3.2 Exclusiones (Fuera de Alcance):</span>
+                  <span className="text-xs font-bold text-slate-700">
+                    {titles.section3_2.startsWith('3.2') ? titles.section3_2 : `3.2 ${titles.section3_2}`}:
+                  </span>
                   <button
                     onClick={() => handleAddScopeItem('exclusiones')}
                     className="text-[11px] font-semibold text-[#0A3D62] hover:underline"
@@ -663,7 +643,9 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
               {/* Sub-block Entregables */}
               <div className="bg-white p-3 rounded-lg border border-slate-200">
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-2 min-w-0">
-                  <span className="text-xs font-bold text-emerald-700">3.3 Entregables Formales:</span>
+                  <span className="text-xs font-bold text-emerald-700">
+                    {titles.section3_3.startsWith('3.3') ? titles.section3_3 : `3.3 ${titles.section3_3}`}:
+                  </span>
                   <button
                     onClick={() => handleAddScopeItem('entregables')}
                     className="text-[11px] font-semibold text-emerald-700 hover:underline"
@@ -699,7 +681,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
             <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 space-y-2 min-w-0 max-w-full overflow-x-hidden">
               <div className="flex flex-wrap items-start justify-between gap-2 min-w-0">
                 <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide min-w-0 break-words">
-                  4. Objetivo del Proyecto
+                  4. {titles.section4}
                 </label>
                 <div className="flex flex-wrap items-center gap-2">
                 <InsertTableButton onClick={() => handleInsertTableInField('objetivo')} />
@@ -729,7 +711,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
             <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 space-y-2 min-w-0 max-w-full overflow-x-hidden">
               <div className="flex flex-wrap items-start justify-between gap-2 min-w-0">
                 <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide min-w-0 break-words">
-                  5. Descripción de la Solución Propuesta
+                  5. {titles.section5}
                 </label>
                 <div className="flex flex-wrap items-center gap-2">
                 <InsertTableButton onClick={() => handleInsertTableInField('descripcion')} />
@@ -760,7 +742,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
               <div className="flex flex-col justify-between border-b border-slate-200 pb-2 gap-2 min-w-0">
                 <div>
                   <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide min-w-0 break-words">
-                    6 & 7. Análisis Operativo y Flujo Paso a Paso
+                    6 & 7. {titles.section6} & {titles.section7}
                   </label>
                   <p className="text-xs text-slate-500">
                     {proposal.analisisOperativo?.length || 0} Pasos registrados
@@ -873,7 +855,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
             <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 space-y-2 min-w-0 max-w-full overflow-x-hidden">
               <div className="flex flex-wrap items-start justify-between gap-2 min-w-0">
                 <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide min-w-0 break-words">
-                  8. Descargo (Cláusula Estándar Advansys)
+                  8. {titles.section8}
                 </label>
                 <div className="flex flex-wrap items-center gap-2">
                 <InsertTableButton onClick={() => handleInsertTableInField('descargo')} />

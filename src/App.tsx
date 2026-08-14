@@ -8,12 +8,14 @@ import { ProposalEditor } from './components/ProposalEditor';
 import { HistoryModal } from './components/HistoryModal';
 import { ConfirmModal } from './components/ConfirmModal';
 import { SettingsModal } from './components/SettingsModal';
+import { WelcomeIntro } from './components/WelcomeIntro';
 import { ADVANSYS_SAMPLE_METADATA, ADVANSYS_SAMPLE_REQUIREMENTS, ADVANSYS_SAMPLE_IMAGES, EMPTY_MANUAL_PROPOSAL } from './data/presets';
 import { Sparkles, Loader2, FileText, AlertCircle, Cpu, Columns2, ClipboardList, Maximize2, Image as ImageIcon, PenLine, NotebookPen, Layers, X, Check } from 'lucide-react';
 
 const STORAGE_KEY_HISTORY = 'advansys_docgen_history_v1';
 const STORAGE_KEY_DRAFT = 'advansys_docgen_current_draft_v1';
 const STORAGE_KEY_SETTINGS = 'advansys_docgen_settings_v1';
+const STORAGE_KEY_THEME = 'advansys_docgen_theme_v1';
 
 const extractBranding = (source?: Partial<BrandingSettings> | null): BrandingSettings => ({
   logoDataUrl: source?.logoDataUrl,
@@ -21,10 +23,11 @@ const extractBranding = (source?: Partial<BrandingSettings> | null): BrandingSet
   logoFileName: source?.logoFileName,
   logoWidth: source?.logoWidth,
   logoHeight: source?.logoHeight,
+  customTitles: source?.customTitles,
 });
 
 const stripDocumentLogo = (meta: MetadataHeader): MetadataHeader => {
-  const { logoDataUrl, logoMimeType, logoFileName, logoWidth, logoHeight, ...rest } = meta;
+  const { logoDataUrl, logoMimeType, logoFileName, logoWidth, logoHeight, customTitles, ...rest } = meta;
   return rest;
 };
 
@@ -78,9 +81,29 @@ export default function App() {
   const [layoutMode, setLayoutMode] = useState<'split' | 'inputs' | 'editor'>('split');
   const [inputTab, setInputTab] = useState<'metadatos' | 'requerimientos' | 'imagenes' | 'all'>('requerimientos');
 
-  // Load History, Draft and Settings from localStorage
+  // Theme State ('light' | 'dark')
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+
+  // Welcome Intro Screen State (opens first by default)
+  const [showWelcome, setShowWelcome] = useState<boolean>(true);
+
+  // Load History, Draft, Settings and Theme from localStorage
   useEffect(() => {
     try {
+      const savedTheme = localStorage.getItem(STORAGE_KEY_THEME) as 'light' | 'dark' | null;
+      if (savedTheme === 'dark' || savedTheme === 'light') {
+        setTheme(savedTheme);
+        if (savedTheme === 'dark') {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        // Optional dark preference detection
+        setTheme('dark');
+        document.documentElement.classList.add('dark');
+      }
+
       const saved = localStorage.getItem(STORAGE_KEY_HISTORY);
       if (saved) {
         setHistory(JSON.parse(saved));
@@ -117,6 +140,23 @@ export default function App() {
       console.error("Failed to load initial storage:", e);
     }
   }, []);
+
+  const handleToggleTheme = () => {
+    setTheme(prev => {
+      const nextTheme = prev === 'dark' ? 'light' : 'dark';
+      try {
+        localStorage.setItem(STORAGE_KEY_THEME, nextTheme);
+      } catch (e) {
+        console.error("Failed to save theme:", e);
+      }
+      if (nextTheme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+      return nextTheme;
+    });
+  };
 
   const brandedMetadata: MetadataHeader = { ...metadata, ...branding };
 
@@ -325,10 +365,116 @@ export default function App() {
     }
   };
 
+  // Welcome Screen Action Handlers
+  const handleStartNewFromWelcome = () => {
+    // Clear fields for a clean fresh document while keeping branding settings
+    setMetadata({
+      cliente: '',
+      fecha: new Date().toISOString().split('T')[0],
+      ticketNo: '',
+      guiaNo: '',
+      propuestaNo: '',
+      nombreProyecto: '',
+      moduloAplicacion: '',
+      headerBrandTag: 'ADVANSYS',
+      headerSubtitle: '',
+      footerText: 'Advansys SRL',
+      technicalLevel: 7,
+      detailLevel: 6,
+      paraphraseLevel: 3,
+    });
+    setRawRequirements('');
+    setImages([]);
+    setProposal(null);
+    setCurrentVersion('v1.0');
+    setCurrentVersionNote('');
+    setError(null);
+    setShowWelcome(false);
+  };
+
+  const handleContinueDraftFromWelcome = () => {
+    setShowWelcome(false);
+  };
+
+  const handleLoadHistoryFromWelcome = (saved: SavedProposal) => {
+    setMetadata(stripDocumentLogo(saved.metadata));
+    setRawRequirements(saved.rawRequirements || '');
+    setImages(saved.images || []);
+    setProposal(saved.content);
+    setCurrentVersion(saved.version || 'v1.0');
+    setCurrentVersionNote(saved.versionNote || '');
+    setShowWelcome(false);
+  };
+
+  const handleLoadPresetFromWelcome = () => {
+    handleLoadPreset();
+    setShowWelcome(false);
+  };
+
+  const hasActiveDraft = Boolean(
+    proposal !== null ||
+    (metadata.nombreProyecto && metadata.nombreProyecto.trim().length > 0) ||
+    rawRequirements.trim().length > 0
+  );
+
   const hasDatos = Boolean(
     metadata.cliente.trim() || metadata.ticketNo.trim() || metadata.nombreProyecto.trim()
   );
   const hasNotas = Boolean(rawRequirements.trim());
+
+  // Render Welcome Intro screen first if active
+  if (showWelcome) {
+    return (
+      <>
+        <WelcomeIntro
+          hasActiveDraft={hasActiveDraft}
+          draftInfo={{
+            nombreProyecto: metadata.nombreProyecto || (proposal ? 'Propuesta en desarrollo' : undefined),
+            cliente: metadata.cliente,
+            moduloAplicacion: metadata.moduloAplicacion,
+            version: currentVersion,
+            lastSavedTime: lastSavedTime,
+          }}
+          history={history}
+          logoDataUrl={branding.logoDataUrl}
+          theme={theme}
+          onToggleTheme={handleToggleTheme}
+          onStartNew={handleStartNewFromWelcome}
+          onContinueDraft={handleContinueDraftFromWelcome}
+          onLoadHistoryItem={handleLoadHistoryFromWelcome}
+          onLoadPreset={handleLoadPresetFromWelcome}
+          onOpenHistoryModal={() => {
+            setShowWelcome(false);
+            setIsHistoryOpen(true);
+          }}
+        />
+
+        {/* History Drawer Modal */}
+        <HistoryModal
+          isOpen={isHistoryOpen}
+          onClose={() => setIsHistoryOpen(false)}
+          proposals={history}
+          onSelectProposal={(saved) => {
+            handleLoadHistoryFromWelcome(saved);
+          }}
+          onDeleteProposal={(id) => {
+            const updated = history.filter(h => h.id !== id);
+            setHistory(updated);
+            localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(updated));
+          }}
+          onDuplicateProposal={handleDuplicateProposal}
+        />
+
+        {/* Branding & Titles Settings Modal */}
+        <SettingsModal
+          isOpen={isSettingsOpen}
+          branding={branding}
+          onChange={handleBrandingChange}
+          onClose={() => setIsSettingsOpen(false)}
+        />
+      </>
+    );
+  }
 
   return (
     <div className="h-dvh max-md:h-auto max-md:min-h-dvh text-slate-800 flex flex-col font-sans overflow-hidden max-md:overflow-visible">
@@ -339,8 +485,12 @@ export default function App() {
         onReset={handleReset}
         onOpenHistory={() => setIsHistoryOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onGoHome={() => setShowWelcome(true)}
+        theme={theme}
+        onToggleTheme={handleToggleTheme}
         historyCount={history.length}
         logoDataUrl={branding.logoDataUrl}
+        projectName={metadata.nombreProyecto}
       />
 
       {/* Main Container */}

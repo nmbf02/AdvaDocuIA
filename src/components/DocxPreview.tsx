@@ -1,5 +1,5 @@
 import React from 'react';
-import { ProposalSection, MetadataHeader, UploadedImage } from '../types';
+import { ProposalSection, MetadataHeader, UploadedImage, DocumentTable } from '../types';
 import { FileText, CheckCircle, ShieldAlert } from 'lucide-react';
 import { getAdvansysBannerSvg } from '../data/banner';
 
@@ -9,11 +9,68 @@ interface DocxPreviewProps {
   images: UploadedImage[];
 }
 
+const PreviewTable: React.FC<{ table: DocumentTable }> = ({ table }) => (
+  <div className="my-3 overflow-x-auto">
+    {table.title ? (
+      <p className="text-[11px] font-bold text-[#0A3D62] mb-1">{table.title}</p>
+    ) : null}
+    <table className="w-full text-[11px] border-collapse">
+      <thead>
+        <tr>
+          {table.headers.map((h, i) => (
+            <th key={i} className="border border-slate-300 bg-[#0A3D62] text-white font-semibold px-2 py-1.5 text-left">
+              {h}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {table.rows.map((row, ri) => (
+          <tr key={ri} className={ri % 2 === 0 ? 'bg-slate-50' : 'bg-white'}>
+            {table.headers.map((_, ci) => (
+              <td key={ci} className="border border-slate-300 px-2 py-1.5 text-slate-700">
+                {row[ci] || ''}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+);
+
+const RichTextBlock: React.FC<{ text?: string; tables?: DocumentTable[]; className?: string }> = ({
+  text,
+  tables = [],
+  className = 'text-slate-700 leading-relaxed text-xs text-justify',
+}) => {
+  const source = text || '';
+  const parts = source.split(/(\[TABLA_\d+\])/gi);
+  return (
+    <div className="space-y-2">
+      {parts.map((part, i) => {
+        const match = part.match(/^\[TABLA_(\d+)\]$/i);
+        if (match) {
+          const table = tables[parseInt(match[1], 10) - 1];
+          return table ? <PreviewTable key={i} table={table} /> : <span key={i}>{part}</span>;
+        }
+        if (!part.trim()) return null;
+        return (
+          <p key={i} className={className}>
+            {part.trim()}
+          </p>
+        );
+      })}
+    </div>
+  );
+};
+
 export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, images }) => {
   const bannerSvg = getAdvansysBannerSvg(
     metadata.headerBrandTag || 'ADVANSYS',
     metadata.headerSubtitle ?? ''
   );
+  const tables = proposal.tables || [];
 
   return (
     <div className="w-full overflow-x-auto py-2">
@@ -90,9 +147,7 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
           <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
             1. RESUMEN EJECUTIVO
           </h2>
-          <p className="text-slate-700 leading-relaxed text-xs text-justify">
-            {proposal.resumenEjecutivo}
-          </p>
+          <RichTextBlock text={proposal.resumenEjecutivo} tables={tables} />
         </div>
 
         {/* 2. Beneficios */}
@@ -163,9 +218,7 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
           <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
             4. OBJETIVO GENERAL Y ESPECÍFICOS
           </h2>
-          <p className="text-slate-700 leading-relaxed text-xs text-justify">
-            {proposal.objetivo}
-          </p>
+          <RichTextBlock text={proposal.objetivo} tables={tables} />
         </div>
 
         {/* 5. Descripción */}
@@ -173,9 +226,7 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
           <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
             5. DESCRIPCIÓN DE LA SOLUCIÓN PROPUESTA
           </h2>
-          <p className="text-slate-700 leading-relaxed text-xs text-justify">
-            {proposal.descripcion}
-          </p>
+          <RichTextBlock text={proposal.descripcion} tables={tables} />
         </div>
 
         {/* 6. Índice Análisis Operativo */}
@@ -223,23 +274,52 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
                     </div>
                   )}
 
-                  <p className="text-slate-700 leading-relaxed text-justify">
-                    {step.explicacion}
-                  </p>
+                  <RichTextBlock text={step.explicacion} tables={tables} />
                 </div>
               );
             })}
           </div>
         </div>
 
+        {/* Tablas no insertadas con etiqueta */}
+        {tables.filter((_, idx) => {
+          const tag = `[TABLA_${idx + 1}]`;
+          const blob = [
+            proposal.resumenEjecutivo,
+            proposal.objetivo,
+            proposal.descripcion,
+            proposal.descargo,
+            ...(proposal.analisisOperativo || []).map((s) => s.explicacion),
+          ].join('\n');
+          return !blob.toUpperCase().includes(tag.toUpperCase());
+        }).length > 0 && (
+          <div>
+            <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
+              TABLAS DE APOYO
+            </h2>
+            {tables.map((table, idx) => {
+              const tag = `[TABLA_${idx + 1}]`;
+              const blob = [
+                proposal.resumenEjecutivo,
+                proposal.objetivo,
+                proposal.descripcion,
+                proposal.descargo,
+                ...(proposal.analisisOperativo || []).map((s) => s.explicacion),
+              ].join('\n');
+              if (blob.toUpperCase().includes(tag.toUpperCase())) return null;
+              return <PreviewTable key={table.id} table={table} />;
+            })}
+          </div>
+        )}
+
         {/* 8. Descargo */}
         <div>
           <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
             8. DESCARGO Y CLÁUSULA ESTÁNDAR
           </h2>
-          <p className="text-slate-500 italic text-[11px] leading-relaxed text-justify bg-slate-50 p-3 rounded border border-slate-200">
-            {proposal.descargo}
-          </p>
+          <div className="text-slate-500 italic text-[11px] leading-relaxed bg-slate-50 p-3 rounded border border-slate-200">
+            <RichTextBlock text={proposal.descargo} tables={tables} className="text-slate-500 italic text-[11px] leading-relaxed text-justify" />
+          </div>
         </div>
 
       </div>

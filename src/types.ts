@@ -51,6 +51,13 @@ export interface OperativeStep {
   imagenId?: string;
 }
 
+export interface DocumentTable {
+  id: string;
+  title: string;
+  headers: string[];
+  rows: string[][];
+}
+
 export interface ProposalSection {
   resumenEjecutivo: string;
   beneficios: string[];
@@ -60,6 +67,7 @@ export interface ProposalSection {
   indiceAnalisisOperativo: string[];
   analisisOperativo: OperativeStep[];
   descargo: string;
+  tables?: DocumentTable[];
 }
 
 export interface SavedProposal {

@@ -20,7 +20,7 @@ import {
   VerticalPositionRelativeFrom,
   TextWrappingType,
 } from 'docx';
-import { MetadataHeader, ProposalSection, UploadedImage } from '../types';
+import { MetadataHeader, ProposalSection, UploadedImage, DocumentTable } from '../types';
 import { getAdvansysBannerSvg } from '../data/banner';
 
 // Advansys Corporate Palette
@@ -29,6 +29,7 @@ const COLOR_SECONDARY_BLUE = '1E5F8A'; // #1E5F8A Tech Blue Accent
 const COLOR_ACCENT_GREEN = '2ECC71'; // #2ECC71 Advansys Emerald Green
 const COLOR_TEXT_DARK = '1E293B'; // #1E293B Slate Dark
 const COLOR_MUTED_GRAY = '64748B'; // #64748B Slate Muted
+const COLOR_BORDER = 'CBD5E1';
 function fitLogoSize(srcW: number | undefined, srcH: number | undefined, maxW: number, maxH: number) {
   const w = srcW && srcW > 0 ? srcW : maxW;
   const h = srcH && srcH > 0 ? srcH : maxH;
@@ -233,6 +234,148 @@ function createMetadataTable(metadata: MetadataHeader): Table {
   });
 }
 
+function createContentTable(table: DocumentTable): Table {
+  const colCount = Math.max(table.headers.length, 1, ...table.rows.map((r) => r.length));
+  const headers = Array.from({ length: colCount }, (_, i) => table.headers[i] || `Columna ${i + 1}`);
+  const colPct = Math.floor(100 / colCount);
+
+  const headerRow = new TableRow({
+    children: headers.map((h) =>
+      new TableCell({
+        width: { size: colPct, type: WidthType.PERCENTAGE },
+        shading: { fill: COLOR_PRIMARY_BLUE, type: ShadingType.CLEAR },
+        margins: { top: 80, bottom: 80, left: 80, right: 80 },
+        children: [
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: h,
+                bold: true,
+                color: 'FFFFFF',
+                size: 18,
+                font: 'Calibri',
+              }),
+            ],
+          }),
+        ],
+      })
+    ),
+  });
+
+  const bodyRows = table.rows.map((row, ri) =>
+    new TableRow({
+      children: headers.map((_, ci) =>
+        new TableCell({
+          width: { size: colPct, type: WidthType.PERCENTAGE },
+          shading: { fill: ri % 2 === 0 ? 'F8FAFC' : 'FFFFFF', type: ShadingType.CLEAR },
+          margins: { top: 60, bottom: 60, left: 80, right: 80 },
+          children: [
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: row[ci] || '',
+                  color: COLOR_TEXT_DARK,
+                  size: 18,
+                  font: 'Calibri',
+                }),
+              ],
+            }),
+          ],
+        })
+      ),
+    })
+  );
+
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: {
+      top: { style: BorderStyle.SINGLE, size: 4, color: COLOR_PRIMARY_BLUE },
+      bottom: { style: BorderStyle.SINGLE, size: 4, color: COLOR_PRIMARY_BLUE },
+      left: { style: BorderStyle.SINGLE, size: 4, color: COLOR_BORDER },
+      right: { style: BorderStyle.SINGLE, size: 4, color: COLOR_BORDER },
+      insideHorizontal: { style: BorderStyle.SINGLE, size: 2, color: COLOR_BORDER },
+      insideVertical: { style: BorderStyle.SINGLE, size: 2, color: COLOR_BORDER },
+    },
+    rows: [headerRow, ...bodyRows],
+  });
+}
+
+function pushTextWithTables(
+  docElements: (Paragraph | Table)[],
+  text: string,
+  tables: DocumentTable[],
+  used: Set<number>
+) {
+  const source = text || '';
+  const parts = source.split(/(\[TABLA_\d+\])/gi);
+  let wroteSomething = false;
+
+  for (const part of parts) {
+    const match = part.match(/^\[TABLA_(\d+)\]$/i);
+    if (match) {
+      const idx = parseInt(match[1], 10) - 1;
+      const table = tables[idx];
+      if (!table) continue;
+      used.add(idx);
+      if (table.title?.trim()) {
+        docElements.push(
+          new Paragraph({
+            spacing: { before: 140, after: 80 },
+            children: [
+              new TextRun({
+                text: table.title.trim(),
+                bold: true,
+                color: COLOR_PRIMARY_BLUE,
+                size: 20,
+                font: 'Calibri',
+              }),
+            ],
+          })
+        );
+      }
+      docElements.push(createContentTable(table));
+      docElements.push(new Paragraph({ text: '', spacing: { after: 120 } }));
+      wroteSomething = true;
+      continue;
+    }
+
+    const trimmed = part.replace(/\s+$/, '');
+    if (!trimmed.trim()) continue;
+    docElements.push(
+      new Paragraph({
+        spacing: { before: 80, after: 120 },
+        alignment: AlignmentType.BOTH,
+        children: [
+          new TextRun({
+            text: trimmed.trim(),
+            color: COLOR_TEXT_DARK,
+            size: 22,
+            font: 'Calibri',
+          }),
+        ],
+      })
+    );
+    wroteSomething = true;
+  }
+
+  if (!wroteSomething && source.trim()) {
+    docElements.push(
+      new Paragraph({
+        spacing: { before: 80, after: 120 },
+        alignment: AlignmentType.BOTH,
+        children: [
+          new TextRun({
+            text: source,
+            color: COLOR_TEXT_DARK,
+            size: 22,
+            font: 'Calibri',
+          }),
+        ],
+      })
+    );
+  }
+}
+
 /**
  * Primary function to generate the complete Word Document (.docx)
  */
@@ -264,6 +407,8 @@ export async function generateAdvansysDocx(
 
   // Build document elements list
   const docElements: (Paragraph | Table)[] = [];
+  const contentTables = proposal.tables || [];
+  const usedTables = new Set<number>();
 
   // Process banner SVG image and construct full-bleed Page 1 Header
   let firstPageHeader: Header | undefined = undefined;
@@ -378,20 +523,7 @@ export async function generateAdvansysDocx(
 
   // 1. Resumen Ejecutivo
   docElements.push(createSectionHeader('Resumen Ejecutivo', '1'));
-  docElements.push(
-    new Paragraph({
-      spacing: { before: 120, after: 180 },
-      alignment: AlignmentType.BOTH,
-      children: [
-        new TextRun({
-          text: proposal.resumenEjecutivo || 'Sin resumen provisto.',
-          color: COLOR_TEXT_DARK,
-          size: 22, // 11pt
-          font: 'Calibri',
-        }),
-      ],
-    })
-  );
+  pushTextWithTables(docElements, proposal.resumenEjecutivo || 'Sin resumen provisto.', contentTables, usedTables);
 
   // 2. Beneficios de la Propuesta
   docElements.push(createSectionHeader('Beneficios de la Propuesta', '2'));
@@ -522,37 +654,11 @@ export async function generateAdvansysDocx(
 
   // 4. Objetivo (Starts on Page 2 after Section 3)
   docElements.push(createSectionHeader('Objetivo General y Específicos', '4', true));
-  docElements.push(
-    new Paragraph({
-      spacing: { before: 120, after: 180 },
-      alignment: AlignmentType.BOTH,
-      children: [
-        new TextRun({
-          text: proposal.objetivo || '',
-          color: COLOR_TEXT_DARK,
-          size: 22,
-          font: 'Calibri',
-        }),
-      ],
-    })
-  );
+  pushTextWithTables(docElements, proposal.objetivo || '', contentTables, usedTables);
 
   // 5. Descripción
   docElements.push(createSectionHeader('Descripción Solución Propuesta', '5'));
-  docElements.push(
-    new Paragraph({
-      spacing: { before: 120, after: 180 },
-      alignment: AlignmentType.BOTH,
-      children: [
-        new TextRun({
-          text: proposal.descripcion || '',
-          color: COLOR_TEXT_DARK,
-          size: 22,
-          font: 'Calibri',
-        }),
-      ],
-    })
-  );
+  pushTextWithTables(docElements, proposal.descripcion || '', contentTables, usedTables);
 
   // 6. Índice Análisis Operativo
   docElements.push(createSectionHeader('Índice de Análisis Operativo', '6'));
@@ -654,20 +760,7 @@ export async function generateAdvansysDocx(
       }
 
       // Step Explanation Text
-      docElements.push(
-        new Paragraph({
-          spacing: { before: 80, after: 180 },
-          alignment: AlignmentType.BOTH,
-          children: [
-            new TextRun({
-              text: step.explicacion,
-              color: COLOR_TEXT_DARK,
-              size: 22,
-              font: 'Calibri',
-            }),
-          ],
-        })
-      );
+      pushTextWithTables(docElements, step.explicacion || '', contentTables, usedTables);
     });
   } else {
     docElements.push(
@@ -678,23 +771,40 @@ export async function generateAdvansysDocx(
     );
   }
 
+  // Tablas no referenciadas con [TABLA_n] — se agregan antes del descargo
+  const unusedTables = contentTables.filter((_, idx) => !usedTables.has(idx));
+  if (unusedTables.length > 0) {
+    docElements.push(createSectionHeader('Tablas de apoyo', ''));
+    unusedTables.forEach((table) => {
+      if (table.title?.trim()) {
+        docElements.push(
+          new Paragraph({
+            spacing: { before: 120, after: 80 },
+            children: [
+              new TextRun({
+                text: table.title.trim(),
+                bold: true,
+                color: COLOR_PRIMARY_BLUE,
+                size: 20,
+                font: 'Calibri',
+              }),
+            ],
+          })
+        );
+      }
+      docElements.push(createContentTable(table));
+      docElements.push(new Paragraph({ text: '', spacing: { after: 120 } }));
+    });
+  }
+
   // 8. Descargo / Cláusula de Responsabilidad
   docElements.push(createSectionHeader('Descargo y Cláusula Estándar Advansys', '8'));
-  docElements.push(
-    new Paragraph({
-      spacing: { before: 120, after: 240 },
-      alignment: AlignmentType.BOTH,
-      children: [
-        new TextRun({
-          text: proposal.descargo || 
-            'La presente propuesta técnica y análisis operativo han sido elaborados exclusivamente por Advansys para uso confidencial del cliente indicado. Los requerimientos, diagramas y estimaciones contenidos están sujetos a validación formal tras la aprobación del acta de inicio de proyecto. Queda prohibida la reproducción parcial o total sin autorización expresa.',
-          italics: true,
-          color: COLOR_MUTED_GRAY,
-          size: 20, // 10pt
-          font: 'Calibri',
-        }),
-      ],
-    })
+  pushTextWithTables(
+    docElements,
+    proposal.descargo ||
+      'La presente propuesta técnica y análisis operativo han sido elaborados exclusivamente por Advansys para uso confidencial del cliente indicado. Los requerimientos, diagramas y estimaciones contenidos están sujetos a validación formal tras la aprobación del acta de inicio de proyecto. Queda prohibida la reproducción parcial o total sin autorización expresa.',
+    contentTables,
+    usedTables
   );
 
   // Build Advansys Header Banner

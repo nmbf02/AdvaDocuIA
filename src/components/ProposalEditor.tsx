@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
-import { ProposalSection, MetadataHeader, UploadedImage } from '../types';
-import { FileDown, Edit3, Eye, Plus, Trash2, Sparkles, Wand2, Loader2, Cpu, Save, Check, GitBranch, Tag, X, Layers, CheckCircle2 } from 'lucide-react';
+import { createRoot } from 'react-dom/client';
+import { ProposalSection, MetadataHeader, UploadedImage, DocumentTable } from '../types';
+import { FileDown, FileText, Edit3, Eye, Plus, Trash2, Sparkles, Wand2, Loader2, Cpu, Save, Check, GitBranch, Tag, X, Layers, CheckCircle2 } from 'lucide-react';
 import { generateAdvansysDocx } from '../utils/docxGenerator';
+import { downloadElementAsPdf } from '../utils/pdfGenerator';
 import { DocxPreview } from './DocxPreview';
+import { DocumentTablesEditor, InsertTableButton, createEmptyDocumentTable, tableTag } from './DocumentTablesEditor';
 
 interface ProposalEditorProps {
   proposal: ProposalSection;
@@ -31,7 +34,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
   const [activeSectionFilter, setActiveSectionFilter] = useState<string>('all');
-  const [isExporting, setIsExporting] = useState(false);
+  const [isExporting, setIsExporting] = useState<'docx' | 'pdf' | null>(null);
   const [isRefining, setIsRefining] = useState(false);
   const [refiningAction, setRefiningAction] = useState<string | null>(null);
   const [refiningSectionKey, setRefiningSectionKey] = useState<string | null>(null);
@@ -80,7 +83,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
         throw new Error(data.error || "No se pudo refinar la propuesta con IA.");
       }
 
-      onChange(data.proposal);
+      onChange({ ...data.proposal, tables: proposal.tables || [] });
     } catch (err: any) {
       console.error("Error refining with AI:", err);
       alert(err.message || "Error al conectar con la IA de Advansys para perfeccionar el borrador.");
@@ -104,6 +107,52 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
 
   const handleRemoveBeneficio = (index: number) => {
     onChange({ ...proposal, beneficios: proposal.beneficios.filter((_, i) => i !== index) });
+  };
+
+  const insertTableIntoText = (current: string) => {
+    const tables = [...(proposal.tables || [])];
+    tables.push(createEmptyDocumentTable(tables.length + 1));
+    const tag = tableTag(tables.length);
+    const nextText = current.trim() ? `${current.trim()}\n\n${tag}` : tag;
+    return { tables, nextText };
+  };
+
+  const handleInsertTableInField = (field: 'resumenEjecutivo' | 'objetivo' | 'descripcion' | 'descargo') => {
+    const { tables, nextText } = insertTableIntoText(String(proposal[field] || ''));
+    onChange({ ...proposal, [field]: nextText, tables });
+    setActiveSectionFilter(field === 'resumenEjecutivo' ? 'resumen' : field === 'descripcion' ? 'descripcion' : field);
+  };
+
+  const handleInsertTableInStep = (index: number) => {
+    const steps = [...(proposal.analisisOperativo || [])];
+    const { tables, nextText } = insertTableIntoText(steps[index]?.explicacion || '');
+    steps[index] = { ...steps[index], explicacion: nextText };
+    onChange({ ...proposal, analisisOperativo: steps, tables });
+  };
+
+  const renderInlineTables = (text: string) => {
+    const all = proposal.tables || [];
+    const indexes = all
+      .map((_, i) => i)
+      .filter((i) => new RegExp(`\\[TABLA_${i + 1}\\]`, 'i').test(text || ''));
+    if (!indexes.length) return null;
+    const shownIds = new Set(indexes.map((i) => all[i].id));
+    return (
+      <DocumentTablesEditor
+        compact
+        tables={indexes.map((i) => all[i])}
+        getTagIndex={(i) => indexes[i] + 1}
+        onChange={(updated) => {
+          const next = all
+            .map((t) => {
+              if (!shownIds.has(t.id)) return t;
+              return updated.find((u) => u.id === t.id) || null;
+            })
+            .filter((t): t is DocumentTable => t !== null);
+          onChange({ ...proposal, tables: next });
+        }}
+      />
+    );
   };
 
   // Scope lists helpers
@@ -186,25 +235,24 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
     });
   };
 
+  const buildExportBasename = () => {
+    const cliente = (metadata.cliente || 'Cliente').trim();
+    const ticketNo = (metadata.ticketNo || 'Ticket').trim();
+    const nombreProyecto = (metadata.nombreProyecto || 'Proyecto').trim();
+    return `${cliente} - ${ticketNo} - ${nombreProyecto}`
+      .replace(/[\/\\:*?"<>|]/g, '-')
+      .replace(/\s+/g, ' ');
+  };
+
   const handleExportDocx = async () => {
     try {
-      setIsExporting(true);
+      setIsExporting('docx');
       const blob = await generateAdvansysDocx(metadata, proposal, images);
-      
+
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-
-      const cliente = (metadata.cliente || 'Cliente').trim();
-      const ticketNo = (metadata.ticketNo || 'Ticket').trim();
-      const nombreProyecto = (metadata.nombreProyecto || 'Proyecto').trim();
-
-      // Format: Cliente - Ticket No. - Nombre del Proyecto
-      let filename = `${cliente} - ${ticketNo} - ${nombreProyecto}`;
-      // Sanitize forbidden file name characters for OS compatibility
-      filename = filename.replace(/[\/\\:*?"<>|]/g, '-').replace(/\s+/g, ' ');
-
-      a.download = `${filename}.docx`;
+      a.download = `${buildExportBasename()}.docx`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -213,7 +261,44 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
       console.error("Error al exportar documento .docx:", err);
       alert("Hubo un error generando el documento Word. Por favor intenta nuevamente.");
     } finally {
-      setIsExporting(false);
+      setIsExporting(null);
+    }
+  };
+
+  const handleExportPdf = async () => {
+    const host = document.createElement('div');
+    Object.assign(host.style, {
+      position: 'fixed',
+      left: '-10000px',
+      top: '0',
+      width: '794px',
+      background: '#ffffff',
+      zIndex: '-1',
+    });
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    try {
+      setIsExporting('pdf');
+      await new Promise<void>((resolve) => {
+        root.render(
+          <div data-pdf-root className="bg-white p-2">
+            <DocxPreview metadata={metadata} proposal={proposal} images={images} />
+          </div>
+        );
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+      await new Promise((r) => setTimeout(r, 350));
+      const el = host.querySelector('[data-pdf-root]') as HTMLElement | null;
+      if (!el) throw new Error('No se pudo preparar la vista del PDF.');
+      await downloadElementAsPdf(el, `${buildExportBasename()}.pdf`);
+    } catch (err) {
+      console.error("Error al exportar documento PDF:", err);
+      alert("Hubo un error generando el PDF. Por favor intenta nuevamente.");
+    } finally {
+      root.unmount();
+      host.remove();
+      setIsExporting(null);
     }
   };
 
@@ -235,7 +320,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                 {currentVersion}
               </span>
             </h2>
-            <p className="text-xs text-blue-100/80 truncate">Edita el texto, mira la previa o descarga el Word</p>
+            <p className="text-xs text-blue-100/80 truncate">Edita el texto, mira la previa o descarga Word y PDF</p>
           </div>
         </div>
 
@@ -247,11 +332,11 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
             <button
               onClick={onSave}
               type="button"
-              className="inline-flex items-center justify-center p-2 sm:px-3.5 sm:py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 active:scale-95 transition-all rounded-xl shadow-md border border-blue-400/50"
-              title="Guardar borrador actual"
+              className="inline-flex items-center justify-center px-3 py-2 text-xs font-bold text-[#0A3D62] bg-white hover:bg-slate-100 active:scale-95 transition-all rounded-xl shadow-md border border-white/80"
+              title="Guardar el borrador y el historial"
             >
-              <Save className="w-3.5 h-3.5 sm:mr-1.5 text-blue-200" />
-              <span className="hidden sm:inline">Guardar</span>
+              <Save className="w-3.5 h-3.5 mr-1.5" />
+              <span>Guardar cambios</span>
             </button>
           )}
 
@@ -279,12 +364,17 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
           )}
 
           {/* Saved Timestamp Badge */}
-          {lastSavedTime && (
-            <div className="hidden lg:flex items-center text-[11px] text-emerald-300 bg-emerald-950/40 border border-emerald-500/30 px-2.5 py-1 rounded-lg font-medium">
+          {showSavedToast ? (
+            <div className="inline-flex items-center text-[11px] text-slate-950 bg-[#2ECC71] border border-emerald-400 px-2.5 py-1 rounded-lg font-bold toast-in">
+              <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+              <span>Guardado</span>
+            </div>
+          ) : lastSavedTime ? (
+            <div className="hidden sm:flex items-center text-[11px] text-emerald-300 bg-emerald-950/40 border border-emerald-500/30 px-2.5 py-1 rounded-lg font-medium">
               <Check className="w-3 h-3 mr-1 text-emerald-400" />
               <span>Guardado {lastSavedTime}</span>
             </div>
-          )}
+          ) : null}
 
           <div className="bg-black/20 p-1 rounded-xl flex gap-0.5 border border-white/10">
             <button
@@ -313,11 +403,21 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
 
           <button
             onClick={handleExportDocx}
-            disabled={isExporting}
+            disabled={!!isExporting}
             className="inline-flex items-center px-3 sm:px-4 py-2 text-xs font-bold text-slate-950 bg-[#2ECC71] hover:bg-[#27ae60] active:scale-95 transition-all rounded-xl shadow-md border border-emerald-400 disabled:opacity-50"
           >
-            <FileDown className="w-4 h-4 sm:mr-1.5" />
-            <span className="hidden xs:inline sm:inline">{isExporting ? 'Preparando Word...' : 'Descargar Word'}</span>
+            {isExporting === 'docx' ? <Loader2 className="w-4 h-4 sm:mr-1.5 animate-spin" /> : <FileDown className="w-4 h-4 sm:mr-1.5" />}
+            <span className="hidden xs:inline sm:inline">{isExporting === 'docx' ? 'Preparando Word...' : 'Descargar Word'}</span>
+          </button>
+
+          <button
+            onClick={handleExportPdf}
+            disabled={!!isExporting}
+            className="inline-flex items-center px-3 sm:px-4 py-2 text-xs font-bold text-white bg-[#1E5F8A] hover:bg-[#0A3D62] active:scale-95 transition-all rounded-xl shadow-md border border-blue-400/40 disabled:opacity-50"
+            title="Descargar el documento en PDF"
+          >
+            {isExporting === 'pdf' ? <Loader2 className="w-4 h-4 sm:mr-1.5 animate-spin" /> : <FileText className="w-4 h-4 sm:mr-1.5" />}
+            <span className="hidden xs:inline sm:inline">{isExporting === 'pdf' ? 'Preparando PDF...' : 'Descargar PDF'}</span>
           </button>
         </div>
       </div>
@@ -370,6 +470,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
             { id: 'objetivo', label: '4. Objetivo' },
             { id: 'descripcion', label: '5. Solución' },
             { id: 'operativo', label: '6-7. Pasos' },
+            { id: 'tablas', label: 'Tablas' },
             { id: 'descargo', label: '8. Descargo' }
           ].map((sec) => (
             <button
@@ -405,6 +506,8 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                 <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide min-w-0 break-words">
                   1. Resumen Ejecutivo
                 </label>
+                <div className="flex flex-wrap items-center gap-2">
+                <InsertTableButton onClick={() => handleInsertTableInField('resumenEjecutivo')} />
                 <button
                   onClick={() => handleAIRefine('refine_section', 'resumenEjecutivo')}
                   disabled={isRefining}
@@ -413,6 +516,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                   <Sparkles className="w-3 h-3 mr-1 text-[#2ECC71]" />
                   Mejorar con IA
                 </button>
+                </div>
               </div>
               <textarea
                 value={proposal.resumenEjecutivo}
@@ -421,6 +525,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                 rows={4}
                 className="w-full min-w-0 max-w-full p-3 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-800"
               />
+              {renderInlineTables(proposal.resumenEjecutivo)}
             </div>
           )}
 
@@ -596,6 +701,8 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                 <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide min-w-0 break-words">
                   4. Objetivo del Proyecto
                 </label>
+                <div className="flex flex-wrap items-center gap-2">
+                <InsertTableButton onClick={() => handleInsertTableInField('objetivo')} />
                 <button
                   onClick={() => handleAIRefine('refine_section', 'objetivo')}
                   disabled={isRefining}
@@ -604,6 +711,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                   <Sparkles className="w-3 h-3 mr-1 text-[#2ECC71]" />
                   Mejorar con IA
                 </button>
+                </div>
               </div>
               <textarea
                 value={proposal.objetivo}
@@ -612,6 +720,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                 rows={3}
                 className="w-full min-w-0 max-w-full p-3 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-800"
               />
+              {renderInlineTables(proposal.objetivo)}
             </div>
           )}
 
@@ -622,6 +731,8 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                 <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide min-w-0 break-words">
                   5. Descripción de la Solución Propuesta
                 </label>
+                <div className="flex flex-wrap items-center gap-2">
+                <InsertTableButton onClick={() => handleInsertTableInField('descripcion')} />
                 <button
                   onClick={() => handleAIRefine('refine_section', 'descripcion')}
                   disabled={isRefining}
@@ -630,6 +741,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                   <Sparkles className="w-3 h-3 mr-1 text-[#2ECC71]" />
                   Mejorar con IA
                 </button>
+                </div>
               </div>
               <textarea
                 value={proposal.descripcion}
@@ -638,6 +750,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                 rows={4}
                 className="w-full min-w-0 max-w-full p-3 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-800"
               />
+              {renderInlineTables(proposal.descripcion)}
             </div>
           )}
 
@@ -720,11 +833,38 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                           rows={3}
                           className="w-full min-w-0 max-w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded text-slate-800"
                         />
+                        <div className="pt-1">
+                          <InsertTableButton onClick={() => handleInsertTableInStep(idx)} />
+                        </div>
+                        {renderInlineTables(step.explicacion)}
                       </div>
                     </div>
                   );
                 })}
               </div>
+            </div>
+          )}
+
+          {/* Tablas del documento */}
+          {(activeSectionFilter === 'all' || activeSectionFilter === 'tablas') && (
+            <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 space-y-3 min-w-0 max-w-full overflow-x-hidden">
+              <div className="flex flex-wrap items-start justify-between gap-2 min-w-0">
+                <div>
+                  <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide">
+                    Tablas del documento
+                  </label>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Edítalas aquí. En el texto aparecen como [TABLA_1], [TABLA_2]… y salen en la previa y el Word.
+                  </p>
+                </div>
+                <span className="text-[11px] font-semibold text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded-full">
+                  {proposal.tables?.length || 0} tabla{(proposal.tables?.length || 0) === 1 ? '' : 's'}
+                </span>
+              </div>
+              <DocumentTablesEditor
+                tables={proposal.tables || []}
+                onChange={(tables) => onChange({ ...proposal, tables })}
+              />
             </div>
           )}
 
@@ -735,6 +875,8 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                 <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide min-w-0 break-words">
                   8. Descargo (Cláusula Estándar Advansys)
                 </label>
+                <div className="flex flex-wrap items-center gap-2">
+                <InsertTableButton onClick={() => handleInsertTableInField('descargo')} />
                 <button
                   onClick={() => handleAIRefine('refine_section', 'descargo')}
                   disabled={isRefining}
@@ -743,6 +885,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                   <Sparkles className="w-3 h-3 mr-1 text-[#2ECC71]" />
                   Refinar Cláusula
                 </button>
+                </div>
               </div>
               <textarea
                 value={proposal.descargo}
@@ -750,36 +893,10 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                 rows={3}
                 className="w-full min-w-0 max-w-full p-3 text-xs bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-700 italic"
               />
+              {renderInlineTables(proposal.descargo)}
             </div>
           )}
 
-        </div>
-      )}
-
-      {/* Floating Quick Save Bar */}
-      {onSave && (
-        <div className="fixed bottom-6 right-6 z-40 flex items-center space-x-2 bg-slate-900/90 backdrop-blur-md text-white px-4 py-2.5 rounded-full shadow-2xl border border-slate-700/80 transition-all hover:scale-105">
-          <button
-            type="button"
-            onClick={onSave}
-            className="flex items-center space-x-2 text-xs font-bold text-white hover:text-[#2ECC71] transition-colors"
-          >
-            <Save className="w-4 h-4 text-[#2ECC71]" />
-            <span>Guardar Cambios</span>
-          </button>
-          {lastSavedTime && (
-            <span className="text-[10px] text-slate-400 border-l border-slate-700 pl-2">
-              {lastSavedTime}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Toast Confirmation */}
-      {showSavedToast && (
-        <div className="fixed bottom-20 right-6 z-50 bg-[#2ECC71] text-slate-950 text-xs font-bold px-4 py-2.5 rounded-xl shadow-xl flex items-center space-x-2 border border-emerald-400 animate-pulse">
-          <CheckCircle2 className="w-4 h-4 text-slate-950" />
-          <span>¡Cambios guardados con éxito!</span>
         </div>
       )}
 

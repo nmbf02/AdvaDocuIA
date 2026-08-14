@@ -313,7 +313,7 @@ export default function App() {
       }
 
       setGenerationStep("Revisando secciones y referencias de imágenes...");
-      setProposal(data.proposal);
+      setProposal({ ...data.proposal, tables: proposal?.tables || [] });
       saveToHistory(data.proposal);
 
     } catch (err: any) {

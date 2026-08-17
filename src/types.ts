@@ -100,6 +100,61 @@ export interface OperativeStep {
   imagenId?: string;
 }
 
+export type SlideLayout = 
+  | 'title' 
+  | 'bullets' 
+  | 'two-column' 
+  | 'image-text' 
+  | 'steps' 
+  | 'cards' 
+  | 'quote' 
+  | 'conclusion';
+
+export interface SlideCardItem {
+  title: string;
+  description: string;
+  highlight?: string;
+}
+
+export interface SlideStepItem {
+  stepNumber: number;
+  title: string;
+  description: string;
+}
+
+export interface SlideItem {
+  id: string;
+  slideNumber: number;
+  layout: SlideLayout;
+  category?: string;
+  title: string;
+  subtitle?: string;
+  bullets?: string[];
+  leftTitle?: string;
+  leftBullets?: string[];
+  rightTitle?: string;
+  rightBullets?: string[];
+  cards?: SlideCardItem[];
+  steps?: SlideStepItem[];
+  imageRef?: string; // e.g. "[IMAGEN_1]"
+  speakerNotes?: string;
+  highlight?: string;
+}
+
+export type SlideTheme = 'advansys-navy' | 'dark-executive' | 'emerald-clean' | 'slate-minimal';
+
+export interface SlideDeck {
+  title: string;
+  subtitle?: string;
+  client?: string;
+  project?: string;
+  ticketNo?: string;
+  author?: string;
+  date?: string;
+  theme?: SlideTheme;
+  slides: SlideItem[];
+}
+
 export interface DocumentTable {
   id: string;
   title: string;
@@ -117,6 +172,7 @@ export interface ProposalSection {
   analisisOperativo: OperativeStep[];
   descargo: string;
   tables?: DocumentTable[];
+  slideDeck?: SlideDeck;
 }
 
 export interface SavedProposal {
@@ -126,6 +182,9 @@ export interface SavedProposal {
   timestamp: string;
   metadata: MetadataHeader;
   content: ProposalSection;
+  slideDeck?: SlideDeck;
   images: UploadedImage[];
   rawRequirements: string;
+  documentType?: 'proposal' | 'slides';
 }
+

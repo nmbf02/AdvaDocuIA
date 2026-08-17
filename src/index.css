@@ -166,8 +166,9 @@ select:focus {
 }
 
 /* =========================================================================
-   DARK THEME WORKSPACE STYLING
-   Ensures clean dark UI while keeping Document Sheet and Exports 100% untouched
+   DARK THEME WORKSPACE STYLING & HIGH CONTRAST TEXT OPTIMIZATION
+   Ensures crystal-clear readability for every word across dark mode
+   while keeping Document Sheet and Exports 100% untouched
    ========================================================================= */
 
 html.dark body {
@@ -187,6 +188,8 @@ html.dark ::-webkit-scrollbar-thumb:hover {
 }
 
 html.dark .sticky-bar {
+  background-color: rgba(15, 23, 42, 0.92) !important;
+  border-color: #334155 !important;
   box-shadow:
     0 8px 24px -12px rgba(0, 0, 0, 0.7),
     0 1px 0 rgba(255, 255, 255, 0.1) inset;
@@ -196,6 +199,7 @@ html.dark .sticky-bar {
 html.dark .bg-white:not(.advansys-document-sheet):not(.advansys-document-sheet *):not([data-keep-light]) {
   background-color: #1e293b;
   color: #f8fafc;
+  border-color: #334155;
 }
 
 html.dark .bg-white\/90:not(.advansys-document-sheet):not(.advansys-document-sheet *),
@@ -203,6 +207,7 @@ html.dark .bg-white\/95:not(.advansys-document-sheet):not(.advansys-document-she
 html.dark .bg-white\/80:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
   background-color: rgba(30, 41, 59, 0.95);
   color: #f8fafc;
+  border-color: #334155;
 }
 
 html.dark .bg-slate-50:not(.advansys-document-sheet):not(.advansys-document-sheet *),
@@ -210,6 +215,7 @@ html.dark .bg-slate-50\/50:not(.advansys-document-sheet):not(.advansys-document-
 html.dark .bg-slate-50\/70:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
   background-color: #0f172a;
   color: #e2e8f0;
+  border-color: #334155;
 }
 
 html.dark .bg-slate-100:not(.advansys-document-sheet):not(.advansys-document-sheet *),
@@ -217,6 +223,7 @@ html.dark .bg-slate-100\/90:not(.advansys-document-sheet):not(.advansys-document
 html.dark .bg-slate-100\/70:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
   background-color: #1e293b;
   color: #f1f5f9;
+  border-color: #334155;
 }
 
 html.dark .bg-slate-200:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
@@ -228,54 +235,68 @@ html.dark .bg-slate-200:not(.advansys-document-sheet):not(.advansys-document-she
 html.dark .bg-blue-50:not(.advansys-document-sheet):not(.advansys-document-sheet *),
 html.dark .bg-blue-50\/50:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
   background-color: rgba(30, 58, 138, 0.35);
-  color: #93c5fd;
+  color: #bfdbfe;
+  border-color: rgba(96, 165, 250, 0.4);
 }
 
-html.dark .bg-emerald-50:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
-  background-color: rgba(6, 78, 59, 0.4);
+html.dark .bg-sky-50:not(.advansys-document-sheet):not(.advansys-document-sheet *),
+html.dark .bg-sky-100:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  background-color: rgba(14, 116, 144, 0.35);
+  color: #bae6fd;
+  border-color: rgba(56, 189, 248, 0.4);
+}
+
+html.dark .bg-emerald-50:not(.advansys-document-sheet):not(.advansys-document-sheet *),
+html.dark .bg-emerald-100:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  background-color: rgba(6, 78, 59, 0.45);
   color: #a7f3d0;
+  border-color: rgba(52, 211, 153, 0.4);
 }
 
-html.dark .bg-red-50:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
-  background-color: rgba(127, 29, 29, 0.4);
-  color: #fca5a5;
+html.dark .bg-red-50:not(.advansys-document-sheet):not(.advansys-document-sheet *),
+html.dark .bg-red-100:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  background-color: rgba(127, 29, 29, 0.45);
+  color: #fecaca;
+  border-color: rgba(248, 113, 113, 0.4);
 }
 
-html.dark .bg-amber-50:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
-  background-color: rgba(120, 53, 15, 0.4);
-  color: #fcd34d;
+html.dark .bg-amber-50:not(.advansys-document-sheet):not(.advansys-document-sheet *),
+html.dark .bg-amber-100:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  background-color: rgba(120, 53, 15, 0.45);
+  color: #fde68a;
+  border-color: rgba(251, 191, 36, 0.4);
 }
 
 /* =========================================================================
    TEXT CONTRAST OPTIMIZATION IN DARK MODE
-   Transforms low-contrast dark blues/slates into vibrant, clear readable text
+   Transforms all low-contrast dark blues/slates into bright, highly legible text
    ========================================================================= */
 
 /* Brand Dark Blues transformed to high-contrast Sky & Light Blue */
-html.dark .text-\[\#0A3D62\]:not(.advansys-document-sheet):not(.advansys-document-sheet *),
-html.dark .text-\[\#072a44\]:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+html.dark .text-\[\#0A3D62\]:not(.advansys-document-sheet):not(.advansys-document-sheet *):not(.bg-\[\#2ECC71\] *),
+html.dark .text-\[\#072a44\]:not(.advansys-document-sheet):not(.advansys-document-sheet *):not(.bg-\[\#2ECC71\] *) {
   color: #60a5fa !important;
 }
 
-html.dark .text-\[\#1E5F8A\]:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+html.dark .text-\[\#1E5F8A\]:not(.advansys-document-sheet):not(.advansys-document-sheet *):not(.bg-\[\#2ECC71\] *) {
   color: #93c5fd !important;
 }
 
-html.dark .text-\[\#021024\]:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+html.dark .text-\[\#021024\]:not(.advansys-document-sheet):not(.advansys-document-sheet *):not(.bg-\[\#2ECC71\] *) {
   color: #f8fafc !important;
 }
 
-/* Slate / Gray Text Hierarchy */
-html.dark .text-slate-950:not(.advansys-document-sheet):not(.advansys-document-sheet *):not(.bg-\[\#2ECC71\] *),
-html.dark .text-slate-900:not(.advansys-document-sheet):not(.advansys-document-sheet *):not(.bg-\[\#2ECC71\] *) {
+/* Slate / Gray Text Hierarchy - Maximum Legibility */
+html.dark .text-slate-950:not(.advansys-document-sheet):not(.advansys-document-sheet *):not(.bg-\[\#2ECC71\] *):not(.bg-emerald-400 *),
+html.dark .text-slate-900:not(.advansys-document-sheet):not(.advansys-document-sheet *):not(.bg-\[\#2ECC71\] *):not(.bg-emerald-400 *) {
   color: #ffffff !important;
 }
 
-html.dark .text-slate-800:not(.advansys-document-sheet):not(.advansys-document-sheet *):not(.bg-\[\#2ECC71\] *) {
+html.dark .text-slate-800:not(.advansys-document-sheet):not(.advansys-document-sheet *):not(.bg-\[\#2ECC71\] *):not(.bg-emerald-400 *) {
   color: #f8fafc !important;
 }
 
-html.dark .text-slate-700:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+html.dark .text-slate-700:not(.advansys-document-sheet):not(.advansys-document-sheet *):not(.bg-\[\#2ECC71\] *) {
   color: #e2e8f0 !important;
 }
 
@@ -308,7 +329,7 @@ html.dark .text-gray-500:not(.advansys-document-sheet):not(.advansys-document-sh
   color: #94a3b8 !important;
 }
 
-/* Colored Texts */
+/* Colored Texts - Vibrant in Dark Mode */
 html.dark .text-blue-950:not(.advansys-document-sheet):not(.advansys-document-sheet *),
 html.dark .text-blue-900:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
   color: #dbeafe !important;
@@ -326,10 +347,13 @@ html.dark .text-blue-600:not(.advansys-document-sheet):not(.advansys-document-sh
   color: #60a5fa !important;
 }
 
-html.dark .text-emerald-900:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
-  color: #d1fae5 !important;
+html.dark .text-sky-900:not(.advansys-document-sheet):not(.advansys-document-sheet *),
+html.dark .text-sky-800:not(.advansys-document-sheet):not(.advansys-document-sheet *),
+html.dark .text-sky-700:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  color: #7dd3fc !important;
 }
 
+html.dark .text-emerald-900:not(.advansys-document-sheet):not(.advansys-document-sheet *),
 html.dark .text-emerald-800:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
   color: #a7f3d0 !important;
 }
@@ -338,10 +362,7 @@ html.dark .text-emerald-700:not(.advansys-document-sheet):not(.advansys-document
   color: #6ee7b7 !important;
 }
 
-html.dark .text-red-900:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
-  color: #fee2e2 !important;
-}
-
+html.dark .text-red-900:not(.advansys-document-sheet):not(.advansys-document-sheet *),
 html.dark .text-red-800:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
   color: #fecaca !important;
 }
@@ -350,12 +371,13 @@ html.dark .text-red-700:not(.advansys-document-sheet):not(.advansys-document-she
   color: #fca5a5 !important;
 }
 
-html.dark .text-amber-900:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
-  color: #fef3c7 !important;
-}
-
+html.dark .text-amber-900:not(.advansys-document-sheet):not(.advansys-document-sheet *),
 html.dark .text-amber-800:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
   color: #fde68a !important;
+}
+
+html.dark .text-amber-700:not(.advansys-document-sheet):not(.advansys-document-sheet *) {
+  color: #fcd34d !important;
 }
 
 /* Borders in dark mode */
@@ -381,7 +403,7 @@ html.dark .border-red-200:not(.advansys-document-sheet):not(.advansys-document-s
 }
 
 /* Inputs, Textareas, and Selects in dark mode */
-html.dark input:not(.advansys-document-sheet input):not([type="checkbox"]):not([type="radio"]),
+html.dark input:not(.advansys-document-sheet input):not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]),
 html.dark textarea:not(.advansys-document-sheet textarea),
 html.dark select:not(.advansys-document-sheet select) {
   background-color: #0f172a !important;
@@ -389,9 +411,17 @@ html.dark select:not(.advansys-document-sheet select) {
   border-color: #334155 !important;
 }
 
+html.dark input:focus:not(.advansys-document-sheet input),
+html.dark textarea:focus:not(.advansys-document-sheet textarea),
+html.dark select:focus:not(.advansys-document-sheet select) {
+  border-color: #60a5fa !important;
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.3) !important;
+}
+
 html.dark input::placeholder,
 html.dark textarea::placeholder {
-  color: #64748b !important;
+  color: #94a3b8 !important;
+  opacity: 0.9;
 }
 
 /* Hover surfaces in dark mode */
@@ -422,6 +452,11 @@ html.dark .fixed .bg-white {
   background-color: #1e293b !important;
   color: #f8fafc !important;
   border-color: #334155 !important;
+}
+
+/* Range input slider visibility in dark mode */
+html.dark input[type="range"] {
+  accent-color: #2ecc71;
 }
 
 /* DOCUMENT SHEET AUTHENTIC RENDERING PRESERVATION */

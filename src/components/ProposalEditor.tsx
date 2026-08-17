@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
-import { ProposalSection, MetadataHeader, UploadedImage, DocumentTable, getEffectiveTitles } from '../types';
-import { FileDown, FileText, Edit3, Eye, Plus, Trash2, Sparkles, Wand2, Loader2, Cpu, Save, Check, GitBranch, Tag, X, Layers, CheckCircle2 } from 'lucide-react';
+import { ProposalSection, MetadataHeader, UploadedImage, DocumentTable, getEffectiveTitles, SlideDeck } from '../types';
+import { FileDown, FileText, Edit3, Eye, Plus, Trash2, Sparkles, Wand2, Loader2, Cpu, Save, Check, GitBranch, Tag, X, Layers, CheckCircle2, Presentation } from 'lucide-react';
 import { generateAdvansysDocx } from '../utils/docxGenerator';
 import { downloadAdvansysPdf } from '../utils/pdfGenerator';
+import { generateAdvansysPptx } from '../utils/pptxGenerator';
 import { DocxPreview } from './DocxPreview';
 import { DocumentTablesEditor, InsertTableButton, createEmptyDocumentTable, tableTag } from './DocumentTablesEditor';
+import { SlideDeckEditor } from './SlideDeckEditor';
+import { convertProposalToSlideDeck, createDefaultSlideDeck } from '../utils/slideDeckTemplates';
 
 interface ProposalEditorProps {
   proposal: ProposalSection;
@@ -17,6 +20,7 @@ interface ProposalEditorProps {
   currentVersion?: string;
   lastSavedTime?: string | null;
   showSavedToast?: boolean;
+  initialTab?: 'editor' | 'preview' | 'slides';
 }
 
 export const ProposalEditor: React.FC<ProposalEditorProps> = ({
@@ -29,11 +33,12 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
   onSaveNewVersion,
   currentVersion = 'v1.0',
   lastSavedTime,
-  showSavedToast
+  showSavedToast,
+  initialTab = 'editor',
 }) => {
-  const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
+  const [activeTab, setActiveTab] = useState<'editor' | 'preview' | 'slides'>(initialTab);
   const [activeSectionFilter, setActiveSectionFilter] = useState<string>('all');
-  const [isExporting, setIsExporting] = useState<'docx' | 'pdf' | null>(null);
+  const [isExporting, setIsExporting] = useState<'docx' | 'pdf' | 'pptx' | null>(null);
   const [isRefining, setIsRefining] = useState(false);
   const [refiningAction, setRefiningAction] = useState<string | null>(null);
   const [refiningSectionKey, setRefiningSectionKey] = useState<string | null>(null);
@@ -44,6 +49,15 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
   const [newVersionNote, setNewVersionNote] = useState('');
 
   const titles = getEffectiveTitles(metadata.customTitles);
+
+  const activeSlideDeck: SlideDeck = proposal.slideDeck || convertProposalToSlideDeck(proposal, metadata, images);
+
+  const handleSlideDeckChange = (updatedDeck: SlideDeck) => {
+    onChange({
+      ...proposal,
+      slideDeck: updatedDeck,
+    });
+  };
 
   // Field change helpers
   const handleStringChange = (field: keyof ProposalSection, value: string) => {
@@ -278,6 +292,26 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
     }
   };
 
+  const handleExportPptx = async () => {
+    try {
+      setIsExporting('pptx');
+      const blob = await generateAdvansysPptx(activeSlideDeck, metadata, images);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${buildExportBasename()} (Presentacion).pptx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Error al exportar diapositivas PPTX:", err);
+      alert("Hubo un error generando el PowerPoint (.pptx). Por favor intenta nuevamente.");
+    } finally {
+      setIsExporting(null);
+    }
+  };
+
   return (
     <div className="@container bg-white/95 rounded-2xl shadow-lg border border-slate-200/80 overflow-x-hidden overflow-y-visible flex flex-col min-h-full min-w-0 max-w-full">
       
@@ -373,7 +407,19 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
               }`}
             >
               <Eye className="w-3.5 h-3.5 sm:mr-1" />
-              <span className="hidden sm:inline">Vista previa</span>
+              <span className="hidden sm:inline">Previa Doc</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('slides')}
+              className={`px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-lg flex items-center transition-all ${
+                activeTab === 'slides'
+                  ? 'bg-[#2ECC71] text-slate-950 shadow font-bold'
+                  : 'text-blue-100/80 hover:text-white'
+              }`}
+              title="Ver y editar la presentación de diapositivas PPTX"
+            >
+              <Presentation className="w-3.5 h-3.5 sm:mr-1" />
+              <span className="hidden sm:inline">Diapositivas</span>
             </button>
           </div>
 
@@ -381,9 +427,10 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
             onClick={handleExportDocx}
             disabled={!!isExporting}
             className="inline-flex items-center px-3 sm:px-4 py-2 text-xs font-bold text-slate-950 bg-[#2ECC71] hover:bg-[#27ae60] active:scale-95 transition-all rounded-xl shadow-md border border-emerald-400 disabled:opacity-50"
+            title="Descargar el documento en formato Microsoft Word (.docx)"
           >
             {isExporting === 'docx' ? <Loader2 className="w-4 h-4 sm:mr-1.5 animate-spin" /> : <FileDown className="w-4 h-4 sm:mr-1.5" />}
-            <span className="hidden xs:inline sm:inline">{isExporting === 'docx' ? 'Preparando Word...' : 'Descargar Word'}</span>
+            <span className="hidden xs:inline sm:inline">{isExporting === 'docx' ? 'Word...' : 'Word'}</span>
           </button>
 
           <button
@@ -393,7 +440,21 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
             title="Descargar el documento en PDF"
           >
             {isExporting === 'pdf' ? <Loader2 className="w-4 h-4 sm:mr-1.5 animate-spin" /> : <FileText className="w-4 h-4 sm:mr-1.5" />}
-            <span className="hidden xs:inline sm:inline">{isExporting === 'pdf' ? 'Preparando PDF...' : 'Descargar PDF'}</span>
+            <span className="hidden xs:inline sm:inline">{isExporting === 'pdf' ? 'PDF...' : 'PDF'}</span>
+          </button>
+
+          <button
+            onClick={handleExportPptx}
+            disabled={!!isExporting}
+            className={`inline-flex items-center px-3 sm:px-4 py-2 text-xs font-bold active:scale-95 transition-all rounded-xl shadow-md disabled:opacity-50 ${
+              activeTab === 'slides'
+                ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 border border-amber-300'
+                : 'bg-white/10 hover:bg-white/20 text-white border border-white/20'
+            }`}
+            title="Descargar la presentación de diapositivas en Microsoft PowerPoint (.pptx)"
+          >
+            {isExporting === 'pptx' ? <Loader2 className="w-4 h-4 sm:mr-1.5 animate-spin" /> : <Presentation className="w-4 h-4 sm:mr-1.5" />}
+            <span className="hidden xs:inline sm:inline">{isExporting === 'pptx' ? 'PowerPoint...' : 'PowerPoint'}</span>
           </button>
         </div>
       </div>
@@ -468,7 +529,19 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
       </div>
 
       {/* Main Container Content */}
-      {activeTab === 'preview' ? (
+      {activeTab === 'slides' ? (
+        <div className="p-3 sm:p-4 bg-slate-950 rounded-b-xl overflow-x-hidden min-h-[520px] min-w-0">
+          <SlideDeckEditor
+            deck={activeSlideDeck}
+            metadata={metadata}
+            images={images}
+            proposal={proposal}
+            onChange={handleSlideDeckChange}
+            onSave={onSave}
+            onSaveNewVersion={onSaveNewVersion}
+          />
+        </div>
+      ) : activeTab === 'preview' ? (
         <div className="p-3 bg-slate-100/90 rounded-b-xl overflow-x-auto min-h-[400px] min-w-0">
           <DocxPreview metadata={metadata} proposal={proposal} images={images} />
         </div>

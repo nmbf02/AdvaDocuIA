@@ -159,14 +159,26 @@ function createSectionHeader(title: string, sectionNumber?: string, pageBreakBef
   });
 }
 
-// Helper cell generator function
-function CellWrapper({ label, value, widthPercent }: { label: string; value: string; widthPercent: number; isHeader?: boolean }): TableCell {
+// Helper cell generator function with precise width in dxa (twips)
+function CellWrapper({
+  label,
+  value,
+  widthDxa,
+  colSpan = 1,
+}: {
+  label: string;
+  value: string;
+  widthDxa: number;
+  colSpan?: number;
+}): TableCell {
   return new TableCell({
-    width: { size: widthPercent, type: WidthType.PERCENTAGE },
-    shading: { fill: 'FFFFFF', type: ShadingType.CLEAR },
-    margins: { top: 120, bottom: 120, left: 160, right: 160 },
+    width: { size: widthDxa, type: WidthType.DXA },
+    columnSpan: colSpan,
+    shading: { fill: 'F8FAFC', type: ShadingType.CLEAR },
+    margins: { top: 100, bottom: 100, left: 140, right: 140 },
     children: [
       new Paragraph({
+        spacing: { before: 0, after: 0, line: 240 },
         children: [
           new TextRun({
             text: label + ': ',
@@ -176,61 +188,98 @@ function CellWrapper({ label, value, widthPercent }: { label: string; value: str
             font: 'Calibri',
           }),
           new TextRun({
-            text: value,
+            text: value || 'N/A',
             color: COLOR_TEXT_DARK,
-            size: 20, // 10pt
+            size: 19, // 9.5pt
             font: 'Calibri',
-          })
-        ]
-      })
-    ]
+          }),
+        ],
+      }),
+    ],
   });
 }
 
 /**
- * Creates the metadata table block as specified in Advansys guidelines
+ * Creates the metadata table block matching the exact 6-column modular grid
+ * Total available width on standard Letter/A4 is ~9520 dxa (11920 total - 2400 margins).
  */
 function createMetadataTable(metadata: MetadataHeader): Table {
-  const createCell = (label: string, value: string, widthPercent: number, isHeader = false) => {
-    return CellWrapper({
-      label,
-      value,
-      widthPercent,
-      isHeader
-    });
-  };
+  const TOTAL_TABLE_DXA = 9520; // 9520 dxa = ~6.61 inches = full content width between 1200 dxa margins
+  const UNIT_6 = Math.floor(TOTAL_TABLE_DXA / 6); // 1586 dxa per 1/6 column
+  const COL_HALF = UNIT_6 * 3; // 4760 dxa (50%)
+  const COL_THIRD = Math.floor(TOTAL_TABLE_DXA / 3); // 3173 dxa (33.3%)
+  const COL_THIRD_LAST = TOTAL_TABLE_DXA - COL_THIRD * 2; // Exact remainder to prevent 1px gap
 
   return new Table({
-    width: { size: 100, type: WidthType.PERCENTAGE },
+    width: { size: TOTAL_TABLE_DXA, type: WidthType.DXA },
+    columnWidths: [UNIT_6, UNIT_6, UNIT_6, UNIT_6, UNIT_6, TOTAL_TABLE_DXA - UNIT_6 * 5],
     borders: {
       top: { style: BorderStyle.SINGLE, size: 4, color: COLOR_BORDER },
       bottom: { style: BorderStyle.SINGLE, size: 4, color: COLOR_BORDER },
       left: { style: BorderStyle.SINGLE, size: 4, color: COLOR_BORDER },
       right: { style: BorderStyle.SINGLE, size: 4, color: COLOR_BORDER },
-      insideHorizontal: { style: BorderStyle.SINGLE, size: 2, color: COLOR_BORDER },
-      insideVertical: { style: BorderStyle.SINGLE, size: 2, color: COLOR_BORDER },
+      insideHorizontal: { style: BorderStyle.SINGLE, size: 4, color: COLOR_BORDER },
+      insideVertical: { style: BorderStyle.SINGLE, size: 4, color: COLOR_BORDER },
     },
     rows: [
+      // Fila 1: CLIENTE (50%) | FECHA (50%)
       new TableRow({
         children: [
-          createCell('CLIENTE', metadata.cliente || 'N/A', 50, true),
-          createCell('FECHA', metadata.fecha || new Date().toISOString().split('T')[0], 50, true),
-        ]
+          CellWrapper({
+            label: 'CLIENTE',
+            value: metadata.cliente || 'N/A',
+            widthDxa: COL_HALF,
+            colSpan: 3,
+          }),
+          CellWrapper({
+            label: 'FECHA',
+            value: metadata.fecha || new Date().toISOString().split('T')[0],
+            widthDxa: TOTAL_TABLE_DXA - COL_HALF,
+            colSpan: 3,
+          }),
+        ],
       }),
+      // Fila 2: TICKET NO. (33.3%) | GUÍA NO. (33.3%) | PROPUESTA Nº (33.3%)
       new TableRow({
         children: [
-          createCell('TICKET NO.', metadata.ticketNo || 'N/A', 33),
-          createCell('GUÍA NO.', metadata.guiaNo || 'N/A', 33),
-          createCell('PROPUESTA Nº', metadata.propuestaNo || 'N/A', 34),
-        ]
+          CellWrapper({
+            label: 'TICKET NO.',
+            value: metadata.ticketNo || 'N/A',
+            widthDxa: COL_THIRD,
+            colSpan: 2,
+          }),
+          CellWrapper({
+            label: 'GUÍA NO.',
+            value: metadata.guiaNo || 'N/A',
+            widthDxa: COL_THIRD,
+            colSpan: 2,
+          }),
+          CellWrapper({
+            label: 'PROPUESTA Nº',
+            value: metadata.propuestaNo || 'N/A',
+            widthDxa: COL_THIRD_LAST,
+            colSpan: 2,
+          }),
+        ],
       }),
+      // Fila 3: PROYECTO (50%) | MÓDULO / APLICACIÓN (50%)
       new TableRow({
         children: [
-          createCell('PROYECTO', metadata.nombreProyecto || 'N/A', 50),
-          createCell('MÓDULO / APLICACIÓN', metadata.moduloAplicacion || 'N/A', 50),
-        ]
-      })
-    ]
+          CellWrapper({
+            label: 'PROYECTO',
+            value: metadata.nombreProyecto || 'N/A',
+            widthDxa: COL_HALF,
+            colSpan: 3,
+          }),
+          CellWrapper({
+            label: 'MÓDULO / APLICACIÓN',
+            value: metadata.moduloAplicacion || 'N/A',
+            widthDxa: TOTAL_TABLE_DXA - COL_HALF,
+            colSpan: 3,
+          }),
+        ],
+      }),
+    ],
   });
 }
 
@@ -289,12 +338,12 @@ function createContentTable(table: DocumentTable): Table {
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     borders: {
-      top: { style: BorderStyle.SINGLE, size: 4, color: COLOR_PRIMARY_BLUE },
-      bottom: { style: BorderStyle.SINGLE, size: 4, color: COLOR_PRIMARY_BLUE },
+      top: { style: BorderStyle.SINGLE, size: 4, color: COLOR_BORDER },
+      bottom: { style: BorderStyle.SINGLE, size: 4, color: COLOR_BORDER },
       left: { style: BorderStyle.SINGLE, size: 4, color: COLOR_BORDER },
       right: { style: BorderStyle.SINGLE, size: 4, color: COLOR_BORDER },
-      insideHorizontal: { style: BorderStyle.SINGLE, size: 2, color: COLOR_BORDER },
-      insideVertical: { style: BorderStyle.SINGLE, size: 2, color: COLOR_BORDER },
+      insideHorizontal: { style: BorderStyle.SINGLE, size: 4, color: COLOR_BORDER },
+      insideVertical: { style: BorderStyle.SINGLE, size: 4, color: COLOR_BORDER },
     },
     rows: [headerRow, ...bodyRows],
   });

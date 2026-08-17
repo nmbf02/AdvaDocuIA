@@ -541,6 +541,145 @@ ${rawRequirements || 'Sin notas adicionales'}
   }
 });
 
+// Endpoint to generate professional Slide Decks (.pptx data) using Gemini AI
+app.post("/api/generate-slides", async (req, res) => {
+  try {
+    const ai = getGeminiClient();
+    const { metadata = {}, rawRequirements = '', images = [], proposal = null } = req.body;
+
+    const cliente = metadata.cliente || 'Cliente Corporativo';
+    const proyecto = metadata.nombreProyecto || 'Propuesta Técnica';
+    const ticketNo = metadata.ticketNo || 'TK-2026';
+
+    let contextText = `Genera una presentación ejecutiva de diapositivas (Slide Deck) de alta calidad para Advansys Technology.
+Cliente: ${cliente}
+Proyecto: ${proyecto}
+Ticket: ${ticketNo}
+Fecha: ${metadata.fecha || new Date().toLocaleDateString()}
+
+REQUERIMIENTOS Y NOTAS:
+${rawRequirements || (proposal ? JSON.stringify(proposal) : 'Sin notas adicionales')}
+`;
+
+    if (proposal) {
+      contextText += `\nDOCUMENTO BASE:
+Resumen: ${proposal.resumenEjecutivo || ''}
+Objetivo: ${proposal.objetivo || ''}
+Descripción: ${proposal.descripcion || ''}
+Beneficios: ${JSON.stringify(proposal.beneficios || [])}
+Alcance: ${JSON.stringify(proposal.alcanceExclusionesEntregables || {})}
+Pasos operativos: ${JSON.stringify(proposal.analisisOperativo || [])}
+`;
+    }
+
+    const slideDeckSchema = {
+      type: Type.OBJECT,
+      properties: {
+        title: { type: Type.STRING },
+        subtitle: { type: Type.STRING },
+        client: { type: Type.STRING },
+        project: { type: Type.STRING },
+        ticketNo: { type: Type.STRING },
+        author: { type: Type.STRING },
+        date: { type: Type.STRING },
+        slides: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING },
+              slideNumber: { type: Type.INTEGER },
+              layout: { 
+                type: Type.STRING,
+                enum: ['title', 'bullets', 'two-column', 'image-text', 'steps', 'cards', 'conclusion']
+              },
+              category: { type: Type.STRING },
+              title: { type: Type.STRING },
+              subtitle: { type: Type.STRING },
+              bullets: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              },
+              leftTitle: { type: Type.STRING },
+              leftBullets: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              },
+              rightTitle: { type: Type.STRING },
+              rightBullets: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              },
+              cards: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    title: { type: Type.STRING },
+                    description: { type: Type.STRING }
+                  },
+                  required: ['title', 'description']
+                }
+              },
+              steps: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    stepNumber: { type: Type.INTEGER },
+                    title: { type: Type.STRING },
+                    description: { type: Type.STRING }
+                  },
+                  required: ['stepNumber', 'title', 'description']
+                }
+              },
+              speakerNotes: { type: Type.STRING },
+              imageRef: { type: Type.STRING }
+            },
+            required: ['id', 'slideNumber', 'layout', 'title']
+          }
+        }
+      },
+      required: ['title', 'client', 'project', 'slides']
+    };
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.6-flash",
+      contents: contextText,
+      config: {
+        systemInstruction: `Eres un Diseñador y Consultor de Presentaciones Ejecutivas Senior en Advansys.
+Tu objetivo es estructurar una presentación de 6 a 8 diapositivas profesionales, dinámicas y concisas para la gerencia y equipos técnicos.
+Estructura recomendada:
+1. Portada (layout: 'title')
+2. Contexto & Problemática (layout: 'bullets')
+3. Beneficios Clave para el Negocio (layout: 'cards', 4 tarjetas)
+4. Alcance & Entregables (layout: 'two-column', izquierda alcance, derecha entregables)
+5. Solución & Arquitectura Técnica (layout: 'image-text' o 'bullets')
+6. Flujo Operativo en Pasos (layout: 'steps', 4 pasos claros)
+7. Plan de Aprobación & Siguientes Pasos (layout: 'conclusion')
+Para cada diapositiva, incluye notas del orador útiles ('speakerNotes') que guíen al expositor durante la reunión.`,
+        temperature: 0.2,
+        responseMimeType: "application/json",
+        responseSchema: slideDeckSchema,
+      }
+    });
+
+    const textOutput = response.text;
+    if (!textOutput) {
+      throw new Error("No se pudo generar la presentación.");
+    }
+
+    const deck = JSON.parse(textOutput);
+    res.json({ success: true, deck });
+  } catch (error: any) {
+    console.error("Error generating slides with Gemini:", error);
+    res.status(500).json({
+      success: false,
+      error: error?.message || "Error al generar la presentación con IA.",
+    });
+  }
+});
+
 // Vite or Static file serving
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {

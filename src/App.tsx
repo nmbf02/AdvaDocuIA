@@ -10,7 +10,8 @@ import { ConfirmModal } from './components/ConfirmModal';
 import { SettingsModal } from './components/SettingsModal';
 import { WelcomeIntro } from './components/WelcomeIntro';
 import { ADVANSYS_SAMPLE_METADATA, ADVANSYS_SAMPLE_REQUIREMENTS, ADVANSYS_SAMPLE_IMAGES, EMPTY_MANUAL_PROPOSAL } from './data/presets';
-import { Sparkles, Loader2, FileText, AlertCircle, Cpu, Columns2, ClipboardList, Maximize2, Image as ImageIcon, PenLine, NotebookPen, Layers, X, Check } from 'lucide-react';
+import { createDefaultSlideDeck, convertProposalToSlideDeck } from './utils/slideDeckTemplates';
+import { Sparkles, Loader2, FileText, AlertCircle, Cpu, Columns2, ClipboardList, Maximize2, Image as ImageIcon, PenLine, NotebookPen, Layers, X, Check, Presentation } from 'lucide-react';
 
 const STORAGE_KEY_HISTORY = 'advansys_docgen_history_v1';
 const STORAGE_KEY_DRAFT = 'advansys_docgen_current_draft_v1';
@@ -80,6 +81,7 @@ export default function App() {
   // Layout Mode & Tab State
   const [layoutMode, setLayoutMode] = useState<'split' | 'inputs' | 'editor'>('split');
   const [inputTab, setInputTab] = useState<'metadatos' | 'requerimientos' | 'imagenes' | 'all'>('requerimientos');
+  const [editorTab, setEditorTab] = useState<'editor' | 'preview' | 'slides'>('editor');
 
   // Theme State ('light' | 'dark')
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
@@ -388,6 +390,20 @@ export default function App() {
     setProposal(null);
     setCurrentVersion('v1.0');
     setCurrentVersionNote('');
+    setEditorTab('editor');
+    setError(null);
+    setShowWelcome(false);
+  };
+
+  const handleStartSlidesFromWelcome = () => {
+    setEditorTab('slides');
+    if (!proposal) {
+      const initialDeck = createDefaultSlideDeck(metadata, images);
+      setProposal({
+        ...EMPTY_MANUAL_PROPOSAL,
+        slideDeck: initialDeck,
+      });
+    }
     setError(null);
     setShowWelcome(false);
   };
@@ -440,6 +456,7 @@ export default function App() {
           theme={theme}
           onToggleTheme={handleToggleTheme}
           onStartNew={handleStartNewFromWelcome}
+          onStartSlides={handleStartSlidesFromWelcome}
           onContinueDraft={handleContinueDraftFromWelcome}
           onLoadHistoryItem={handleLoadHistoryFromWelcome}
           onLoadPreset={handleLoadPresetFromWelcome}
@@ -748,6 +765,7 @@ export default function App() {
                   currentVersion={currentVersion}
                   lastSavedTime={lastSavedTime}
                   showSavedToast={showSavedToast}
+                  initialTab={editorTab}
                 />
               ) : (
                 /* Initial State Placeholder */
@@ -758,10 +776,10 @@ export default function App() {
 
                 <div className="max-w-md space-y-2">
                   <h3 className="text-lg font-bold text-[#0A3D62]">
-                    Tu documento aparecerá aquí
+                    Tu documento o diapositivas aparecerán aquí
                   </h3>
                   <p className="text-sm text-slate-600 leading-relaxed">
-                    Completa los datos y las notas a la izquierda. Luego genera un borrador con IA o escríbelo tú.
+                    Completa los datos y las notas a la izquierda. Luego genera un borrador con IA, o escríbelo tú.
                   </p>
                 </div>
 
@@ -779,11 +797,11 @@ export default function App() {
                   <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
                     <span className="w-6 h-6 rounded-lg bg-[#2ECC71] text-slate-950 text-xs font-bold inline-flex items-center justify-center mb-1.5">3</span>
                     <span className="block font-bold text-slate-800">Generar</span>
-                    <span>Borrador con IA o escritura a mano, y Word.</span>
+                    <span>Documento Word, PDF y Diapositivas PPTX.</span>
                   </div>
                 </div>
 
-                  <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
+                  <div className="flex flex-wrap items-center justify-center gap-2">
                     <button
                       onClick={handleStartManualDraft}
                       className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2.5 text-xs font-bold text-white bg-[#0A3D62] hover:bg-[#1E5F8A] rounded-xl shadow transition-all"
@@ -793,11 +811,26 @@ export default function App() {
                     </button>
 
                     <button
+                      onClick={() => {
+                        setEditorTab('slides');
+                        const initialDeck = createDefaultSlideDeck(metadata, images);
+                        setProposal({
+                          ...EMPTY_MANUAL_PROPOSAL,
+                          slideDeck: initialDeck,
+                        });
+                      }}
+                      className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2.5 text-xs font-bold text-slate-950 bg-[#2ECC71] hover:bg-[#27ae60] rounded-xl shadow transition-all"
+                    >
+                      <Presentation className="w-4 h-4 mr-1.5" />
+                      <span>Crear Diapositivas</span>
+                    </button>
+
+                    <button
                       onClick={handleLoadPreset}
                       className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2.5 text-xs font-semibold text-[#0A3D62] bg-white hover:bg-blue-50 rounded-xl border border-slate-200 transition-colors"
                     >
                       <Sparkles className="w-4 h-4 mr-1.5 text-emerald-600" />
-                      <span>Probar con un ejemplo</span>
+                      <span>Probar ejemplo</span>
                     </button>
                   </div>
               </div>

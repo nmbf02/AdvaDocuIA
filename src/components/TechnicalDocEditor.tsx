@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   MetadataHeader,
   ProposalSection,
   TechnicalDoc,
   UploadedImage,
   SavedProposal,
+  DocumentTable,
 } from '../types';
 import {
   FileText,
@@ -35,11 +36,17 @@ import {
   HelpCircle,
   FilePlus,
   CheckCircle2,
+  Table2,
+  Image as ImageIcon,
+  Eye,
 } from 'lucide-react';
-import { createDefaultTechnicalDoc } from '../utils/technicalDocTemplates';
+import { createDefaultTechnicalDoc, isTechnicalDocUnfilled, proposalHasSubstance, copyLinkedProposalMetadata } from '../utils/technicalDocTemplates';
 import { generateTechnicalDocDocx } from '../utils/technicalDocDocxGenerator';
 import { downloadTechnicalDocPdf } from '../utils/technicalDocPdfGenerator';
 import { TextFormattingToolbar, handleAutoBulletKeyDown } from './TextFormattingToolbar';
+import { DocumentTablesEditor, createEmptyDocumentTable, tableTag } from './DocumentTablesEditor';
+import { ImageUploader } from './ImageUploader';
+import { TechnicalDocPreview } from './TechnicalDocPreview';
 
 interface TechnicalDocEditorProps {
   technicalDoc?: TechnicalDoc;
@@ -48,11 +55,17 @@ interface TechnicalDocEditorProps {
   images: UploadedImage[];
   rawRequirements?: string;
   history?: SavedProposal[];
+  currentDocumentId?: string | null;
   onChange: (updated: TechnicalDoc) => void;
   onSave?: () => void;
   onMetadataChange?: (updatedMetadata: MetadataHeader) => void;
   onLinkProposal?: (proposal: SavedProposal, syncContext: boolean) => void;
   onUnlinkProposal?: () => void;
+  onOpenLinkedProposal?: () => void;
+  onImagesChange?: (images: UploadedImage[]) => void;
+  autoGenerateFromProposal?: boolean;
+  /** When true, this editor sits inside a proposal: no second header, no “atar”, no Guardar duplicado. */
+  embedded?: boolean;
 }
 
 export const TechnicalDocEditor: React.FC<TechnicalDocEditorProps> = ({
@@ -62,11 +75,16 @@ export const TechnicalDocEditor: React.FC<TechnicalDocEditorProps> = ({
   images,
   rawRequirements = '',
   history = [],
+  currentDocumentId = null,
   onChange,
   onSave,
   onMetadataChange,
   onLinkProposal,
   onUnlinkProposal,
+  onOpenLinkedProposal,
+  onImagesChange,
+  autoGenerateFromProposal = false,
+  embedded = false,
 }) => {
   const docData = technicalDoc || createDefaultTechnicalDoc(metadata, proposal);
 
@@ -83,10 +101,33 @@ export const TechnicalDocEditor: React.FC<TechnicalDocEditorProps> = ({
   const [isEditMetaOpen, setIsEditMetaOpen] = useState(false);
   const [tempMeta, setTempMeta] = useState<MetadataHeader>({ ...metadata });
 
+  useEffect(() => {
+    if (!isEditMetaOpen) {
+      setTempMeta({ ...metadata });
+    }
+  }, [
+    isEditMetaOpen,
+    metadata.cliente,
+    metadata.fecha,
+    metadata.ticketNo,
+    metadata.guiaNo,
+    metadata.propuestaNo,
+    metadata.nombreProyecto,
+    metadata.moduloAplicacion,
+  ]);
+
+  type TechTextField = 'ruta' | 'flujoOperativo' | 'diseno' | 'consideracionesTecnicas';
+
   const rutaRef = React.useRef<HTMLTextAreaElement>(null);
   const flujoRef = React.useRef<HTMLTextAreaElement>(null);
   const disenoRef = React.useRef<HTMLTextAreaElement>(null);
   const consRef = React.useRef<HTMLTextAreaElement>(null);
+  const imageFileInputRef = React.useRef<HTMLInputElement>(null);
+  const pendingImageFieldRef = React.useRef<TechTextField | null>(null);
+  const didAutoGenerate = useRef(false);
+  const generateToken = useRef(0);
+  const [preferManual, setPreferManual] = useState(false);
+  const [viewMode, setViewMode] = useState<'editor' | 'preview'>('editor');
 
   const handleFieldChange = (field: keyof TechnicalDoc, value: any) => {
     onChange({
@@ -96,7 +137,201 @@ export const TechnicalDocEditor: React.FC<TechnicalDocEditorProps> = ({
     });
   };
 
+  const imageTag = (index1: number) => `[IMAGEN_${index1}]`;
+
+  const insertTagIntoField = (field: TechTextField, tag: string) => {
+    const current = String(docData[field] || '');
+    const nextText = current.trim() ? `${current.trim()}\n\n${tag}` : tag;
+    onChange({
+      ...docData,
+      [field]: nextText,
+      lastUpdated: new Date().toISOString(),
+    });
+  };
+
+  const handleInsertExistingImage = (field: TechTextField, index1: number) => {
+    insertTagIntoField(field, imageTag(index1));
+  };
+
+  const handlePickImageForField = (field: TechTextField) => {
+    pendingImageFieldRef.current = field;
+    imageFileInputRef.current?.click();
+  };
+
+  const handleImageFilesSelected = (files: FileList | null) => {
+    if (!files || files.length === 0 || !onImagesChange) return;
+    const field = pendingImageFieldRef.current;
+    pendingImageFieldRef.current = null;
+    const fileArr = Array.from(files).filter((f) => f.type.startsWith('image/'));
+    if (!fileArr.length) return;
+
+    const newImages: UploadedImage[] = [];
+    let processed = 0;
+    fileArr.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const result = e.target?.result as string;
+        if (result) {
+          newImages.push({
+            id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            title: file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' '),
+            description: `Captura / diagrama de la documentación técnica`,
+            dataUrl: result,
+            mimeType: file.type,
+            fileName: file.name,
+            fileSize: file.size,
+          });
+        }
+        processed += 1;
+        if (processed === fileArr.length) {
+          const nextImages = [...images, ...newImages];
+          onImagesChange(nextImages);
+          if (field && newImages.length) {
+            const start = images.length + 1;
+            const tags = newImages.map((_, i) => imageTag(start + i)).join('\n\n');
+            insertTagIntoField(field, tags);
+          }
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const renderImageInsertBar = (field: TechTextField) => (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <button
+        type="button"
+        onClick={() => handlePickImageForField(field)}
+        disabled={!onImagesChange}
+        className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-[#0A3D62] bg-white hover:bg-blue-50 border border-slate-300 rounded transition-colors disabled:opacity-50"
+        title="Subir una imagen e insertarla en este apartado"
+      >
+        <ImageIcon className="w-3 h-3 text-[#2ECC71]" />
+        Insertar imagen
+      </button>
+      {images.map((img, idx) => (
+        <button
+          key={img.id}
+          type="button"
+          onClick={() => handleInsertExistingImage(field, idx + 1)}
+          className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded"
+          title={`Insertar ${imageTag(idx + 1)}: ${img.title}`}
+        >
+          +{imageTag(idx + 1)}
+        </button>
+      ))}
+    </div>
+  );
+
+  const renderInlineImages = (text: string) => {
+    const matches = [...(text || '').matchAll(/\[IMAGEN_(\d+)\]/gi)];
+    const indexes = [...new Set(matches.map((m) => parseInt(m[1], 10) - 1))].filter((i) => images[i]);
+    if (!indexes.length) return null;
+    return (
+      <div className="space-y-2">
+        {indexes.map((i) => {
+          const img = images[i];
+          const widthPercent = Math.min(100, Math.max(25, img.widthPercent ?? 100));
+          const align = img.align === 'left' || img.align === 'right' ? img.align : 'center';
+          const alignClass = align === 'left' ? 'mr-auto' : align === 'right' ? 'ml-auto' : 'mx-auto';
+          return (
+            <figure
+              key={img.id}
+              className={`rounded-xl border border-slate-200 bg-slate-50 overflow-hidden ${alignClass}`}
+              style={{ width: `${widthPercent}%`, maxWidth: '100%' }}
+            >
+              <img
+                src={img.dataUrl}
+                alt={img.title}
+                className="w-full max-h-48 object-contain bg-white"
+              />
+              <figcaption className="px-2.5 py-1.5 text-[11px] text-slate-600">
+                <span className="font-bold text-[#0A3D62]">{imageTag(i + 1)}</span>
+                {img.title ? ` · ${img.title}` : ''}
+              </figcaption>
+            </figure>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const textWithImagesMarkdown = (text: string): string => {
+    return (text || '').replace(/\[IMAGEN_(\d+)\]/gi, (match, n) => {
+      const img = images[parseInt(n, 10) - 1];
+      if (!img) return match;
+      return `\n*[${imageTag(parseInt(n, 10))}: ${img.title}${img.description ? ` — ${img.description}` : ''}]*\n`;
+    });
+  };
+
+  const insertTableIntoText = (current: string) => {
+    const tables = [...(docData.tables || [])];
+    tables.push(createEmptyDocumentTable(tables.length + 1));
+    const tag = tableTag(tables.length);
+    const nextText = current.trim() ? `${current.trim()}\n\n${tag}` : tag;
+    return { tables, nextText };
+  };
+
+  const handleInsertTableInField = (field: TechTextField) => {
+    const { tables, nextText } = insertTableIntoText(String(docData[field] || ''));
+    onChange({
+      ...docData,
+      [field]: nextText,
+      tables,
+      lastUpdated: new Date().toISOString(),
+    });
+  };
+
+  const renderInlineTables = (text: string) => {
+    const all = docData.tables || [];
+    const indexes = all
+      .map((_, i) => i)
+      .filter((i) => new RegExp(`\\[TABLA_${i + 1}\\]`, 'i').test(text || ''));
+    if (!indexes.length) return null;
+    const shownIds = new Set(indexes.map((i) => all[i].id));
+    return (
+      <DocumentTablesEditor
+        compact
+        tables={indexes.map((i) => all[i])}
+        getTagIndex={(i) => indexes[i] + 1}
+        onChange={(updated) => {
+          const next = all
+            .map((t) => {
+              if (!shownIds.has(t.id)) return t;
+              return updated.find((u) => u.id === t.id) || null;
+            })
+            .filter((t): t is DocumentTable => t !== null);
+          onChange({
+            ...docData,
+            tables: next,
+            lastUpdated: new Date().toISOString(),
+          });
+        }}
+      />
+    );
+  };
+
+  const tableToMarkdown = (table: DocumentTable): string => {
+    const headers = table.headers?.length ? table.headers : ['Columna'];
+    const headerLine = `| ${headers.join(' | ')} |`;
+    const sepLine = `| ${headers.map(() => '---').join(' | ')} |`;
+    const rows = (table.rows || [])
+      .map((row) => `| ${headers.map((_, i) => row[i] || '').join(' | ')} |`)
+      .join('\n');
+    const title = table.title?.trim() ? `**${table.title.trim()}**\n\n` : '';
+    return `${title}${headerLine}\n${sepLine}\n${rows}`;
+  };
+
+  const textWithTablesMarkdown = (text: string): string => {
+    const tables = docData.tables || [];
+    return (text || '').replace(/\[TABLA_(\d+)\]/gi, (match, n) => {
+      const table = tables[parseInt(n, 10) - 1];
+      return table ? `\n${tableToMarkdown(table)}\n` : match;
+    });
+  };
+
   const handleGenerateWithAI = async () => {
+    const token = ++generateToken.current;
     setIsGeneratingAI(true);
     try {
       const response = await fetch('/api/generate-technical-doc', {
@@ -111,27 +346,59 @@ export const TechnicalDocEditor: React.FC<TechnicalDocEditorProps> = ({
       });
 
       const data = await response.json();
+      if (token !== generateToken.current) return;
       if (data.success && data.technicalDoc) {
+        const aiTables = Array.isArray(data.technicalDoc.tables) ? data.technicalDoc.tables : [];
         onChange({
           ...data.technicalDoc,
           linkedProposalId: docData.linkedProposalId,
           linkedProposalName: docData.linkedProposalName,
+          isStandalone: docData.isStandalone,
+          tables: aiTables.length > 0 ? aiTables : (docData.tables || []),
         });
       } else {
         throw new Error(data.error || 'No se pudo generar la documentación técnica.');
       }
     } catch (err: any) {
+      if (token !== generateToken.current) return;
       console.error('Error in AI Technical Doc generation:', err);
       alert('Error al generar la documentación técnica: ' + (err.message || 'Error de conexión'));
     } finally {
-      setIsGeneratingAI(false);
+      if (token === generateToken.current) {
+        setIsGeneratingAI(false);
+      }
     }
   };
+
+  const handleWriteManually = () => {
+    generateToken.current += 1;
+    didAutoGenerate.current = true;
+    setPreferManual(true);
+    setIsGeneratingAI(false);
+    if (!technicalDoc) {
+      onChange({
+        ...createDefaultTechnicalDoc(metadata, proposal),
+        isStandalone: docData.isStandalone,
+        linkedProposalId: docData.linkedProposalId,
+        linkedProposalName: docData.linkedProposalName,
+        tables: docData.tables || [],
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (!autoGenerateFromProposal || preferManual || didAutoGenerate.current || isGeneratingAI) return;
+    const hasSource = proposalHasSubstance(proposal) || Boolean(rawRequirements.trim());
+    if (!hasSource) return;
+    if (!isTechnicalDocUnfilled(technicalDoc || docData)) return;
+    didAutoGenerate.current = true;
+    void handleGenerateWithAI();
+  }, [autoGenerateFromProposal, preferManual, proposal, technicalDoc, rawRequirements]);
 
   const handleExportDocx = async () => {
     setIsExporting('docx');
     try {
-      const blob = await generateTechnicalDocDocx(metadata, docData);
+      const blob = await generateTechnicalDocDocx(metadata, docData, images);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -151,7 +418,7 @@ export const TechnicalDocEditor: React.FC<TechnicalDocEditorProps> = ({
   const handleExportPdf = async () => {
     setIsExporting('pdf');
     try {
-      await downloadTechnicalDocPdf(metadata, docData);
+      await downloadTechnicalDocPdf(metadata, docData, undefined, images);
     } catch (err) {
       console.error('Error generating pdf:', err);
     } finally {
@@ -160,6 +427,21 @@ export const TechnicalDocEditor: React.FC<TechnicalDocEditorProps> = ({
   };
 
   const handleCopyMarkdown = () => {
+    const allTables = docData.tables || [];
+    const usedIndexes = new Set<number>();
+    const markUsed = (text: string) => {
+      const re = /\[TABLA_(\d+)\]/gi;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(text || '')) !== null) {
+        usedIndexes.add(parseInt(m[1], 10) - 1);
+      }
+      return textWithImagesMarkdown(textWithTablesMarkdown(text));
+    };
+    const unused = allTables.filter((_, i) => !usedIndexes.has(i));
+    const unusedMd = unused.length
+      ? `\n---\n\n## TABLAS ADICIONALES\n\n${unused.map((t) => tableToMarkdown(t)).join('\n\n')}\n`
+      : '';
+
     const md = `# DOCUMENTACIÓN TÉCNICA INTERNA Y ESPECIFICACIÓN DE DESARROLLO
 **Cliente:** ${metadata.cliente || 'N/A'}
 **Fecha:** ${metadata.fecha || new Date().toISOString().split('T')[0]}
@@ -171,23 +453,23 @@ ${docData.linkedProposalName ? `**Propuesta Vinculada:** ${docData.linkedProposa
 ---
 
 ## 1. RUTA DE ACCESO & NAVEGACIÓN EN EL SISTEMA
-${docData.ruta}
+${markUsed(docData.ruta)}
 
 ---
 
 ## 2. FLUJO OPERATIVO INTERNO
-${docData.flujoOperativo}
+${markUsed(docData.flujoOperativo)}
 
 ---
 
 ## 3. DISEÑO DE INTERFAZ Y ESTRUCTURA DE DATOS
-${docData.diseno}
+${markUsed(docData.diseno)}
 
 ---
 
 ## 4. CONSIDERACIONES TÉCNICAS Y DE SEGURIDAD
-${docData.consideracionesTecnicas}
-
+${markUsed(docData.consideracionesTecnicas)}
+${unusedMd}
 ---
 
 ## 5. CÓDIGO DE EJEMPLO / SCRIPTS
@@ -202,19 +484,14 @@ ${docData.codigoEjemplo || '-- Sin código especificado'}
   };
 
   const handleSelectProposalToLink = (selectedItem: SavedProposal) => {
+    const nextMeta = copyLinkedProposalMetadata(metadata, selectedItem.metadata);
+    setTempMeta(nextMeta);
+
     if (onLinkProposal) {
       onLinkProposal(selectedItem, syncContextOnLink);
     } else {
-      // Direct local update
-      const updatedMeta: MetadataHeader = {
-        ...metadata,
-        cliente: selectedItem.metadata.cliente || metadata.cliente,
-        ticketNo: selectedItem.metadata.ticketNo || metadata.ticketNo,
-        nombreProyecto: selectedItem.metadata.nombreProyecto || metadata.nombreProyecto,
-        moduloAplicacion: selectedItem.metadata.moduloAplicacion || metadata.moduloAplicacion,
-      };
       if (onMetadataChange) {
-        onMetadataChange(updatedMeta);
+        onMetadataChange(nextMeta);
       }
 
       let updatedDoc: TechnicalDoc = {
@@ -225,7 +502,7 @@ ${docData.codigoEjemplo || '-- Sin código especificado'}
       };
 
       if (syncContextOnLink && selectedItem.content) {
-        const defaultWithContext = createDefaultTechnicalDoc(updatedMeta, selectedItem.content);
+        const defaultWithContext = createDefaultTechnicalDoc(nextMeta, selectedItem.content);
         updatedDoc.flujoOperativo = defaultWithContext.flujoOperativo;
         updatedDoc.diseno = defaultWithContext.diseno;
       }
@@ -250,6 +527,8 @@ ${docData.codigoEjemplo || '-- Sin código especificado'}
   };
 
   const filteredHistory = history.filter((p) => {
+    if (p.documentType === 'technical') return false;
+    if (currentDocumentId && p.id === currentDocumentId) return false;
     const q = proposalSearchQuery.toLowerCase().trim();
     if (!q) return true;
     const cl = (p.metadata.cliente || '').toLowerCase();
@@ -259,119 +538,180 @@ ${docData.codigoEjemplo || '-- Sin código especificado'}
     return cl.includes(q) || pr.includes(q) || tk.includes(q) || md.includes(q);
   });
 
+  const viewSwitcher = (
+    <div className={`p-1 rounded-xl flex gap-0.5 border text-xs ${
+      embedded ? 'bg-slate-100 border-slate-200' : 'bg-black/20 border-white/10'
+    }`}>
+      <button
+        type="button"
+        onClick={() => setViewMode('editor')}
+        className={`px-2.5 py-1.5 font-semibold rounded-lg flex items-center gap-1 transition-all ${
+          viewMode === 'editor'
+            ? 'bg-white text-[#0A3D62] shadow'
+            : embedded
+              ? 'text-slate-600 hover:text-slate-900'
+              : 'text-blue-100/80 hover:text-white'
+        }`}
+      >
+        <Edit3 className="w-3.5 h-3.5" />
+        <span>Editar</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => setViewMode('preview')}
+        className={`px-2.5 py-1.5 font-semibold rounded-lg flex items-center gap-1 transition-all ${
+          viewMode === 'preview'
+            ? 'bg-white text-[#0A3D62] shadow'
+            : embedded
+              ? 'text-slate-600 hover:text-slate-900'
+              : 'text-blue-100/80 hover:text-white'
+        }`}
+      >
+        <Eye className="w-3.5 h-3.5" />
+        <span>Previa</span>
+      </button>
+    </div>
+  );
+
+  const aiAndExportActions = (
+    <div className="flex items-center flex-wrap gap-2">
+      <button
+        type="button"
+        onClick={handleGenerateWithAI}
+        disabled={isGeneratingAI}
+        className="inline-flex items-center justify-center px-3 py-1.5 text-xs font-bold text-slate-950 bg-[#2ECC71] hover:bg-[#27ae60] active:scale-95 transition-all rounded-xl shadow-md disabled:opacity-50"
+        title="Generar o regenerar la documentación técnica con IA a partir de la propuesta y las notas"
+      >
+        {isGeneratingAI ? (
+          <>
+            <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin text-slate-950" />
+            <span>Generando con IA...</span>
+          </>
+        ) : (
+          <>
+            <Sparkles className="w-3.5 h-3.5 mr-1.5 text-slate-950" />
+            <span>{isTechnicalDocUnfilled(docData) ? 'Generar con IA' : 'Regenerar con IA'}</span>
+          </>
+        )}
+      </button>
+
+      <button
+        type="button"
+        onClick={handleCopyMarkdown}
+        className={`inline-flex items-center justify-center px-2.5 py-1.5 text-xs font-semibold rounded-xl border transition-all ${
+          embedded
+            ? 'text-[#0A3D62] bg-white hover:bg-slate-50 border-slate-300'
+            : 'text-white bg-white/10 hover:bg-white/20 border-white/20'
+        }`}
+        title="Copiar especificación técnica en Markdown para Jira, GitHub o DevOps"
+      >
+        {copiedSection === 'all' ? (
+          <>
+            <Check className={`w-3.5 h-3.5 mr-1 ${embedded ? 'text-emerald-600' : 'text-[#2ECC71]'}`} />
+            <span>Copiado</span>
+          </>
+        ) : (
+          <>
+            <Copy className="w-3.5 h-3.5 mr-1" />
+            <span>Copiar MD</span>
+          </>
+        )}
+      </button>
+
+      <button
+        type="button"
+        onClick={handleExportDocx}
+        disabled={isExporting !== null}
+        className={`inline-flex items-center justify-center px-2.5 py-1.5 text-xs font-semibold rounded-xl border transition-all disabled:opacity-50 ${
+          embedded
+            ? 'text-[#0A3D62] bg-white hover:bg-slate-50 border-slate-300'
+            : 'text-white bg-white/15 hover:bg-white/25 border-white/20'
+        }`}
+        title="Descargar documento Word (.docx) técnico"
+      >
+        <FileDown className={`w-3.5 h-3.5 mr-1 ${embedded ? 'text-slate-500' : 'text-blue-200'}`} />
+        <span>Word</span>
+      </button>
+
+      <button
+        type="button"
+        onClick={handleExportPdf}
+        disabled={isExporting !== null}
+        className={`inline-flex items-center justify-center px-2.5 py-1.5 text-xs font-semibold rounded-xl border transition-all disabled:opacity-50 ${
+          embedded
+            ? 'text-[#0A3D62] bg-white hover:bg-slate-50 border-slate-300'
+            : 'text-white bg-white/15 hover:bg-white/25 border-white/20'
+        }`}
+        title="Descargar documento PDF técnico"
+      >
+        <FileDown className={`w-3.5 h-3.5 mr-1 ${embedded ? 'text-slate-500' : 'text-blue-200'}`} />
+        <span>PDF</span>
+      </button>
+
+      {!embedded && onSave && (
+        <button
+          type="button"
+          onClick={onSave}
+          className="inline-flex items-center justify-center px-3 py-1.5 text-xs font-bold text-[#0A3D62] bg-white hover:bg-slate-100 active:scale-95 transition-all rounded-xl shadow-md"
+          title="Guardar cambios en el proyecto e historial"
+        >
+          <Save className="w-3.5 h-3.5 mr-1" />
+          <span>Guardar</span>
+        </button>
+      )}
+    </div>
+  );
+
   return (
-    <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col h-full animate-in fade-in duration-300">
+    <div className={embedded
+      ? 'flex flex-col h-full min-w-0 animate-in fade-in duration-300'
+      : 'bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col h-full animate-in fade-in duration-300'
+    }>
       
-      {/* Top Banner Toolbar */}
-      <div className="bg-gradient-to-r from-[#0A3D62] via-[#0D4B75] to-[#1E5F8A] p-4 text-white flex flex-wrap items-center justify-between gap-3 border-b border-blue-900/40">
-        
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-white shrink-0">
-            <Terminal className="w-5 h-5 text-[#2ECC71]" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#2ECC71] text-slate-950 uppercase tracking-wider">
-                Uso Interno Dev / QA
-              </span>
-              <span className="text-xs text-blue-200">
-                Ticket: {metadata.ticketNo || 'N/A'}
-              </span>
-            </div>
-            <h2 className="text-base sm:text-lg font-bold leading-tight text-white">
-              Documentación Técnica Interna
-            </h2>
-            <p className="text-[11px] text-blue-100 hidden sm:block">
-              Especificación desacoplada para arquitectura, rutas, flujos, diseño y código.
+      {embedded ? (
+        <div className="bg-white border-b border-slate-200 px-3 py-2.5 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            {viewSwitcher}
+            <p className="text-[11px] text-slate-600 max-w-xl leading-snug hidden sm:block">
+              {viewMode === 'preview'
+                ? 'Así se verá el documento técnico al exportar Word o PDF.'
+                : 'Spec interna para Dev/QA. Si hay propuesta, la IA la completa; después editas las secciones a mano.'}
             </p>
           </div>
+          {aiAndExportActions}
         </div>
-
-        {/* Actions */}
-        <div className="flex items-center flex-wrap gap-2">
-          
-          {/* AI Generator Button */}
-          <button
-            type="button"
-            onClick={handleGenerateWithAI}
-            disabled={isGeneratingAI}
-            className="inline-flex items-center justify-center px-3 py-1.5 text-xs font-bold text-slate-950 bg-[#2ECC71] hover:bg-[#27ae60] active:scale-95 transition-all rounded-xl shadow-md disabled:opacity-50"
-            title="Generar o sincronizar la documentación técnica desde los requerimientos y la propuesta"
-          >
-            {isGeneratingAI ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin text-slate-950" />
-                <span>Generando con IA...</span>
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-3.5 h-3.5 mr-1.5 text-slate-950" />
-                <span>Sincronizar con IA</span>
-              </>
-            )}
-          </button>
-
-          {/* Copy Markdown */}
-          <button
-            type="button"
-            onClick={handleCopyMarkdown}
-            className="inline-flex items-center justify-center px-2.5 py-1.5 text-xs font-semibold text-white bg-white/10 hover:bg-white/20 active:scale-95 transition-all rounded-xl border border-white/20"
-            title="Copiar especificación técnica en Markdown para Jira, GitHub o DevOps"
-          >
-            {copiedSection === 'all' ? (
-              <>
-                <Check className="w-3.5 h-3.5 mr-1 text-[#2ECC71]" />
-                <span>Copiado</span>
-              </>
-            ) : (
-              <>
-                <Copy className="w-3.5 h-3.5 mr-1" />
-                <span>Copiar MD</span>
-              </>
-            )}
-          </button>
-
-          {/* Export Word */}
-          <button
-            type="button"
-            onClick={handleExportDocx}
-            disabled={isExporting !== null}
-            className="inline-flex items-center justify-center px-2.5 py-1.5 text-xs font-semibold text-white bg-white/15 hover:bg-white/25 active:scale-95 transition-all rounded-xl border border-white/20 disabled:opacity-50"
-            title="Descargar documento Word (.docx) técnico"
-          >
-            <FileDown className="w-3.5 h-3.5 mr-1 text-blue-200" />
-            <span>Word</span>
-          </button>
-
-          {/* Export PDF */}
-          <button
-            type="button"
-            onClick={handleExportPdf}
-            disabled={isExporting !== null}
-            className="inline-flex items-center justify-center px-2.5 py-1.5 text-xs font-semibold text-white bg-white/15 hover:bg-white/25 active:scale-95 transition-all rounded-xl border border-white/20 disabled:opacity-50"
-            title="Descargar documento PDF técnico"
-          >
-            <FileDown className="w-3.5 h-3.5 mr-1 text-blue-200" />
-            <span>PDF</span>
-          </button>
-
-          {/* Save Button */}
-          {onSave && (
-            <button
-              type="button"
-              onClick={onSave}
-              className="inline-flex items-center justify-center px-3 py-1.5 text-xs font-bold text-[#0A3D62] bg-white hover:bg-slate-100 active:scale-95 transition-all rounded-xl shadow-md"
-              title="Guardar cambios en el proyecto e historial"
-            >
-              <Save className="w-3.5 h-3.5 mr-1" />
-              <span>Guardar</span>
-            </button>
-          )}
-
+      ) : (
+        <div className="bg-gradient-to-r from-[#0A3D62] via-[#0D4B75] to-[#1E5F8A] p-4 text-white flex flex-wrap items-center justify-between gap-3 border-b border-blue-900/40">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-white shrink-0">
+              <Terminal className="w-5 h-5 text-[#2ECC71]" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#2ECC71] text-slate-950 uppercase tracking-wider">
+                  Uso Interno Dev / QA
+                </span>
+                <span className="text-xs text-blue-200">
+                  Ticket: {metadata.ticketNo || 'N/A'}
+                </span>
+              </div>
+              <h2 className="text-base sm:text-lg font-bold leading-tight text-white">
+                Documentación Técnica Interna
+              </h2>
+              <p className="text-[11px] text-blue-100 hidden sm:block">
+                Documento independiente. Luego puedes atarlo a una propuesta del historial.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center flex-wrap gap-2">
+            {viewSwitcher}
+            {aiAndExportActions}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Linking & Project Context Pill Banner */}
+      {/* Linking & Project Context — standalone only; inside a proposal this is redundant */}
+      {!embedded && (
       <div className="bg-slate-100/90 border-b border-slate-200 px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs">
         
         {/* Left: Metadata and Edit Button */}
@@ -419,6 +759,16 @@ ${docData.codigoEjemplo || '-- Sin código especificado'}
               >
                 <Unlink className="w-3 h-3" />
               </button>
+              {onOpenLinkedProposal && (
+                <button
+                  type="button"
+                  onClick={onOpenLinkedProposal}
+                  className="text-emerald-800 hover:text-[#0A3D62] p-0.5 rounded transition-colors"
+                  title="Abrir la propuesta atada"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                </button>
+              )}
             </div>
           ) : (
             <div className="flex items-center gap-2">
@@ -439,10 +789,47 @@ ${docData.codigoEjemplo || '-- Sin código especificado'}
         </div>
 
       </div>
+      )}
 
       {/* Main Content Area */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 bg-slate-50/50">
+      <div className={`flex-1 overflow-y-auto relative ${
+        viewMode === 'preview' ? 'p-3 sm:p-4 bg-slate-100/90' : 'p-4 sm:p-6 space-y-6 bg-slate-50/50'
+      }`}>
+        {isGeneratingAI && (
+          <div className="absolute inset-0 z-20 bg-white/85 backdrop-blur-sm flex flex-col items-center justify-center gap-3 p-6 text-center">
+            <Loader2 className="w-8 h-8 animate-spin text-[#2ECC71]" />
+            <p className="text-sm font-bold text-[#0A3D62]">
+              Completando la documentación técnica con IA
+            </p>
+            <p className="text-xs text-slate-600 max-w-md">
+              Se está estructurando ruta, flujo, diseño, consideraciones y código a partir de la propuesta. Luego podrás editar todo a mano.
+            </p>
+            <button
+              type="button"
+              onClick={handleWriteManually}
+              className="mt-1 inline-flex items-center px-3 py-1.5 text-xs font-semibold text-[#0A3D62] bg-white border border-slate-300 rounded-xl hover:bg-slate-50"
+            >
+              <Edit3 className="w-3.5 h-3.5 mr-1.5" />
+              Cancelar y escribir a mano
+            </button>
+          </div>
+        )}
+        <input
+          ref={imageFileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            handleImageFilesSelected(e.target.files);
+            e.target.value = '';
+          }}
+        />
 
+        {viewMode === 'preview' ? (
+          <TechnicalDocPreview metadata={metadata} technicalDoc={docData} images={images} />
+        ) : (
+        <>
         {/* 1. RUTA */}
         <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-3">
           <div className="flex items-center justify-between pb-2 border-b border-slate-100">
@@ -465,8 +852,9 @@ ${docData.codigoEjemplo || '-- Sin código especificado'}
             textareaRef={rutaRef}
             value={docData.ruta}
             onChange={(v) => handleFieldChange('ruta', v)}
-            showTableButton={false}
+            onInsertTable={() => handleInsertTableInField('ruta')}
           />
+          {renderImageInsertBar('ruta')}
           <textarea
             id="techdoc-ruta"
             ref={rutaRef}
@@ -477,6 +865,8 @@ ${docData.codigoEjemplo || '-- Sin código especificado'}
             placeholder="Ejemplo: Menú Principal > Operaciones > Facturación > frm_gestion_cobros.aspx"
             className="w-full text-xs text-slate-800 bg-slate-50/70 border border-slate-200 rounded-xl p-3.5 focus:bg-white focus:border-[#0A3D62] focus:ring-1 focus:ring-[#0A3D62] outline-none transition-all resize-y leading-relaxed font-mono"
           />
+          {renderInlineTables(docData.ruta)}
+          {renderInlineImages(docData.ruta)}
         </div>
 
         {/* 2. FLUJO OPERATIVO */}
@@ -501,8 +891,9 @@ ${docData.codigoEjemplo || '-- Sin código especificado'}
             textareaRef={flujoRef}
             value={docData.flujoOperativo}
             onChange={(v) => handleFieldChange('flujoOperativo', v)}
-            showTableButton={false}
+            onInsertTable={() => handleInsertTableInField('flujoOperativo')}
           />
+          {renderImageInsertBar('flujoOperativo')}
           <textarea
             id="techdoc-flujo"
             ref={flujoRef}
@@ -513,6 +904,8 @@ ${docData.codigoEjemplo || '-- Sin código especificado'}
             placeholder="1. Evento Disparador: El usuario presiona el botón...\n2. Validación Frontend...\n3. Procesamiento Backend..."
             className="w-full text-xs text-slate-800 bg-slate-50/70 border border-slate-200 rounded-xl p-3.5 focus:bg-white focus:border-[#0A3D62] focus:ring-1 focus:ring-[#0A3D62] outline-none transition-all resize-y leading-relaxed"
           />
+          {renderInlineTables(docData.flujoOperativo)}
+          {renderInlineImages(docData.flujoOperativo)}
         </div>
 
         {/* 3. DISEÑO */}
@@ -537,8 +930,9 @@ ${docData.codigoEjemplo || '-- Sin código especificado'}
             textareaRef={disenoRef}
             value={docData.diseno}
             onChange={(v) => handleFieldChange('diseno', v)}
-            showTableButton={false}
+            onInsertTable={() => handleInsertTableInField('diseno')}
           />
+          {renderImageInsertBar('diseno')}
           <textarea
             id="techdoc-diseno"
             ref={disenoRef}
@@ -549,6 +943,8 @@ ${docData.codigoEjemplo || '-- Sin código especificado'}
             placeholder="• Componentes Visuales: Formulario modal con grilla...\n• Tablas de BD: TBL_CLIENTE_CUENTAS (Id, ClienteId, Saldo, Estado)..."
             className="w-full text-xs text-slate-800 bg-slate-50/70 border border-slate-200 rounded-xl p-3.5 focus:bg-white focus:border-[#0A3D62] focus:ring-1 focus:ring-[#0A3D62] outline-none transition-all resize-y leading-relaxed"
           />
+          {renderInlineTables(docData.diseno)}
+          {renderInlineImages(docData.diseno)}
         </div>
 
         {/* 4. CONSIDERACIONES TÉCNICAS */}
@@ -573,8 +969,9 @@ ${docData.codigoEjemplo || '-- Sin código especificado'}
             textareaRef={consRef}
             value={docData.consideracionesTecnicas}
             onChange={(v) => handleFieldChange('consideracionesTecnicas', v)}
-            showTableButton={false}
+            onInsertTable={() => handleInsertTableInField('consideracionesTecnicas')}
           />
+          {renderImageInsertBar('consideracionesTecnicas')}
           <textarea
             id="techdoc-cons"
             ref={consRef}
@@ -584,6 +981,38 @@ ${docData.codigoEjemplo || '-- Sin código especificado'}
             onKeyDown={(e) => handleAutoBulletKeyDown(e, docData.consideracionesTecnicas, (v) => handleFieldChange('consideracionesTecnicas', v))}
             placeholder="• Seguridad: Requiere rol SUPERVISOR_OPERACIONES...\n• Transacciones: Ejecutar dentro de BEGIN TRANSACTION...\n• Auditoría: Registrar usuario e IP en TBL_LOG..."
             className="w-full text-xs text-slate-800 bg-slate-50/70 border border-slate-200 rounded-xl p-3.5 focus:bg-white focus:border-[#0A3D62] focus:ring-1 focus:ring-[#0A3D62] outline-none transition-all resize-y leading-relaxed"
+          />
+          {renderInlineTables(docData.consideracionesTecnicas)}
+          {renderInlineImages(docData.consideracionesTecnicas)}
+        </div>
+
+        {onImagesChange && (
+          <ImageUploader compact images={images} onChange={onImagesChange} />
+        )}
+
+        {/* Tablas del documento */}
+        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-[#0A3D62]">
+                <Table2 className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">
+                  Tablas del documento
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  Inserta una tabla en Ruta, Flujo, Diseño o Consideraciones. También puedes crearlas aquí; en el texto aparecen como [TABLA_1], [TABLA_2]…
+                </p>
+              </div>
+            </div>
+            <span className="text-[11px] font-semibold text-slate-500 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-full">
+              {docData.tables?.length || 0} tabla{(docData.tables?.length || 0) === 1 ? '' : 's'}
+            </span>
+          </div>
+          <DocumentTablesEditor
+            tables={docData.tables || []}
+            onChange={(tables) => handleFieldChange('tables', tables)}
           />
         </div>
 
@@ -637,6 +1066,8 @@ ${docData.codigoEjemplo || '-- Sin código especificado'}
             spellCheck={false}
           />
         </div>
+        </>
+        )}
 
       </div>
 
@@ -683,7 +1114,7 @@ ${docData.codigoEjemplo || '-- Sin código especificado'}
                   className="mt-0.5 text-[#0A3D62] focus:ring-[#0A3D62] rounded"
                 />
                 <span className="text-[11px] text-blue-900 leading-tight">
-                  <strong>Sincronizar contexto y pasos operativos:</strong> Generar sugerencias de flujos y tablas a partir del contenido de la propuesta seleccionada.
+                  <strong>Sincronizar flujos de la propuesta:</strong> sugiere flujo y diseño a partir del contenido. Los datos del proyecto (cliente, ticket, módulo) se copian siempre al atar.
                 </span>
               </label>
 
@@ -780,6 +1211,18 @@ ${docData.codigoEjemplo || '-- Sin código especificado'}
                   />
                 </div>
                 <div>
+                  <label className="block font-bold text-slate-800 mb-1">Fecha:</label>
+                  <input
+                    type="date"
+                    value={tempMeta.fecha}
+                    onChange={(e) => setTempMeta({ ...tempMeta, fecha: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs text-slate-900 focus:ring-2 focus:ring-[#0A3D62] outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
                   <label className="block font-bold text-slate-800 mb-1">Ticket No:</label>
                   <input
                     type="text"
@@ -789,17 +1232,39 @@ ${docData.codigoEjemplo || '-- Sin código especificado'}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono text-slate-900 focus:ring-2 focus:ring-[#0A3D62] outline-none"
                   />
                 </div>
+                <div>
+                  <label className="block font-bold text-slate-800 mb-1">Guía No:</label>
+                  <input
+                    type="text"
+                    value={tempMeta.guiaNo}
+                    onChange={(e) => setTempMeta({ ...tempMeta, guiaNo: e.target.value })}
+                    placeholder="ej. G-2026-014"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono text-slate-900 focus:ring-2 focus:ring-[#0A3D62] outline-none"
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="block font-bold text-slate-800 mb-1">Módulo / Sistema:</label>
-                <input
-                  type="text"
-                  value={tempMeta.moduloAplicacion}
-                  onChange={(e) => setTempMeta({ ...tempMeta, moduloAplicacion: e.target.value })}
-                  placeholder="ej. Cobros y Facturación"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs text-slate-900 focus:ring-2 focus:ring-[#0A3D62] outline-none"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-800 mb-1">Propuesta Nº:</label>
+                  <input
+                    type="text"
+                    value={tempMeta.propuestaNo}
+                    onChange={(e) => setTempMeta({ ...tempMeta, propuestaNo: e.target.value })}
+                    placeholder="ej. PT-2026-042"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono text-slate-900 focus:ring-2 focus:ring-[#0A3D62] outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-800 mb-1">Módulo / Sistema:</label>
+                  <input
+                    type="text"
+                    value={tempMeta.moduloAplicacion}
+                    onChange={(e) => setTempMeta({ ...tempMeta, moduloAplicacion: e.target.value })}
+                    placeholder="ej. Cobros y Facturación"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs text-slate-900 focus:ring-2 focus:ring-[#0A3D62] outline-none"
+                  />
+                </div>
               </div>
 
               <div className="flex items-center justify-end space-x-2 pt-3 border-t border-slate-200">

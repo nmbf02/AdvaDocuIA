@@ -1,13 +1,15 @@
 import React, { useRef } from 'react';
 import { UploadedImage } from '../types';
 import { UploadCloud, Trash2, ArrowUp, ArrowDown, Info } from 'lucide-react';
+import { ImageFormatPanel } from './ImageFormatPanel';
 
 interface ImageUploaderProps {
   images: UploadedImage[];
   onChange: (images: UploadedImage[]) => void;
+  compact?: boolean;
 }
 
-export const ImageUploader: React.FC<ImageUploaderProps> = ({ images, onChange }) => {
+export const ImageUploader: React.FC<ImageUploaderProps> = ({ images, onChange, compact = false }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFilesSelected = (files: FileList | null) => {
@@ -55,8 +57,8 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ images, onChange }
     handleFilesSelected(e.dataTransfer.files);
   };
 
-  const handleImageUpdate = (id: string, field: 'title' | 'description', value: string) => {
-    onChange(images.map(img => img.id === id ? { ...img, [field]: value } : img));
+  const handleImageUpdate = (id: string, patch: Partial<UploadedImage>) => {
+    onChange(images.map((img) => (img.id === id ? { ...img, ...patch } : img)));
   };
 
   const handleRemoveImage = (id: string) => {
@@ -77,12 +79,18 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ images, onChange }
     <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-sm border border-slate-200/90 p-3 sm:p-4 min-w-0 max-w-full overflow-x-hidden">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3 mb-4">
         <div className="flex items-center space-x-2 min-w-0">
-          <div className="w-8 h-8 rounded-xl bg-blue-50 text-[#0A3D62] flex items-center justify-center font-bold text-sm border border-blue-200 shrink-0">
-            3
-          </div>
+          {!compact && (
+            <div className="w-8 h-8 rounded-xl bg-blue-50 text-[#0A3D62] flex items-center justify-center font-bold text-sm border border-blue-200 shrink-0">
+              3
+            </div>
+          )}
           <div className="min-w-0">
-            <h2 className="text-base font-bold text-[#0A3D62] truncate">Imágenes</h2>
-            <p className="text-xs text-slate-500">Capturas o diagramas que irán en el documento (opcional)</p>
+            <h2 className={`font-bold text-[#0A3D62] truncate ${compact ? 'text-sm' : 'text-base'}`}>Imágenes</h2>
+            <p className="text-xs text-slate-500">
+              {compact
+                ? 'Capturas o diagramas. Úsalas en las secciones con [IMAGEN_1], [IMAGEN_2]…'
+                : 'Capturas o diagramas que irán en el documento (opcional)'}
+            </p>
           </div>
         </div>
 
@@ -114,7 +122,9 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ images, onChange }
             Arrastra las imágenes aquí o <span className="text-[#0A3D62] underline">haz clic para elegirlas</span>
           </p>
           <p className="text-xs text-slate-400 mt-1">
-            PNG, JPG o SVG. Se insertan en el análisis del documento.
+            {compact
+              ? 'PNG, JPG o SVG. Luego inserta [IMAGEN_n] en Ruta, Flujo, Diseño o Consideraciones.'
+              : 'PNG, JPG o SVG. Se insertan en el análisis del documento.'}
           </p>
         </div>
       </div>
@@ -124,7 +134,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ images, onChange }
         <div className="mt-5 space-y-3">
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center">
             <Info className="w-3.5 h-3.5 mr-1 text-[#0A3D62]" />
-            Configura el título y descripción de cada imagen (Se vincularán como [IMAGEN_1], [IMAGEN_2] en el documento):
+            Formato de imagen al estilo Word: ajuste de texto, posición, tamaño y rotación.
           </h3>
 
           <div className="grid grid-cols-1 gap-3">
@@ -154,7 +164,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ images, onChange }
                     <input
                       type="text"
                       value={img.title}
-                      onChange={(e) => handleImageUpdate(img.id, 'title', e.target.value)}
+                      onChange={(e) => handleImageUpdate(img.id, { title: e.target.value })}
                       placeholder="Ej: Diagrama de arquitectura del módulo de cobranzas"
                       className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded focus:ring-1 focus:ring-[#0A3D62] text-slate-800"
                     />
@@ -167,11 +177,16 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ images, onChange }
                     <input
                       type="text"
                       value={img.description}
-                      onChange={(e) => handleImageUpdate(img.id, 'description', e.target.value)}
+                      onChange={(e) => handleImageUpdate(img.id, { description: e.target.value })}
                       placeholder="Ej: Muestra el paso 2 donde el analista aprueba el reembolso manual"
                       className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded focus:ring-1 focus:ring-[#0A3D62] text-slate-800"
                     />
                   </div>
+
+                  <ImageFormatPanel
+                    image={img}
+                    onChange={(patch) => handleImageUpdate(img.id, patch)}
+                  />
                 </div>
 
                 {/* Controls (Order & Delete) */}

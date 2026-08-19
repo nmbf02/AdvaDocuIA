@@ -1,18 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { MetadataHeader, UploadedImage, ProposalSection, SavedProposal, BrandingSettings, DocumentStatus } from './types';
+import { MetadataHeader, UploadedImage, ProposalSection, SavedProposal, BrandingSettings, DocumentStatus, TechnicalDoc } from './types';
 import { Header } from './components/Header';
 import { MetadataForm } from './components/MetadataForm';
 import { RequirementsInput } from './components/RequirementsInput';
 import { ImageUploader } from './components/ImageUploader';
 import { ProposalEditor } from './components/ProposalEditor';
+import { TechnicalDocEditor } from './components/TechnicalDocEditor';
 import { HistoryModal } from './components/HistoryModal';
 import { ConfirmModal } from './components/ConfirmModal';
 import { SettingsModal } from './components/SettingsModal';
 import { WelcomeIntro } from './components/WelcomeIntro';
 import { ADVANSYS_SAMPLE_METADATA, ADVANSYS_SAMPLE_REQUIREMENTS, ADVANSYS_SAMPLE_IMAGES, EMPTY_MANUAL_PROPOSAL } from './data/presets';
 import { createDefaultSlideDeck, convertProposalToSlideDeck } from './utils/slideDeckTemplates';
-import { createDefaultTechnicalDoc } from './utils/technicalDocTemplates';
-import { Sparkles, Loader2, FileText, AlertCircle, Cpu, Columns2, ClipboardList, Maximize2, Image as ImageIcon, PenLine, NotebookPen, Layers, X, Check, Presentation, Terminal } from 'lucide-react';
+import { createDefaultTechnicalDoc, proposalHasSubstance, copyLinkedProposalMetadata } from './utils/technicalDocTemplates';
+import { Sparkles, Loader2, FileText, AlertCircle, Cpu, Columns2, ClipboardList, Maximize2, Image as ImageIcon, PenLine, NotebookPen, Layers, X, Check } from 'lucide-react';
 
 const STORAGE_KEY_HISTORY = 'advansys_docgen_history_v1';
 const STORAGE_KEY_DRAFT = 'advansys_docgen_current_draft_v1';
@@ -31,6 +32,34 @@ const extractBranding = (source?: Partial<BrandingSettings> | null): BrandingSet
 const stripDocumentLogo = (meta: MetadataHeader): MetadataHeader => {
   const { logoDataUrl, logoMimeType, logoFileName, logoWidth, logoHeight, customTitles, ...rest } = meta;
   return rest;
+};
+
+const createEmptyMetadata = (): MetadataHeader => ({
+  cliente: '',
+  fecha: new Date().toISOString().split('T')[0],
+  ticketNo: '',
+  guiaNo: '',
+  propuestaNo: '',
+  nombreProyecto: '',
+  moduloAplicacion: '',
+  headerBrandTag: 'ADVANSYS',
+  headerSubtitle: '',
+  footerText: 'Advansys SRL',
+  technicalLevel: 7,
+  detailLevel: 6,
+  paraphraseLevel: 3,
+});
+
+const inferSavedDocumentType = (saved: SavedProposal): 'proposal' | 'slides' | 'technical' => {
+  if (saved.documentType) return saved.documentType;
+  if (saved.content?.technicalDoc?.isStandalone) return 'technical';
+  return 'proposal';
+};
+
+const linkedProposalLabel = (item: SavedProposal): string => {
+  const ticket = item.metadata.ticketNo ? `[${item.metadata.ticketNo}] ` : '';
+  const name = item.metadata.nombreProyecto || 'Propuesta';
+  return `${ticket}${name} (${item.version || 'v1.0'})`;
 };
 
 export default function App() {
@@ -87,6 +116,7 @@ export default function App() {
   const [layoutMode, setLayoutMode] = useState<'split' | 'inputs' | 'editor'>('split');
   const [inputTab, setInputTab] = useState<'metadatos' | 'requerimientos' | 'imagenes' | 'all'>('requerimientos');
   const [editorTab, setEditorTab] = useState<'editor' | 'preview' | 'slides' | 'technical'>('editor');
+  const [workspaceMode, setWorkspaceMode] = useState<'proposal' | 'technical'>('proposal');
 
   // Theme State ('light' | 'dark')
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
@@ -131,6 +161,12 @@ export default function App() {
         if (parsed.version) setCurrentVersion(parsed.version);
         if (parsed.versionNote) setCurrentVersionNote(parsed.versionNote);
         if (parsed.status) setCurrentStatus(parsed.status);
+        if (parsed.workspaceMode === 'technical' || parsed.proposal?.technicalDoc?.isStandalone) {
+          setWorkspaceMode('technical');
+          setEditorTab('technical');
+        } else if (parsed.editorTab === 'slides' || parsed.editorTab === 'preview' || parsed.editorTab === 'technical') {
+          setEditorTab(parsed.editorTab);
+        }
         if (parsed.timestamp) {
           const t = new Date(parsed.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           setLastSavedTime(t);
@@ -200,6 +236,8 @@ export default function App() {
       version: currentVersion,
       versionNote: currentVersionNote,
       status: currentStatus,
+      workspaceMode,
+      editorTab,
       timestamp: now.toISOString()
     };
 
@@ -225,6 +263,9 @@ export default function App() {
     const noteLabel = customNote !== undefined ? customNote : currentVersionNote;
     const nowIso = new Date().toISOString();
 
+    const documentType: SavedProposal['documentType'] =
+      workspaceMode === 'technical' ? 'technical' : editorTab === 'slides' ? 'slides' : 'proposal';
+
     if (isNewVersionExplicit) {
       // Create a brand new document / version entry
       const newEntryId = `prop-${Date.now()}`;
@@ -238,7 +279,11 @@ export default function App() {
         metadata,
         content: newProposal,
         images,
-        rawRequirements
+        rawRequirements,
+        documentType,
+        technicalDoc: newProposal.technicalDoc,
+        linkedProposalId: newProposal.technicalDoc?.linkedProposalId,
+        linkedProposalName: newProposal.technicalDoc?.linkedProposalName,
       };
       const updatedHistory = [newEntry, ...history.filter(h => h.id !== newEntryId).slice(0, 49)];
       setHistory(updatedHistory);
@@ -271,7 +316,11 @@ export default function App() {
         metadata,
         content: newProposal,
         images,
-        rawRequirements
+        rawRequirements,
+        documentType: history[existingIndex].documentType || documentType,
+        technicalDoc: newProposal.technicalDoc,
+        linkedProposalId: newProposal.technicalDoc?.linkedProposalId,
+        linkedProposalName: newProposal.technicalDoc?.linkedProposalName,
       };
       updatedHistory = [...history];
       updatedHistory[existingIndex] = updatedItem;
@@ -286,7 +335,11 @@ export default function App() {
         metadata,
         content: newProposal,
         images,
-        rawRequirements
+        rawRequirements,
+        documentType,
+        technicalDoc: newProposal.technicalDoc,
+        linkedProposalId: newProposal.technicalDoc?.linkedProposalId,
+        linkedProposalName: newProposal.technicalDoc?.linkedProposalName,
       };
       updatedHistory = [newEntry, ...history.slice(0, 49)];
     }
@@ -297,6 +350,45 @@ export default function App() {
     } catch (e) {
       console.error("Failed to save history:", e);
     }
+  };
+
+  const persistCurrentDocumentIfNeeded = () => {
+    if (!proposal) return;
+    const hasMeta = Boolean(
+      metadata.nombreProyecto.trim() || metadata.cliente.trim() || metadata.ticketNo.trim()
+    );
+    const hasBody = Boolean(
+      proposal.resumenEjecutivo?.trim() ||
+      proposal.objetivo?.trim() ||
+      proposal.slideDeck ||
+      rawRequirements.trim() ||
+      (proposal.technicalDoc && (hasMeta || proposal.technicalDoc.linkedProposalId))
+    );
+    if (!hasMeta && !hasBody) return;
+    const targetDocId = currentDocumentId || `prop-${Date.now()}`;
+    saveToHistory(proposal, currentVersion, currentVersionNote, targetDocId, false);
+  };
+
+  const applySavedDocument = (saved: SavedProposal) => {
+    setCurrentDocumentId(saved.id);
+    setCurrentStatus(saved.status || 'borrador');
+    setMetadata(stripDocumentLogo(saved.metadata));
+    setRawRequirements(saved.rawRequirements || '');
+    setImages(saved.images || []);
+    setProposal(saved.content);
+    setCurrentVersion(saved.version || 'v1.0');
+    setCurrentVersionNote(saved.versionNote || '');
+    const docType = inferSavedDocumentType(saved);
+    if (docType === 'technical') {
+      setWorkspaceMode('technical');
+      setEditorTab('technical');
+      setLayoutMode('editor');
+    } else {
+      setWorkspaceMode('proposal');
+      setEditorTab(docType === 'slides' ? 'slides' : 'editor');
+    }
+    setShowWelcome(false);
+    setIsHistoryOpen(false);
   };
 
   // Update proposal status handler (e.g. Borrador -> Finalizado / Culminado)
@@ -359,7 +451,11 @@ export default function App() {
       metadata: { ...item.metadata },
       content: JSON.parse(JSON.stringify(item.content)),
       images: [...(item.images || [])],
-      rawRequirements: item.rawRequirements || ''
+      rawRequirements: item.rawRequirements || '',
+      documentType: inferSavedDocumentType(item),
+      technicalDoc: item.technicalDoc || item.content?.technicalDoc,
+      linkedProposalId: item.linkedProposalId,
+      linkedProposalName: item.linkedProposalName,
     };
 
     const updated = [newEntry, ...history];
@@ -371,14 +467,7 @@ export default function App() {
     }
 
     // Load duplicated item into active workspace editor
-    setCurrentDocumentId(newEntryId);
-    setMetadata(stripDocumentLogo(newEntry.metadata));
-    setRawRequirements(newEntry.rawRequirements);
-    setImages(newEntry.images);
-    setProposal(newEntry.content);
-    setCurrentVersion(newEntry.version);
-    setCurrentVersionNote(newEntry.versionNote || '');
-    setIsHistoryOpen(false);
+    applySavedDocument(newEntry);
 
     setShowSavedToast(true);
     setTimeout(() => setShowSavedToast(false), 3000);
@@ -399,25 +488,13 @@ export default function App() {
 
   const handleConfirmReset = () => {
     setCurrentDocumentId(null);
-    setMetadata({
-      cliente: '',
-      fecha: new Date().toISOString().split('T')[0],
-      ticketNo: '',
-      guiaNo: '',
-      propuestaNo: '',
-      nombreProyecto: '',
-      moduloAplicacion: '',
-      headerBrandTag: 'ADVANSYS',
-      headerSubtitle: '',
-      footerText: 'Advansys SRL',
-      technicalLevel: 7,
-      detailLevel: 6,
-      paraphraseLevel: 3,
-    });
+    setMetadata(createEmptyMetadata());
     setRawRequirements('');
     setImages([]);
     setProposal(null);
     setError(null);
+    setWorkspaceMode('proposal');
+    setEditorTab('editor');
     setIsConfirmResetOpen(false);
   };
 
@@ -492,6 +569,8 @@ export default function App() {
   const handleStartManualDraft = () => {
     const newDocId = `prop-${Date.now()}`;
     setCurrentDocumentId(newDocId);
+    setWorkspaceMode('proposal');
+    setEditorTab('editor');
     setProposal(EMPTY_MANUAL_PROPOSAL);
     setError(null);
   };
@@ -545,67 +624,75 @@ export default function App() {
 
   // Welcome Screen Action Handlers
   const handleStartNewFromWelcome = () => {
-    // Clear fields for a clean fresh document while keeping branding settings
+    persistCurrentDocumentIfNeeded();
     setCurrentDocumentId(null);
-    setMetadata({
-      cliente: '',
-      fecha: new Date().toISOString().split('T')[0],
-      ticketNo: '',
-      guiaNo: '',
-      propuestaNo: '',
-      nombreProyecto: '',
-      moduloAplicacion: '',
-      headerBrandTag: 'ADVANSYS',
-      headerSubtitle: '',
-      footerText: 'Advansys SRL',
-      technicalLevel: 7,
-      detailLevel: 6,
-      paraphraseLevel: 3,
-    });
+    setMetadata(createEmptyMetadata());
     setRawRequirements('');
     setImages([]);
     setProposal(null);
     setCurrentVersion('v1.0');
     setCurrentVersionNote('');
+    setCurrentStatus('borrador');
+    setWorkspaceMode('proposal');
     setEditorTab('editor');
+    setLayoutMode('split');
     setError(null);
     setShowWelcome(false);
   };
 
   const handleStartSlidesFromWelcome = () => {
+    persistCurrentDocumentIfNeeded();
+    setMetadata(createEmptyMetadata());
+    setRawRequirements('');
+    setImages([]);
+    setCurrentVersion('v1.0');
+    setCurrentVersionNote('');
+    setCurrentStatus('borrador');
+    setWorkspaceMode('proposal');
     setEditorTab('slides');
-    if (!proposal) {
-      const initialDeck = createDefaultSlideDeck(metadata, images);
-      const docId = currentDocumentId || `prop-${Date.now()}`;
-      setCurrentDocumentId(docId);
-      setProposal({
-        ...EMPTY_MANUAL_PROPOSAL,
-        slideDeck: initialDeck,
-      });
+    setLayoutMode('split');
+    const initialDeck = createDefaultSlideDeck(createEmptyMetadata(), []);
+    const docId = `prop-${Date.now()}`;
+    setCurrentDocumentId(docId);
+    setProposal({
+      ...EMPTY_MANUAL_PROPOSAL,
+      slideDeck: initialDeck,
+    });
+    setError(null);
+    setShowWelcome(false);
+  };
+
+  const handleStartStandaloneTechnicalDoc = (options?: { resetFields?: boolean }) => {
+    persistCurrentDocumentIfNeeded();
+    const emptyMeta = createEmptyMetadata();
+    const meta = options?.resetFields ? emptyMeta : metadata;
+    if (options?.resetFields) {
+      setMetadata(emptyMeta);
+      setRawRequirements('');
+      setImages([]);
     }
+    const defaultTech = {
+      ...createDefaultTechnicalDoc(meta, null),
+      isStandalone: true,
+    };
+    const docId = `tech_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    setCurrentDocumentId(docId);
+    setCurrentVersion('v1.0');
+    setCurrentVersionNote('');
+    setCurrentStatus('borrador');
+    setProposal({
+      ...EMPTY_MANUAL_PROPOSAL,
+      technicalDoc: defaultTech,
+    });
+    setWorkspaceMode('technical');
+    setEditorTab('technical');
+    setLayoutMode('editor');
     setError(null);
     setShowWelcome(false);
   };
 
   const handleStartTechnicalDocFromWelcome = () => {
-    setEditorTab('technical');
-    if (!proposal) {
-      const docId = `doc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-      const defaultTech = createDefaultTechnicalDoc(metadata, null);
-      setCurrentDocumentId(docId);
-      setProposal({
-        ...EMPTY_MANUAL_PROPOSAL,
-        technicalDoc: defaultTech,
-      });
-    } else if (!proposal.technicalDoc) {
-      const defaultTech = createDefaultTechnicalDoc(metadata, proposal);
-      setProposal({
-        ...proposal,
-        technicalDoc: defaultTech,
-      });
-    }
-    setError(null);
-    setShowWelcome(false);
+    handleStartStandaloneTechnicalDoc({ resetFields: true });
   };
 
   const handleContinueDraftFromWelcome = () => {
@@ -613,19 +700,137 @@ export default function App() {
   };
 
   const handleLoadHistoryFromWelcome = (saved: SavedProposal) => {
-    setCurrentDocumentId(saved.id);
-    setMetadata(stripDocumentLogo(saved.metadata));
-    setRawRequirements(saved.rawRequirements || '');
-    setImages(saved.images || []);
-    setProposal(saved.content);
-    setCurrentVersion(saved.version || 'v1.0');
-    setCurrentVersionNote(saved.versionNote || '');
-    setShowWelcome(false);
+    applySavedDocument(saved);
   };
 
   const handleLoadPresetFromWelcome = () => {
+    persistCurrentDocumentIfNeeded();
     handleLoadPreset();
+    setWorkspaceMode('proposal');
+    setEditorTab('editor');
     setShowWelcome(false);
+  };
+
+  const handleLinkTechnicalToProposal = (selected: SavedProposal, syncContext: boolean) => {
+    if (!proposal) return;
+    const currentTech = proposal.technicalDoc || createDefaultTechnicalDoc(metadata, proposal);
+    const linkedName = linkedProposalLabel(selected);
+    const nextMeta = copyLinkedProposalMetadata(metadata, selected.metadata);
+    setMetadata(stripDocumentLogo(nextMeta));
+
+    let nextTech: TechnicalDoc = {
+      ...currentTech,
+      linkedProposalId: selected.id,
+      linkedProposalName: linkedName,
+      isStandalone: workspaceMode === 'technical',
+      lastUpdated: new Date().toISOString(),
+    };
+
+    if (syncContext && selected.content) {
+      const seeded = createDefaultTechnicalDoc(nextMeta, selected.content);
+      nextTech = {
+        ...nextTech,
+        flujoOperativo: seeded.flujoOperativo,
+        diseno: seeded.diseno,
+      };
+    }
+
+    const nextProposal = { ...proposal, technicalDoc: nextTech };
+    setProposal(nextProposal);
+
+    const techDocId = currentDocumentId;
+    let nextHistory = history.map((h) => {
+      if (h.id === selected.id) {
+        return {
+          ...h,
+          technicalDoc: nextTech,
+          linkedTechnicalDocId: techDocId || undefined,
+          content: { ...h.content, technicalDoc: nextTech },
+        };
+      }
+      if (techDocId && h.id === techDocId) {
+        return {
+          ...h,
+          documentType: workspaceMode === 'technical' ? 'technical' as const : h.documentType,
+          linkedProposalId: selected.id,
+          linkedProposalName: linkedName,
+          technicalDoc: nextTech,
+          content: { ...h.content, technicalDoc: nextTech },
+          metadata: { ...h.metadata, ...stripDocumentLogo(nextMeta) },
+        };
+      }
+      return h;
+    });
+
+    if (techDocId && !nextHistory.some((h) => h.id === techDocId)) {
+      nextHistory = [
+        {
+          id: techDocId,
+          version: currentVersion || 'v1.0',
+          versionNote: currentVersionNote,
+          status: currentStatus || 'borrador',
+          timestamp: new Date().toISOString(),
+          metadata: nextMeta,
+          content: nextProposal,
+          images,
+          rawRequirements,
+          documentType: workspaceMode === 'technical' ? 'technical' as const : 'proposal',
+          technicalDoc: nextTech,
+          linkedProposalId: selected.id,
+          linkedProposalName: linkedName,
+        },
+        ...nextHistory,
+      ];
+    }
+
+    setHistory(nextHistory);
+    try {
+      localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(nextHistory));
+    } catch (e) {
+      console.error('Failed to persist technical doc link:', e);
+    }
+  };
+
+  const handleUnlinkTechnicalFromProposal = () => {
+    if (!proposal?.technicalDoc) return;
+    const linkedId = proposal.technicalDoc.linkedProposalId;
+    const nextTech: TechnicalDoc = {
+      ...proposal.technicalDoc,
+      linkedProposalId: undefined,
+      linkedProposalName: undefined,
+      isStandalone: true,
+      lastUpdated: new Date().toISOString(),
+    };
+    setProposal({ ...proposal, technicalDoc: nextTech });
+    const techDocId = currentDocumentId;
+    const updatedHistory = history.map((h) => {
+      if (techDocId && h.id === techDocId) {
+        return {
+          ...h,
+          linkedProposalId: undefined,
+          linkedProposalName: undefined,
+          technicalDoc: nextTech,
+          content: { ...h.content, technicalDoc: nextTech },
+        };
+      }
+      if (linkedId && h.id === linkedId) {
+        return { ...h, linkedTechnicalDocId: undefined };
+      }
+      return h;
+    });
+    setHistory(updatedHistory);
+    try {
+      localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(updatedHistory));
+    } catch (e) {
+      console.error('Failed to persist technical doc unlink:', e);
+    }
+  };
+
+  const handleOpenLinkedProposal = () => {
+    const linkedId = proposal?.technicalDoc?.linkedProposalId;
+    if (!linkedId) return;
+    const saved = history.find((h) => h.id === linkedId);
+    if (saved) applySavedDocument(saved);
   };
 
   const hasActiveDraft = Boolean(
@@ -646,7 +851,13 @@ export default function App() {
         <WelcomeIntro
           hasActiveDraft={hasActiveDraft}
           draftInfo={{
-            nombreProyecto: metadata.nombreProyecto || (proposal ? 'Propuesta en desarrollo' : undefined),
+            nombreProyecto: metadata.nombreProyecto || (
+              proposal?.technicalDoc?.isStandalone
+                ? 'Doc. técnica en desarrollo'
+                : proposal
+                  ? 'Propuesta en desarrollo'
+                  : undefined
+            ),
             cliente: metadata.cliente,
             moduloAplicacion: metadata.moduloAplicacion,
             version: currentVersion,
@@ -712,6 +923,7 @@ export default function App() {
         historyCount={history.length}
         logoDataUrl={branding.logoDataUrl}
         projectName={metadata.nombreProyecto}
+        documentKind={workspaceMode === 'technical' ? 'technical' : 'proposal'}
       />
 
       {/* Main Container */}
@@ -735,11 +947,39 @@ export default function App() {
           </div>
         )}
 
+        {workspaceMode === 'technical' && (
+          <div className="min-w-0 flex-1 min-h-0 overflow-hidden max-md:overflow-visible">
+            <TechnicalDocEditor
+              technicalDoc={proposal?.technicalDoc}
+              metadata={brandedMetadata}
+              proposal={proposal}
+              images={images}
+              rawRequirements={rawRequirements}
+              history={history}
+              currentDocumentId={currentDocumentId}
+              onChange={(updatedTechDoc) => {
+                setProposal((prev) => ({
+                  ...(prev || EMPTY_MANUAL_PROPOSAL),
+                  technicalDoc: updatedTechDoc,
+                }));
+              }}
+              onSave={handleSaveChanges}
+              onMetadataChange={(updated) => setMetadata(stripDocumentLogo(updated))}
+              onLinkProposal={handleLinkTechnicalToProposal}
+              onUnlinkProposal={handleUnlinkTechnicalFromProposal}
+              onOpenLinkedProposal={handleOpenLinkedProposal}
+              onImagesChange={setImages}
+              autoGenerateFromProposal={proposalHasSubstance(proposal)}
+            />
+          </div>
+        )}
+
+        {workspaceMode === 'proposal' && (
+        <>
         {/* Workspace Mode Bar Switcher */}
         <div className="relative sticky top-14 sm:top-16 lg:top-0 z-40 bg-slate-900 text-white backdrop-blur-md rounded-2xl p-1.5 sm:p-2 shadow-md border border-slate-800 sticky-bar flex flex-wrap items-center justify-between gap-2 shrink-0">
           <div className="flex items-center gap-2 text-xs px-2 min-w-0">
             <span className="font-bold text-[#2ECC71]">Vista</span>
-            <span className="text-slate-300 hidden md:inline">Elige si ves los datos, el documento o ambos</span>
           </div>
 
           <div className="bg-slate-800/90 p-1 rounded-xl flex items-center gap-0.5 border border-slate-700/80 text-xs w-full sm:w-auto overflow-x-auto no-scrollbar">
@@ -797,7 +1037,7 @@ export default function App() {
               {/* Input Navigation Tabs to Prevent Endlessly Scrolling Down */}
               <div className="relative sticky top-14 sm:top-16 lg:top-0 z-20 bg-white/95 backdrop-blur-md p-1.5 rounded-2xl border border-white/80 shadow-sm sticky-bar text-xs">
                 <p className="px-1.5 pb-1.5 text-[11px] text-slate-500">
-                  Completa los pasos de izquierda a derecha. En Notas puedes subir un Word, TXT o Markdown.
+                  1 Datos → 2 Notas → Generar. Las imágenes son opcionales.
                 </p>
                 <div className="grid grid-cols-4 gap-1 w-full min-w-0">
                   <button
@@ -892,10 +1132,12 @@ export default function App() {
               <div className="bg-white/95 backdrop-blur-sm rounded-2xl p-4 border border-slate-200/90 shadow-sm space-y-2.5 min-w-0 max-w-full overflow-x-hidden">
                 <div className="min-w-0 mb-1">
                   <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">
-                    Crear documento
+                    {proposal ? 'Borrador' : 'Crear documento'}
                   </span>
                   <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-                    Con las notas listas, genera un borrador o escribe tú el contenido.
+                    {proposal
+                      ? 'Regenera el texto con IA si cambian las notas. Doc. Técnica y Diapositivas están en las pestañas del documento.'
+                      : 'Con las notas listas, genera un borrador o escribe tú el contenido.'}
                   </p>
                 </div>
 
@@ -916,11 +1158,14 @@ export default function App() {
                   ) : (
                     <>
                       <Sparkles className="w-4 h-4 text-[#2ECC71] shrink-0" />
-                      <span className="text-center leading-tight">Generar con IA</span>
+                      <span className="text-center leading-tight">
+                        {proposal ? 'Regenerar con IA' : 'Generar con IA'}
+                      </span>
                     </>
                   )}
                 </button>
 
+                {!proposal && (
                 <button
                   type="button"
                   onClick={() => {
@@ -933,35 +1178,7 @@ export default function App() {
                   <PenLine className="w-4 h-4 shrink-0" />
                   <span className="text-center leading-tight">Escribir a mano</span>
                 </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!proposal) {
-                      const docId = `doc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-                      const defaultTech = createDefaultTechnicalDoc(metadata, null);
-                      setCurrentDocumentId(docId);
-                      setProposal({
-                        ...EMPTY_MANUAL_PROPOSAL,
-                        technicalDoc: defaultTech,
-                      });
-                    } else if (!proposal.technicalDoc) {
-                      const defaultTech = createDefaultTechnicalDoc(metadata, proposal);
-                      setProposal({
-                        ...proposal,
-                        technicalDoc: defaultTech,
-                      });
-                    }
-                    setEditorTab('technical');
-                    if (layoutMode === 'inputs') setLayoutMode('split');
-                  }}
-                  disabled={isGenerating}
-                  className="w-full py-2.5 px-3 rounded-xl font-semibold text-xs text-slate-700 bg-slate-50 hover:bg-slate-100 active:scale-[0.99] transition-all flex items-center justify-center gap-2 border border-slate-300/80 disabled:opacity-50"
-                  title="Abrir o crear la sección de Documentación Técnica Interna"
-                >
-                  <Terminal className="w-4 h-4 text-[#2ECC71] shrink-0" />
-                  <span className="text-center leading-tight">Doc. Técnica Interna</span>
-                </button>
+                )}
 
                 {isGenerating && (
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center space-y-1 toast-in">
@@ -992,6 +1209,8 @@ export default function App() {
                   metadata={brandedMetadata}
                   images={images}
                   rawRequirements={rawRequirements}
+                  history={history}
+                  currentDocumentId={currentDocumentId}
                   onChange={setProposal}
                   onSave={handleSaveChanges}
                   onSaveNewVersion={handleSaveNewVersion}
@@ -1009,6 +1228,11 @@ export default function App() {
                   lastSavedTime={lastSavedTime}
                   showSavedToast={showSavedToast}
                   initialTab={editorTab}
+                  onMetadataChange={(updated) => setMetadata(stripDocumentLogo(updated))}
+                  onLinkProposal={handleLinkTechnicalToProposal}
+                  onUnlinkProposal={handleUnlinkTechnicalFromProposal}
+                  onOpenLinkedProposal={handleOpenLinkedProposal}
+                  onImagesChange={setImages}
                 />
               ) : (
                 /* Initial State Placeholder */
@@ -1019,10 +1243,10 @@ export default function App() {
 
                 <div className="max-w-md space-y-2">
                   <h3 className="text-lg font-bold text-[#0A3D62]">
-                    Tu documento o diapositivas aparecerán aquí
+                    Aquí aparecerá tu propuesta
                   </h3>
                   <p className="text-sm text-slate-600 leading-relaxed">
-                    Completa los datos y las notas a la izquierda. Luego genera un borrador con IA, o escríbelo tú.
+                    Completa Datos y Notas a la izquierda. Luego genera con IA o empieza a escribir. Doc. Técnica y Diapositivas se abren en las pestañas del documento, no desde aquí.
                   </p>
                 </div>
 
@@ -1040,7 +1264,7 @@ export default function App() {
                   <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
                     <span className="w-6 h-6 rounded-lg bg-[#2ECC71] text-slate-950 text-xs font-bold inline-flex items-center justify-center mb-1.5">3</span>
                     <span className="block font-bold text-slate-800">Generar</span>
-                    <span>Documento Word, PDF y Diapositivas PPTX.</span>
+                    <span>Usa el botón de la izquierda. Luego exporta Word o PDF.</span>
                   </div>
                 </div>
 
@@ -1051,46 +1275,6 @@ export default function App() {
                     >
                       <PenLine className="w-4 h-4 mr-1.5" />
                       <span>Empezar a escribir</span>
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        setEditorTab('technical');
-                        if (!proposal) {
-                          const docId = `doc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-                          const defaultTech = createDefaultTechnicalDoc(metadata, null);
-                          setCurrentDocumentId(docId);
-                          setProposal({
-                            ...EMPTY_MANUAL_PROPOSAL,
-                            technicalDoc: defaultTech,
-                          });
-                        } else if (!proposal.technicalDoc) {
-                          const defaultTech = createDefaultTechnicalDoc(metadata, proposal);
-                          setProposal({
-                            ...proposal,
-                            technicalDoc: defaultTech,
-                          });
-                        }
-                      }}
-                      className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2.5 text-xs font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl border border-slate-300 transition-all"
-                    >
-                      <Terminal className="w-4 h-4 mr-1.5 text-[#2ECC71]" />
-                      <span>Doc. Técnica</span>
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        setEditorTab('slides');
-                        const initialDeck = createDefaultSlideDeck(metadata, images);
-                        setProposal({
-                          ...EMPTY_MANUAL_PROPOSAL,
-                          slideDeck: initialDeck,
-                        });
-                      }}
-                      className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2.5 text-xs font-bold text-slate-950 bg-[#2ECC71] hover:bg-[#27ae60] rounded-xl shadow transition-all"
-                    >
-                      <Presentation className="w-4 h-4 mr-1.5" />
-                      <span>Crear Diapositivas</span>
                     </button>
 
                     <button
@@ -1107,6 +1291,8 @@ export default function App() {
         )}
 
         </div>
+        </>
+        )}
 
       </main>
 
@@ -1116,14 +1302,7 @@ export default function App() {
         onClose={() => setIsHistoryOpen(false)}
         proposals={history}
         onSelectProposal={(saved) => {
-          setCurrentDocumentId(saved.id);
-          setCurrentStatus(saved.status || 'borrador');
-          setMetadata(stripDocumentLogo(saved.metadata));
-          setRawRequirements(saved.rawRequirements || '');
-          setImages(saved.images || []);
-          setProposal(saved.content);
-          setCurrentVersion(saved.version || 'v1.0');
-          setCurrentVersionNote(saved.versionNote || '');
+          applySavedDocument(saved);
         }}
         onDeleteProposal={(id) => {
           const updated = history.filter(h => h.id !== id);

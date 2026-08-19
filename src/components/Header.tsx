@@ -29,6 +29,7 @@ interface HeaderProps {
   historyCount: number;
   logoDataUrl?: string;
   projectName?: string;
+  documentKind?: 'proposal' | 'technical';
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -43,7 +44,8 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleTheme,
   historyCount,
   logoDataUrl,
-  projectName
+  projectName,
+  documentKind = 'proposal',
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -92,7 +94,11 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="hidden md:flex items-center gap-2 text-xs text-blue-200/70 border-l border-white/15 pl-3 min-w-0">
               <span className="text-white/40">/</span>
               <span className="text-blue-100 font-medium truncate max-w-[240px] lg:max-w-[360px]">
-                {projectName ? projectName : 'Nueva Propuesta Técnica'}
+                {projectName
+                  ? projectName
+                  : documentKind === 'technical'
+                    ? 'Doc. Técnica Interna'
+                    : 'Nueva Propuesta Técnica'}
               </span>
             </div>
           </div>

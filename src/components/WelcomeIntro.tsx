@@ -99,7 +99,7 @@ export const WelcomeIntro: React.FC<WelcomeIntroProps> = ({
                 Generador de Documentos & Diapositivas
               </h2>
               <p className="text-[10px] sm:text-[11px] text-blue-200/90 truncate">
-                Propuestas Técnicas, Presentaciones PPTX y Análisis Operativo
+                Propuesta comercial, spec interna Dev/QA o diapositivas
               </p>
             </div>
           </div>
@@ -159,12 +159,12 @@ export const WelcomeIntro: React.FC<WelcomeIntroProps> = ({
           <p className={`text-xs sm:text-base max-w-xl mx-auto font-medium ${
             isDark ? 'text-slate-300' : 'text-slate-600'
           }`}>
-            Elige el tipo de trabajo que deseas realizar con asistencia inteligente y exportaciones profesionales directas.
+            Elige un tipo de documento. Cada uno tiene un flujo propio; no hace falta usar todos.
           </p>
         </div>
 
-        {/* Three Action Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6 items-stretch">
+        {/* Action Cards Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 sm:gap-6 items-stretch">
           
           {/* CARD 1: Crear Propuesta Técnica (Word / PDF) */}
           <div className={`group relative rounded-2xl p-5 sm:p-6 flex flex-col justify-between transition-all duration-200 backdrop-blur-sm border shadow-lg hover:shadow-xl ${
@@ -195,7 +195,7 @@ export const WelcomeIntro: React.FC<WelcomeIntroProps> = ({
                 <p className={`text-xs leading-relaxed ${
                   isDark ? 'text-slate-300' : 'text-slate-600'
                 }`}>
-                  Inicia un nuevo análisis técnico y funcional. Ingresa requerimientos, cliente y genera las 8 secciones estándar con IA.
+                  Inicia la propuesta comercial: datos y notas a la izquierda, luego genera con IA o escribe. Cuando el borrador esté listo, abre la pestaña Doc. Técnica.
                 </p>
               </div>
 
@@ -204,20 +204,20 @@ export const WelcomeIntro: React.FC<WelcomeIntroProps> = ({
               }`}>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-[#2ECC71] shrink-0" />
-                  <span>Estructura formal de 8 secciones</span>
+                  <span>Datos y notas, luego Generar o escribir</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-[#2ECC71] shrink-0" />
-                  <span>Generación con IA o redacción manual</span>
+                  <span>Pestaña Doc. Técnica cuando ya hay propuesta</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-[#2ECC71] shrink-0" />
-                  <span>Descarga en Word (.docx) y PDF</span>
+                  <span>Descarga en Word y PDF</span>
                 </li>
               </ul>
             </div>
 
-            <div className="pt-5 mt-3 space-y-2">
+            <div className="pt-5 mt-3">
               <button
                 type="button"
                 onClick={onStartNew}
@@ -226,22 +226,70 @@ export const WelcomeIntro: React.FC<WelcomeIntroProps> = ({
                 <span>Nueva Propuesta</span>
                 <ArrowRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />
               </button>
+            </div>
+          </div>
 
-              {onStartTechnicalDoc && (
-                <button
-                  type="button"
-                  onClick={onStartTechnicalDoc}
-                  className={`w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl font-semibold text-xs transition-all cursor-pointer border ${
-                    isDark
-                      ? 'bg-slate-900/80 hover:bg-slate-900 text-blue-300 border-slate-700'
-                      : 'bg-blue-50/70 hover:bg-blue-100 text-[#0A3D62] border-blue-200'
-                  }`}
-                  title="Abrir la sección de Documentación Técnica Interna (Ruta, Flujo, Diseño, Consideraciones, Código)"
-                >
-                  <Terminal className="w-3.5 h-3.5 text-[#2ECC71]" />
-                  <span>Doc. Técnica Interna</span>
-                </button>
-              )}
+          {/* CARD: Documentación Técnica Interna (workspace independiente) */}
+          <div className={`group relative rounded-2xl p-5 sm:p-6 flex flex-col justify-between transition-all duration-200 backdrop-blur-sm border shadow-lg hover:shadow-xl ${
+            isDark
+              ? 'bg-slate-800/90 border-slate-700 hover:border-emerald-400/50'
+              : 'bg-white border-slate-200 hover:border-[#2ECC71]/60 hover:shadow-emerald-500/10'
+          }`}>
+            <div className="space-y-4">
+              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-md group-hover:scale-105 transition-transform border ${
+                isDark
+                  ? 'bg-emerald-950/80 text-[#2ECC71] border-emerald-500/30'
+                  : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+              }`}>
+                <Terminal className="w-6 h-6" />
+              </div>
+
+              <div>
+                <span className={`text-[10px] font-black uppercase tracking-wider block mb-1 ${
+                  isDark ? 'text-[#2ECC71]' : 'text-emerald-700'
+                }`}>
+                  ESPECIFICACIÓN INTERNA
+                </span>
+                <h3 className={`text-lg sm:text-xl font-bold mb-1.5 flex items-center gap-2 ${
+                  isDark ? 'text-white' : 'text-slate-900'
+                }`}>
+                  Doc. Técnica Interna
+                </h3>
+                <p className={`text-xs leading-relaxed ${
+                  isDark ? 'text-slate-300' : 'text-slate-600'
+                }`}>
+                  Spec para Dev/QA sin armar primero la propuesta comercial. Luego puedes atarla a una propuesta del historial.
+                </p>
+              </div>
+
+              <ul className={`space-y-1.5 pt-2 border-t text-xs ${
+                isDark ? 'border-slate-700/60 text-slate-300' : 'border-slate-100 text-slate-700'
+              }`}>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-[#2ECC71] shrink-0" />
+                  <span>Documento desacoplado de la propuesta</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-[#2ECC71] shrink-0" />
+                  <span>Exportar Word, PDF y Markdown</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-[#2ECC71] shrink-0" />
+                  <span>Atar a una propuesta cuando quieras</span>
+                </li>
+              </ul>
+            </div>
+
+            <div className="pt-5 mt-3">
+              <button
+                type="button"
+                onClick={onStartTechnicalDoc}
+                disabled={!onStartTechnicalDoc}
+                className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-[#0A3D62] hover:bg-[#1E5F8A] text-white font-bold text-xs sm:text-sm shadow-md shadow-blue-900/20 hover:shadow-blue-900/30 transition-all cursor-pointer group/btn disabled:opacity-50"
+              >
+                <span>Nueva Doc. Técnica</span>
+                <ArrowRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />
+              </button>
             </div>
           </div>
 
@@ -337,7 +385,7 @@ export const WelcomeIntro: React.FC<WelcomeIntroProps> = ({
                 <p className={`text-xs leading-relaxed ${
                   isDark ? 'text-slate-300' : 'text-slate-600'
                 }`}>
-                  Retoma el trabajo que tenías en progreso o selecciona una versión anterior guardada en tu historial.
+                  Retoma el borrador actual o abre un archivo del historial.
                 </p>
               </div>
 
@@ -450,7 +498,7 @@ export const WelcomeIntro: React.FC<WelcomeIntroProps> = ({
       <footer className={`relative z-10 w-full max-w-7xl mx-auto px-4 py-4 text-center text-[11px] border-t ${
         isDark ? 'text-slate-500 border-slate-800' : 'text-slate-500 border-slate-200'
       }`}>
-        <span>Advansys SRL • Sistema de Propuestas Técnicas y Presentaciones Ejecutivas</span>
+        <span>Advansys SRL • Propuestas, documentación técnica interna y presentaciones ejecutivas</span>
       </footer>
     </div>
   );

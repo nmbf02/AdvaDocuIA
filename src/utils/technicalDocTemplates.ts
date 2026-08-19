@@ -82,6 +82,61 @@ POST /api/v1/${modulo.replace(/\s+/g, '-').toLowerCase()}/procesar
     codigoEjemplo: defaultCodigo,
     modulosAfectados: [modulo],
     tablasBD: [`TBL_${modulo.replace(/\s+/g, '_').toUpperCase()}_CABECERA`, `TBL_${modulo.replace(/\s+/g, '_').toUpperCase()}_DETALLE`],
-    lastUpdated: new Date().toISOString()
+    tables: [],
+    lastUpdated: new Date().toISOString(),
+    isStandalone: !proposal,
+  };
+}
+
+export function proposalHasSubstance(proposal?: ProposalSection | null): boolean {
+  if (!proposal) return false;
+  return Boolean(
+    proposal.resumenEjecutivo?.trim() ||
+    proposal.objetivo?.trim() ||
+    proposal.descripcion?.trim() ||
+    (proposal.analisisOperativo && proposal.analisisOperativo.length > 0)
+  );
+}
+
+/** True when the spec is empty or still the default template (safe to auto-fill with AI). */
+export function isTechnicalDocUnfilled(doc?: TechnicalDoc | null): boolean {
+  if (!doc) return true;
+  const hasFilledTable = (doc.tables || []).some((t) =>
+    (t.rows || []).some((row) => row.some((cell) => String(cell || '').trim()))
+  );
+  if (hasFilledTable) return false;
+
+  const ruta = (doc.ruta || '').trim();
+  const flujo = (doc.flujoOperativo || '').trim();
+  const diseno = (doc.diseno || '').trim();
+  const cons = (doc.consideracionesTecnicas || '').trim();
+  if (!ruta && !flujo && !diseno && !cons) return true;
+
+  return (
+    ruta.includes('Ruta de Acceso en el Sistema:') &&
+    flujo.includes('Evento Disparador: El usuario con permisos accede a la pantalla')
+  );
+}
+
+/** Copies identity fields from a linked proposal into the technical doc metadata form. */
+export function copyLinkedProposalMetadata(
+  current: MetadataHeader,
+  fromProposal: MetadataHeader
+): MetadataHeader {
+  const pick = (key: keyof MetadataHeader): string => {
+    const incoming = String(fromProposal[key] ?? '').trim();
+    if (incoming) return incoming;
+    return String(current[key] ?? '');
+  };
+
+  return {
+    ...current,
+    cliente: pick('cliente'),
+    fecha: pick('fecha'),
+    ticketNo: pick('ticketNo'),
+    guiaNo: pick('guiaNo'),
+    propuestaNo: pick('propuestaNo'),
+    nombreProyecto: pick('nombreProyecto'),
+    moduloAplicacion: pick('moduloAplicacion'),
   };
 }

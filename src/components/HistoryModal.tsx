@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { SavedProposal, DocumentStatus } from '../types';
-import { X, Calendar, Building2, FileText, Trash2, ArrowRight, Copy, GitBranch, Search, Check, Tag, Sparkles, Filter, RotateCcw, CheckCircle2, CheckCheck, Clock, ShieldCheck, Award } from 'lucide-react';
+import { X, Calendar, Building2, FileText, Trash2, ArrowRight, Copy, GitBranch, Search, Check, Tag, Sparkles, Filter, RotateCcw, CheckCircle2, CheckCheck, Clock, ShieldCheck, Award, Terminal, Layers, Link } from 'lucide-react';
 
 interface HistoryModalProps {
   isOpen: boolean;
@@ -11,6 +11,21 @@ interface HistoryModalProps {
   onDuplicateProposal?: (proposal: SavedProposal) => void;
   onUpdateStatus?: (id: string, status: DocumentStatus) => void;
 }
+
+const isTechnicalHistoryItem = (p: SavedProposal): boolean =>
+  p.documentType === 'technical' || Boolean(p.content?.technicalDoc?.isStandalone);
+
+const linkedProposalIdOf = (p: SavedProposal): string | undefined =>
+  p.linkedProposalId || p.content?.technicalDoc?.linkedProposalId || undefined;
+
+const linkedProposalNameOf = (p: SavedProposal): string | undefined =>
+  p.linkedProposalName || p.content?.technicalDoc?.linkedProposalName || undefined;
+
+const proposalHistoryLabel = (p: SavedProposal): string => {
+  const ticket = p.metadata.ticketNo ? `[${p.metadata.ticketNo}] ` : '';
+  const name = p.metadata.nombreProyecto || 'Propuesta sin nombre';
+  return `${ticket}${name} (${p.version || 'v1.0'})`;
+};
 
 export const HistoryModal: React.FC<HistoryModalProps> = ({
   isOpen,
@@ -30,6 +45,8 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   const [filterVersion, setFilterVersion] = useState('all');
   const [filterPeriod, setFilterPeriod] = useState<'all' | 'today' | '7d' | '30d' | 'month'>('all');
   const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'client' | 'project'>('newest');
+  const [filterDocType, setFilterDocType] = useState<'all' | 'proposal' | 'slides' | 'technical'>('all');
+  const [filterLinkedProposalId, setFilterLinkedProposalId] = useState<'all' | 'any' | string>('all');
 
   const counts = useMemo(() => {
     const total = proposals.length;
@@ -65,6 +82,23 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'));
   }, [proposals]);
 
+  const uniqueLinkedProposals = useMemo(() => {
+    const map = new Map<string, string>();
+    proposals.forEach((p) => {
+      const linkedId = linkedProposalIdOf(p);
+      if (linkedId) {
+        const target = proposals.find((x) => x.id === linkedId);
+        map.set(linkedId, target ? proposalHistoryLabel(target) : (linkedProposalNameOf(p) || linkedId));
+      }
+      if (p.linkedTechnicalDocId && !isTechnicalHistoryItem(p)) {
+        map.set(p.id, proposalHistoryLabel(p));
+      }
+    });
+    return Array.from(map.entries())
+      .map(([id, label]) => ({ id, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'es'));
+  }, [proposals]);
+
   const hasActiveFilters =
     statusTab !== 'all' ||
     filterStatus !== 'all' ||
@@ -72,6 +106,8 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
     filterTicket !== 'all' ||
     filterVersion !== 'all' ||
     filterPeriod !== 'all' ||
+    filterDocType !== 'all' ||
+    filterLinkedProposalId !== 'all' ||
     sortBy !== 'newest' ||
     searchQuery.trim() !== '';
 
@@ -83,6 +119,8 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
     setFilterTicket('all');
     setFilterVersion('all');
     setFilterPeriod('all');
+    setFilterDocType('all');
+    setFilterLinkedProposalId('all');
     setSortBy('newest');
   };
 
@@ -126,6 +164,22 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
       if (filterCliente !== 'all' && clienteKey !== filterCliente) return false;
       if (filterTicket !== 'all' && ticketKey !== filterTicket) return false;
       if (filterVersion !== 'all' && versionKey !== filterVersion) return false;
+      if (filterDocType !== 'all') {
+        const itemType = p.documentType || (p.content?.technicalDoc?.isStandalone ? 'technical' : 'proposal');
+        if (itemType !== filterDocType) return false;
+      }
+
+      const linkedId = linkedProposalIdOf(p);
+      const isLinkedProposal = Boolean(p.linkedTechnicalDocId) && !isTechnicalHistoryItem(p);
+      const isLinkedTechDoc = Boolean(linkedId);
+      if (filterLinkedProposalId === 'any') {
+        if (!isLinkedProposal && !isLinkedTechDoc) return false;
+      } else if (filterLinkedProposalId !== 'all') {
+        const matchesAsProposal = p.id === filterLinkedProposalId && (isLinkedProposal || proposals.some((x) => linkedProposalIdOf(x) === p.id));
+        const matchesAsTechDoc = linkedId === filterLinkedProposalId;
+        if (!matchesAsProposal && !matchesAsTechDoc) return false;
+      }
+
       if (!matchesPeriod(p.timestamp)) return false;
 
       if (!q) return true;
@@ -137,7 +191,8 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
         (p.metadata.moduloAplicacion || '').toLowerCase().includes(q) ||
         versionKey.toLowerCase().includes(q) ||
         (p.versionNote || '').toLowerCase().includes(q) ||
-        currentStatus.toLowerCase().includes(q)
+        currentStatus.toLowerCase().includes(q) ||
+        (linkedProposalNameOf(p) || '').toLowerCase().includes(q)
       );
     })
     .sort((a, b) => {
@@ -323,7 +378,21 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 min-w-0">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2 min-w-0">
+            <label className="min-w-0">
+              <span className="block text-[10px] font-bold text-[#0A3D62] mb-1">Tipo</span>
+              <select
+                value={filterDocType}
+                onChange={(e) => setFilterDocType(e.target.value as typeof filterDocType)}
+                className="w-full min-w-0 px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
+              >
+                <option value="all">Todos</option>
+                <option value="proposal">Propuesta</option>
+                <option value="technical">Doc. Técnica</option>
+                <option value="slides">Diapositivas</option>
+              </select>
+            </label>
+
             <label className="min-w-0">
               <span className="block text-[10px] font-bold text-[#0A3D62] mb-1">Estado</span>
               <select
@@ -410,6 +479,56 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
               </select>
             </label>
           </div>
+
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-2.5 space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <Link className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                <span className="text-[11px] font-bold text-emerald-900">
+                  Propuestas técnicas vinculadas a Doc. Técnica
+                </span>
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-white text-emerald-800 border border-emerald-200">
+                  {uniqueLinkedProposals.length}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setFilterLinkedProposalId(filterLinkedProposalId === 'any' ? 'all' : 'any')}
+                  className={`inline-flex items-center px-2 py-1 text-[10px] font-bold rounded-lg border transition-colors ${
+                    filterLinkedProposalId === 'any'
+                      ? 'bg-emerald-600 text-white border-emerald-700'
+                      : 'bg-white text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                  }`}
+                >
+                  Solo vinculadas
+                </button>
+              </div>
+            </div>
+
+            <label className="block min-w-0">
+              <span className="sr-only">Filtrar por propuesta técnica vinculada</span>
+              <select
+                value={filterLinkedProposalId === 'any' ? 'any' : filterLinkedProposalId}
+                onChange={(e) => setFilterLinkedProposalId(e.target.value as typeof filterLinkedProposalId)}
+                className="w-full min-w-0 px-2 py-1.5 text-xs bg-white border border-emerald-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-emerald-600"
+              >
+                <option value="all">Todas las propuestas (con o sin vínculo)</option>
+                <option value="any">Todas las que tienen vínculo Doc. Técnica ↔ Propuesta</option>
+                {uniqueLinkedProposals.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {uniqueLinkedProposals.length === 0 && (
+              <p className="text-[11px] text-emerald-800/80">
+                Aún no hay propuestas atadas. En una Doc. Técnica usa “Atar a Propuesta Técnica”.
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Section Banner if viewing Completed items */}
@@ -470,6 +589,30 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
 
                       {/* Status Badge */}
                       {getStatusBadge(item.status)}
+
+                      {(item.documentType === 'technical' || item.content?.technicalDoc?.isStandalone) && (
+                        <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-800 rounded-full border border-emerald-200">
+                          <Terminal className="w-3 h-3 mr-1" />
+                          Doc. Técnica
+                        </span>
+                      )}
+                      {item.documentType === 'slides' && (
+                        <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-bold bg-blue-50 text-[#0A3D62] rounded-full border border-blue-200">
+                          <Layers className="w-3 h-3 mr-1" />
+                          Diapositivas
+                        </span>
+                      )}
+                      {item.linkedProposalName && (
+                        <span className="text-[10px] font-semibold text-emerald-800 bg-white px-2 py-0.5 rounded border border-emerald-200 truncate max-w-[180px]" title={item.linkedProposalName}>
+                          Atada: {item.linkedProposalName}
+                        </span>
+                      )}
+                      {item.linkedTechnicalDocId && !isTechnicalHistoryItem(item) && (
+                        <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-bold bg-white text-emerald-800 rounded border border-emerald-200">
+                          <Link className="w-3 h-3 mr-1" />
+                          Con Doc. Técnica
+                        </span>
+                      )}
 
                       {/* Ticket Badge */}
                       <span className="text-xs font-bold px-2 py-0.5 bg-[#0A3D62] text-white rounded">

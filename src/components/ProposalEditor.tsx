@@ -1,14 +1,14 @@
-import React, { useState, useRef } from 'react';
-import { ProposalSection, MetadataHeader, UploadedImage, DocumentTable, getEffectiveTitles, SlideDeck, DocumentStatus } from '../types';
+import React, { useState, useRef, useEffect } from 'react';
+import { ProposalSection, MetadataHeader, UploadedImage, DocumentTable, getEffectiveTitles, SlideDeck, DocumentStatus, SavedProposal } from '../types';
 import { FileDown, FileText, Edit3, Eye, Plus, Trash2, Sparkles, Wand2, Loader2, Cpu, Save, Check, GitBranch, Tag, X, Layers, CheckCircle2, CheckCheck, Presentation, Bold, ArrowRight, ArrowRightLeft, RotateCcw, Terminal } from 'lucide-react';
 import { generateAdvansysDocx } from '../utils/docxGenerator';
 import { downloadAdvansysPdf } from '../utils/pdfGenerator';
-import { generateAdvansysPptx } from '../utils/pptxGenerator';
 import { DocxPreview } from './DocxPreview';
 import { DocumentTablesEditor, InsertTableButton, createEmptyDocumentTable, tableTag } from './DocumentTablesEditor';
 import { SlideDeckEditor } from './SlideDeckEditor';
 import { TechnicalDocEditor } from './TechnicalDocEditor';
 import { convertProposalToSlideDeck, createDefaultSlideDeck } from '../utils/slideDeckTemplates';
+import { createDefaultTechnicalDoc, proposalHasSubstance } from '../utils/technicalDocTemplates';
 import { TextFormattingToolbar, handleAutoBulletKeyDown, toggleBoldAtTarget } from './TextFormattingToolbar';
 
 interface ProposalEditorProps {
@@ -17,6 +17,7 @@ interface ProposalEditorProps {
   images: UploadedImage[];
   rawRequirements?: string;
   history?: SavedProposal[];
+  currentDocumentId?: string | null;
   onChange: (updated: ProposalSection) => void;
   onSave?: () => void;
   onSaveNewVersion?: (versionTag: string, versionNote: string) => void;
@@ -31,6 +32,8 @@ interface ProposalEditorProps {
   onMetadataChange?: (updatedMetadata: MetadataHeader) => void;
   onLinkProposal?: (proposal: SavedProposal, syncContext: boolean) => void;
   onUnlinkProposal?: () => void;
+  onOpenLinkedProposal?: () => void;
+  onImagesChange?: (images: UploadedImage[]) => void;
 }
 
 export const ProposalEditor: React.FC<ProposalEditorProps> = ({
@@ -39,6 +42,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
   images,
   rawRequirements = '',
   history = [],
+  currentDocumentId = null,
   onChange,
   onSave,
   onSaveNewVersion,
@@ -53,8 +57,14 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
   onMetadataChange,
   onLinkProposal,
   onUnlinkProposal,
+  onOpenLinkedProposal,
+  onImagesChange,
 }) => {
   const [activeTab, setActiveTab] = useState<'editor' | 'preview' | 'slides' | 'technical'>(initialTab);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
   const [activeSectionFilter, setActiveSectionFilter] = useState<string>('all');
   const [isExporting, setIsExporting] = useState<'docx' | 'pdf' | 'pptx' | null>(null);
   const [isRefining, setIsRefining] = useState(false);
@@ -339,26 +349,6 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
     }
   };
 
-  const handleExportPptx = async () => {
-    try {
-      setIsExporting('pptx');
-      const blob = await generateAdvansysPptx(activeSlideDeck, metadata, images);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${buildExportBasename()} (Presentacion).pptx`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error("Error al exportar diapositivas PPTX:", err);
-      alert("Hubo un error generando el PowerPoint (.pptx). Por favor intenta nuevamente.");
-    } finally {
-      setIsExporting(null);
-    }
-  };
-
   return (
     <div className="@container bg-white/95 rounded-2xl shadow-lg border border-slate-200/80 overflow-x-hidden overflow-y-visible flex flex-col min-h-full min-w-0 max-w-full">
       
@@ -399,75 +389,20 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                 </span>
               )}
             </h2>
-            <p className="text-xs text-blue-100/80 truncate">Edita el texto, mira la previa o descarga Word y PDF</p>
+            <p className="text-xs text-blue-100/80 truncate">
+              {activeTab === 'technical'
+                ? 'Spec interna Dev/QA. Usa Editar o Previa en esta pestaña; Inicio abre una Doc. Técnica independiente.'
+                : activeTab === 'slides'
+                  ? 'Presentación para el cliente. Genera o descarga PowerPoint desde este panel.'
+                  : activeTab === 'preview'
+                    ? 'Así se verá el documento al exportar a Word o PDF.'
+                    : 'Redacta las secciones. Luego abre Doc. Técnica o Diapositivas en las pestañas.'}
+            </p>
           </div>
         </div>
 
-        {/* Action Controls & Export Button */}
+        {/* Tabs first (how you move), then save/export for the current view */}
         <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-          
-          {/* Save Changes Button */}
-          {onSave && (
-            <button
-              onClick={onSave}
-              type="button"
-              className="inline-flex items-center justify-center px-3 py-2 text-xs font-bold text-[#0A3D62] bg-white hover:bg-slate-100 active:scale-95 transition-all rounded-xl shadow-md border border-white/80"
-              title="Guardar el borrador y el historial"
-            >
-              <Save className="w-3.5 h-3.5 mr-1.5" />
-              <span>Guardar cambios</span>
-            </button>
-          )}
-
-          {/* Volver al guardado Button */}
-          {onRevertToSaved && (
-            <button
-              onClick={onRevertToSaved}
-              type="button"
-              disabled={!hasSavedVersion}
-              className="inline-flex items-center justify-center px-2.5 py-2 text-xs font-bold text-white bg-white/10 hover:bg-white/20 active:scale-95 transition-all rounded-xl border border-white/20 disabled:opacity-40 disabled:pointer-events-none"
-              title={lastSavedTime ? `Volver a la versión guardada (${lastSavedTime})` : "Volver al último archivo guardado"}
-            >
-              <RotateCcw className="w-3.5 h-3.5 sm:mr-1.5 text-blue-200" />
-              <span className="hidden sm:inline">Volver al guardado</span>
-            </button>
-          )}
-
-          {/* Save as New Version Button */}
-          {onSaveNewVersion && (
-            <button
-              onClick={() => {
-                const parts = currentVersion.split('.');
-                if (parts.length > 0 && !isNaN(parseInt(parts[0].replace('v', '')))) {
-                  const majorNum = parseInt(parts[0].replace('v', '')) + 1;
-                  setNewVersionTag(`v${majorNum}.0`);
-                } else {
-                  setNewVersionTag('v2.0');
-                }
-                setNewVersionNote('');
-                setIsNewVersionModalOpen(true);
-              }}
-              type="button"
-              className="inline-flex items-center justify-center p-2 sm:px-3 sm:py-1.5 text-xs font-bold text-white bg-[#1E5F8A] hover:bg-[#0A3D62] active:scale-95 transition-all rounded-xl shadow-md border border-blue-400/40"
-              title="Guardar como una nueva versión independiente (ej. v2.0 para un enfoque alternativo)"
-            >
-              <GitBranch className="w-3.5 h-3.5 sm:mr-1 text-[#2ECC71]" />
-              <span className="hidden sm:inline">Nueva Versión</span>
-            </button>
-          )}
-
-          {/* Saved Timestamp Badge */}
-          {showSavedToast ? (
-            <div className="inline-flex items-center text-[11px] text-slate-950 bg-[#2ECC71] border border-emerald-400 px-2.5 py-1 rounded-lg font-bold toast-in">
-              <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
-              <span>Guardado</span>
-            </div>
-          ) : lastSavedTime ? (
-            <div className="hidden sm:flex items-center text-[11px] text-emerald-300 bg-emerald-950/40 border border-emerald-500/30 px-2.5 py-1 rounded-lg font-medium">
-              <Check className="w-3 h-3 mr-1 text-emerald-400" />
-              <span>Guardado {lastSavedTime}</span>
-            </div>
-          ) : null}
 
           <div className="bg-black/20 p-1 rounded-xl flex gap-0.5 border border-white/10">
             <button
@@ -482,13 +417,24 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
               <span className="hidden sm:inline">Propuesta</span>
             </button>
             <button
-              onClick={() => setActiveTab('technical')}
+              onClick={() => {
+                if (!proposal.technicalDoc) {
+                  onChange({
+                    ...proposal,
+                    technicalDoc: {
+                      ...createDefaultTechnicalDoc(metadata, proposal),
+                      isStandalone: false,
+                    },
+                  });
+                }
+                setActiveTab('technical');
+              }}
               className={`px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-lg flex items-center transition-all ${
                 activeTab === 'technical'
                   ? 'bg-white text-[#0A3D62] shadow font-bold'
                   : 'text-blue-100/80 hover:text-white'
               }`}
-              title="Documentación Técnica Interna (Ruta, Flujo, Diseño, Consideraciones y Código)"
+              title="Spec interna de esta propuesta. Si quieres una Doc. Técnica sin propuesta, ábrela desde Inicio."
             >
               <Terminal className="w-3.5 h-3.5 sm:mr-1 text-[#2ECC71]" />
               <span className="hidden sm:inline">Doc. Técnica</span>
@@ -511,50 +457,106 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                   ? 'bg-[#2ECC71] text-slate-950 shadow font-bold'
                   : 'text-blue-100/80 hover:text-white'
               }`}
-              title="Ver y editar la presentación de diapositivas PPTX"
+              title="Presentación PPTX de esta propuesta"
             >
               <Presentation className="w-3.5 h-3.5 sm:mr-1" />
               <span className="hidden sm:inline">Diapositivas</span>
             </button>
           </div>
 
-          <button
-            onClick={handleExportDocx}
-            disabled={!!isExporting}
-            className="inline-flex items-center px-3 sm:px-4 py-2 text-xs font-bold text-slate-950 bg-[#2ECC71] hover:bg-[#27ae60] active:scale-95 transition-all rounded-xl shadow-md border border-emerald-400 disabled:opacity-50"
-            title="Descargar el documento en formato Microsoft Word (.docx)"
-          >
-            {isExporting === 'docx' ? <Loader2 className="w-4 h-4 sm:mr-1.5 animate-spin" /> : <FileDown className="w-4 h-4 sm:mr-1.5" />}
-            <span className="hidden xs:inline sm:inline">{isExporting === 'docx' ? 'Word...' : 'Word'}</span>
-          </button>
+          <div className="flex-1 min-w-[8px]" />
+          
+          {/* Save Changes Button */}
+          {onSave && (
+            <button
+              onClick={onSave}
+              type="button"
+              className="inline-flex items-center justify-center px-3 py-2 text-xs font-bold text-[#0A3D62] bg-white hover:bg-slate-100 active:scale-95 transition-all rounded-xl shadow-md border border-white/80"
+              title="Guardar el borrador y el historial"
+            >
+              <Save className="w-3.5 h-3.5 mr-1.5" />
+              <span>Guardar</span>
+            </button>
+          )}
 
-          <button
-            onClick={handleExportPdf}
-            disabled={!!isExporting}
-            className="inline-flex items-center px-3 sm:px-4 py-2 text-xs font-bold text-white bg-[#1E5F8A] hover:bg-[#0A3D62] active:scale-95 transition-all rounded-xl shadow-md border border-blue-400/40 disabled:opacity-50"
-            title="Descargar el documento en PDF"
-          >
-            {isExporting === 'pdf' ? <Loader2 className="w-4 h-4 sm:mr-1.5 animate-spin" /> : <FileText className="w-4 h-4 sm:mr-1.5" />}
-            <span className="hidden xs:inline sm:inline">{isExporting === 'pdf' ? 'PDF...' : 'PDF'}</span>
-          </button>
+          {/* Volver al guardado Button */}
+          {onRevertToSaved && (
+            <button
+              onClick={onRevertToSaved}
+              type="button"
+              disabled={!hasSavedVersion}
+              className="inline-flex items-center justify-center p-2 sm:px-2.5 sm:py-2 text-xs font-bold text-white bg-white/10 hover:bg-white/20 active:scale-95 transition-all rounded-xl border border-white/20 disabled:opacity-40 disabled:pointer-events-none"
+              title={lastSavedTime ? `Volver a la versión guardada (${lastSavedTime})` : "Volver al último archivo guardado"}
+            >
+              <RotateCcw className="w-3.5 h-3.5 sm:mr-1.5 text-blue-200" />
+              <span className="hidden lg:inline">Volver</span>
+            </button>
+          )}
 
-          <button
-            onClick={handleExportPptx}
-            disabled={!!isExporting}
-            className={`inline-flex items-center px-3 sm:px-4 py-2 text-xs font-bold active:scale-95 transition-all rounded-xl shadow-md disabled:opacity-50 ${
-              activeTab === 'slides'
-                ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 border border-amber-300'
-                : 'bg-white/10 hover:bg-white/20 text-white border border-white/20'
-            }`}
-            title="Descargar la presentación de diapositivas en Microsoft PowerPoint (.pptx)"
-          >
-            {isExporting === 'pptx' ? <Loader2 className="w-4 h-4 sm:mr-1.5 animate-spin" /> : <Presentation className="w-4 h-4 sm:mr-1.5" />}
-            <span className="hidden xs:inline sm:inline">{isExporting === 'pptx' ? 'PowerPoint...' : 'PowerPoint'}</span>
-          </button>
+          {/* Save as New Version Button */}
+          {onSaveNewVersion && (
+            <button
+              onClick={() => {
+                const parts = currentVersion.split('.');
+                if (parts.length > 0 && !isNaN(parseInt(parts[0].replace('v', '')))) {
+                  const majorNum = parseInt(parts[0].replace('v', '')) + 1;
+                  setNewVersionTag(`v${majorNum}.0`);
+                } else {
+                  setNewVersionTag('v2.0');
+                }
+                setNewVersionNote('');
+                setIsNewVersionModalOpen(true);
+              }}
+              type="button"
+              className="inline-flex items-center justify-center p-2 sm:px-3 sm:py-1.5 text-xs font-bold text-white bg-[#1E5F8A] hover:bg-[#0A3D62] active:scale-95 transition-all rounded-xl shadow-md border border-blue-400/40"
+              title="Guardar como una nueva versión independiente (ej. v2.0 para un enfoque alternativo)"
+            >
+              <GitBranch className="w-3.5 h-3.5 sm:mr-1 text-[#2ECC71]" />
+              <span className="hidden lg:inline">Nueva Versión</span>
+            </button>
+          )}
+
+          {/* Saved Timestamp Badge */}
+          {showSavedToast ? (
+            <div className="inline-flex items-center text-[11px] text-slate-950 bg-[#2ECC71] border border-emerald-400 px-2.5 py-1 rounded-lg font-bold toast-in">
+              <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+              <span>Guardado</span>
+            </div>
+          ) : lastSavedTime ? (
+            <div className="hidden xl:flex items-center text-[11px] text-emerald-300 bg-emerald-950/40 border border-emerald-500/30 px-2.5 py-1 rounded-lg font-medium">
+              <Check className="w-3 h-3 mr-1 text-emerald-400" />
+              <span>Guardado {lastSavedTime}</span>
+            </div>
+          ) : null}
+
+          {(activeTab === 'editor' || activeTab === 'preview') && (
+            <>
+              <button
+                onClick={handleExportDocx}
+                disabled={!!isExporting}
+                className="inline-flex items-center px-3 sm:px-4 py-2 text-xs font-bold text-slate-950 bg-[#2ECC71] hover:bg-[#27ae60] active:scale-95 transition-all rounded-xl shadow-md border border-emerald-400 disabled:opacity-50"
+                title="Descargar el documento en formato Microsoft Word (.docx)"
+              >
+                {isExporting === 'docx' ? <Loader2 className="w-4 h-4 sm:mr-1.5 animate-spin" /> : <FileDown className="w-4 h-4 sm:mr-1.5" />}
+                <span className="hidden xs:inline sm:inline">{isExporting === 'docx' ? 'Word...' : 'Word'}</span>
+              </button>
+
+              <button
+                onClick={handleExportPdf}
+                disabled={!!isExporting}
+                className="inline-flex items-center px-3 sm:px-4 py-2 text-xs font-bold text-white bg-[#1E5F8A] hover:bg-[#0A3D62] active:scale-95 transition-all rounded-xl shadow-md border border-blue-400/40 disabled:opacity-50"
+                title="Descargar el documento en PDF"
+              >
+                {isExporting === 'pdf' ? <Loader2 className="w-4 h-4 sm:mr-1.5 animate-spin" /> : <FileText className="w-4 h-4 sm:mr-1.5" />}
+                <span className="hidden xs:inline sm:inline">{isExporting === 'pdf' ? 'PDF...' : 'PDF'}</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 
       {/* AI Assistant Toolbar for Manual Editing */}
+      {activeTab === 'editor' && (
       <div className="bg-[#072a44] text-slate-200 px-3 py-2 border-b border-[#1E5F8A]/60 flex flex-wrap items-center gap-2 text-xs min-w-0">
         <div className="flex items-center gap-2 min-w-0">
           <Wand2 className="w-4 h-4 text-[#2ECC71] shrink-0" />
@@ -589,6 +591,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
           </button>
         </div>
       </div>
+      )}
 
       {/* Section Quick Navigation Bar for Fast Editing without Infinite Scroll */}
       {activeTab === 'editor' && (
@@ -633,6 +636,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
             images={images}
             rawRequirements={rawRequirements}
             history={history}
+            currentDocumentId={currentDocumentId}
             onChange={(updatedTechDoc) => {
               onChange({
                 ...proposal,
@@ -643,6 +647,10 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
             onMetadataChange={onMetadataChange}
             onLinkProposal={onLinkProposal}
             onUnlinkProposal={onUnlinkProposal}
+            onOpenLinkedProposal={onOpenLinkedProposal}
+            onImagesChange={onImagesChange}
+            autoGenerateFromProposal={proposalHasSubstance(proposal)}
+            embedded
           />
         </div>
       ) : activeTab === 'slides' ? (

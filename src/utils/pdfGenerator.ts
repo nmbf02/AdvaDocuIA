@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { MetadataHeader, ProposalSection, UploadedImage, DocumentTable, getEffectiveTitles } from '../types';
 import { getAdvansysBannerSvg } from '../data/banner';
+import { fitImageSize, getImageAlign, pdfImageX } from './imageLayout';
 
 // Advansys Corporate Color Palette (RGB tuples for vector jsPDF)
 const COLOR_PRIMARY: [number, number, number] = [10, 61, 98]; // #0A3D62 Deep Corporate Blue
@@ -503,9 +504,9 @@ export async function generateAdvansysPdf(
         if (loadedImg) {
           const maxW = Math.min(contentWidth - 12, 140);
           const maxH = 75;
-          const scale = Math.min(maxW / loadedImg.width, maxH / loadedImg.height, 1);
-          const dispW = Math.max(50, Math.round(loadedImg.width * scale));
-          const dispH = Math.max(30, Math.round(loadedImg.height * scale));
+          const size = fitImageSize(loadedImg.width, loadedImg.height, maxW, maxH, matchingImg.widthPercent);
+          const dispW = size.width;
+          const dispH = size.height;
 
           const hasDesc = Boolean(matchingImg.description);
           const cardHeight = dispH + 11 + (hasDesc ? 4.5 : 0);
@@ -523,7 +524,8 @@ export async function generateAdvansysPdf(
           doc.setLineWidth(0.2);
           doc.roundedRect(cardX, cardY, cardW, cardHeight, 1.5, 1.5, 'FD');
 
-          const imgX = cardX + (cardW - dispW) / 2;
+          const align = getImageAlign(matchingImg);
+          const imgX = pdfImageX(cardX, cardW, dispW, align);
           const imgY = cardY + 2.5;
 
           // Render Image
@@ -531,17 +533,19 @@ export async function generateAdvansysPdf(
 
           // Image Caption
           const captionY = imgY + dispH + 4;
+          const captionAlign = align === 'left' ? 'left' : align === 'right' ? 'right' : 'center';
+          const captionX = align === 'left' ? cardX + 4 : align === 'right' ? cardX + cardW - 4 : pageWidth / 2;
           doc.setFont('helvetica', 'bolditalic');
           doc.setFontSize(8);
           doc.setTextColor(71, 85, 105);
           const captionText = `[IMAGEN_${idx + 1}] ${matchingImg.title || 'Captura de referencia'}`;
-          doc.text(captionText, pageWidth / 2, captionY, { align: 'center' });
+          doc.text(captionText, captionX, captionY, { align: captionAlign });
 
           if (hasDesc && matchingImg.description) {
             doc.setFont('helvetica', 'italic');
             doc.setFontSize(7.5);
             doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-            doc.text(matchingImg.description, pageWidth / 2, captionY + 3.8, { align: 'center' });
+            doc.text(matchingImg.description, captionX, captionY + 3.8, { align: captionAlign });
           }
 
           // Advance cursor cleanly past image card

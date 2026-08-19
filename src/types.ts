@@ -120,6 +120,18 @@ export interface UploadedImage {
   mimeType: string;
   fileName?: string;
   fileSize?: number;
+  /** Display width in the document, 25–100. Default 100. */
+  widthPercent?: number;
+  /** Horizontal placement. Default center. */
+  align?: 'left' | 'center' | 'right';
+  /** Word-like text wrapping. Default inline. */
+  wrap?: 'inline' | 'square' | 'tight' | 'topAndBottom' | 'behind' | 'inFront';
+  /** Vertical placement when the image is floating. Default center. */
+  verticalAlign?: 'top' | 'center' | 'bottom';
+  /** Rotation in degrees. Default 0. */
+  rotation?: number;
+  flipHorizontal?: boolean;
+  flipVertical?: boolean;
 }
 
 export interface ScopeSection {
@@ -206,6 +218,7 @@ export interface TechnicalDoc {
   codigoEjemplo?: string;
   modulosAfectados?: string[];
   tablasBD?: string[];
+  tables?: DocumentTable[];
   lastUpdated?: string;
   linkedProposalId?: string;
   linkedProposalName?: string;
@@ -244,5 +257,6 @@ export interface SavedProposal {
   documentType?: 'proposal' | 'slides' | 'technical';
   linkedProposalId?: string;
   linkedProposalName?: string;
+  linkedTechnicalDocId?: string;
 }
 

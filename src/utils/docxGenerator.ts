@@ -22,6 +22,8 @@ import {
 } from 'docx';
 import { MetadataHeader, ProposalSection, UploadedImage, DocumentTable, getEffectiveTitles } from '../types';
 import { getAdvansysBannerSvg } from '../data/banner';
+import { fitImageSize } from './imageLayout';
+import { createDocumentImageRun, paragraphAlignOf } from './imageDocx';
 
 // Advansys Corporate Palette
 const COLOR_PRIMARY_BLUE = '0A3D62'; // #0A3D62 Deep Corporate Blue
@@ -799,19 +801,14 @@ export async function generateAdvansysDocx(
 
         if (linkedImg && linkedImg.bytes && linkedImg.bytes.length > 0) {
           try {
+            const size = fitImageSize(linkedImg.width, linkedImg.height, 500, 320, linkedImg.widthPercent);
+            const alignment = paragraphAlignOf(linkedImg);
             docElements.push(
               new Paragraph({
-                alignment: AlignmentType.CENTER,
+                alignment,
                 spacing: { before: 120, after: 60 },
                 children: [
-                  new ImageRun({
-                    data: linkedImg.bytes,
-                    type: 'png',
-                    transformation: {
-                      width: Math.min(linkedImg.width || 500, 500),
-                      height: Math.min(linkedImg.height || 280, 320),
-                    },
-                  }),
+                  createDocumentImageRun(linkedImg.bytes, size, linkedImg),
                 ],
               })
             );
@@ -819,7 +816,7 @@ export async function generateAdvansysDocx(
             // Image Caption
             docElements.push(
               new Paragraph({
-                alignment: AlignmentType.CENTER,
+                alignment,
                 spacing: { before: 40, after: 120 },
                 children: [
                   new TextRun({

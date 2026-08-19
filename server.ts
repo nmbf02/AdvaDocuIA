@@ -700,8 +700,13 @@ app.post("/api/generate-technical-doc", async (req, res) => {
     const ticketNo = metadata.ticketNo || 'TK-2026';
     const modulo = metadata.moduloAplicacion || 'Módulo Principal';
 
-    let promptContext = `Genera la DOCUMENTACIÓN TÉCNICA INTERNA Y ESPECIFICACIÓN DE DESARROLLO para el equipo de Ingeniería de Software y QA en Advansys.
-Esta documentación es de USO INTERNO y debe enfocarse en la arquitectura, navegación, componentes, base de datos, seguridad y código.
+    const imageList = Array.isArray(images) ? images : [];
+    const imageHints = imageList
+      .map((img: any, i: number) => `- [IMAGEN_${i + 1}]: ${img?.title || 'Captura'} ${img?.description ? `— ${img.description}` : ''}`)
+      .join('\n');
+
+    let promptContext = `Genera la DOCUMENTACIÓN TÉCNICA INTERNA Y ESPECIFICACIÓN DE DESARROLLO para Ingeniería de Software y QA en Advansys.
+Este documento es de USO INTERNO. No copies el tono comercial de la propuesta: traduce el alcance a arquitectura, navegación, datos, seguridad y código.
 
 DATOS DEL PROYECTO:
 - Cliente: ${cliente}
@@ -709,19 +714,41 @@ DATOS DEL PROYECTO:
 - Ticket No: ${ticketNo}
 - Módulo / Aplicación: ${modulo}
 
-REQUERIMIENTOS Y NOTAS:
+REQUERIMIENTOS Y NOTAS DEL ANALISTA:
 ${rawRequirements || 'No se adjuntaron notas directas.'}
 `;
 
     if (proposal) {
-      promptContext += `\nPROPUESTA TÉCNICA RELACIONADA (Contexto de Negocio y Alcance):
+      promptContext += `\nPROPUESTA TÉCNICA YA REDACTADA (fuente principal — deriva de aquí la spec interna):
 Resumen: ${proposal.resumenEjecutivo || ''}
 Objetivo: ${proposal.objetivo || ''}
 Descripción: ${proposal.descripcion || ''}
+Beneficios: ${JSON.stringify(proposal.beneficios || [])}
 Alcance: ${JSON.stringify(proposal.alcanceExclusionesEntregables?.alcance || [])}
-Pasos Operativos: ${JSON.stringify(proposal.analisisOperativo || [])}
+Exclusiones: ${JSON.stringify(proposal.alcanceExclusionesEntregables?.exclusiones || [])}
+Entregables: ${JSON.stringify(proposal.alcanceExclusionesEntregables?.entregables || [])}
+Índice operativo: ${JSON.stringify(proposal.indiceAnalisisOperativo || [])}
+Pasos operativos: ${JSON.stringify(proposal.analisisOperativo || [])}
 `;
     }
+
+    if (imageHints) {
+      promptContext += `\nIMÁGENES DISPONIBLES (inserta las etiquetas exactas en Flujo o Diseño donde aporten):\n${imageHints}\n`;
+    }
+
+    promptContext += `
+FORMATO OBLIGATORIO DE CADA CAMPO DE TEXTO (se mostrará en un editor y se exportará a Word/PDF):
+- Usa saltos de línea reales.
+- Viñetas con el carácter "• " (no uses guiones sueltos como única viñeta).
+- Sub-viñetas con "  - ".
+- Listas numeradas "1. 2. 3." en el flujo operativo.
+- Encabeza cada bloque con una línea de título seguida de dos puntos, por ejemplo: "Ruta de menú:" / "Endpoints:" / "Validaciones:".
+- NO uses markdown (#, **, \`\`\`) ni emojis.
+- En Flujo y Diseño, si hay tablas, incluye las etiquetas [TABLA_1], [TABLA_2] en el lugar donde deben aparecer.
+- Si hay imágenes, incluye [IMAGEN_1], [IMAGEN_2] en contexto.
+
+TABLAS ESTRUCTURADAS:
+Devuelve 1 a 3 tablas útiles (catálogo de endpoints, entidades de BD o matriz de roles). Cada fila en "rows" es un objeto { "cells": ["...", "..."] } alineado con headers.`;
 
     const technicalDocSchema = {
       type: Type.OBJECT,
@@ -753,7 +780,29 @@ Pasos Operativos: ${JSON.stringify(proposal.analisisOperativo || [])}
         tablasBD: {
           type: Type.ARRAY,
           items: { type: Type.STRING }
-        }
+        },
+        tables: {
+          type: Type.ARRAY,
+          description: "Tablas estructuradas (endpoints, BD o roles) para insertar en el documento.",
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              headers: { type: Type.ARRAY, items: { type: Type.STRING } },
+              rows: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    cells: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  },
+                  required: ["cells"],
+                },
+              },
+            },
+            required: ["title", "headers", "rows"],
+          },
+        },
       },
       required: ["ruta", "flujoOperativo", "diseno", "consideracionesTecnicas", "codigoEjemplo"]
     };
@@ -763,17 +812,17 @@ Pasos Operativos: ${JSON.stringify(proposal.analisisOperativo || [])}
       contents: promptContext,
       config: {
         systemInstruction: `Eres el Arquitecto de Software y Líder Técnico Senior en Advansys.
-Tu labor es estructurar la Especificación Técnica Interna para los desarrolladores y el equipo de QA.
-Toma en cuenta que este documento NO dice lo mismo que la propuesta comercial porque es de uso interno técnico.
+Redactas la Especificación Técnica Interna para desarrolladores y QA. NO repitas el lenguaje comercial de la propuesta: conviértela en spec ejecutable.
 
-Estructura obligatoria requerida:
-1. Ruta: Ruta exacta de acceso en el sistema, breadcrumbs de menú, nombres de pantallas y endpoints.
-2. Flujo operativo: Secuencia lógica interna paso a paso (UI -> API -> Lógica -> BD).
-3. Diseño: Componentes de interfaz, estructura de datos y tablas de BD afectadas.
-4. Consideraciones técnicas: Validaciones, seguridad, transacciones, manejo de errores y rendimiento.
-5. Código de ejemplo: Scripts SQL (CREATE TABLE / ALTER / SELECT) o payloads JSON y funciones de backend.
+Estructura de contenido:
+1. Ruta: breadcrumbs de menú, nombre de pantalla/formulario, microservicios y endpoints REST (método + path).
+2. Flujo operativo: secuencia numerada UI -> validación -> API -> reglas -> persistencia -> respuesta/auditoría.
+3. Diseño: componentes visuales y modelo de datos (entidades, PK/FK, campos).
+4. Consideraciones: RBAC, transacciones ACID, concurrencia, errores, rendimiento, auditoría.
+5. Código: SQL DDL/DML o payload JSON realista, listo para copiar.
 
-REGLA ESTRICTA: NO utilices emojis ni emoticonos en ninguna parte. Mantén un tono de ingeniería riguroso y corporativo.`,
+Formato: texto plano corporativo con "• " y listas "1. 2. 3.", títulos de bloque con dos puntos, sin emojis y sin markdown.
+Si la propuesta ya existe, deriva nombres de módulos, pantallas y reglas desde ella. Completa huecos técnicos de forma coherente.`,
         temperature: 0.2,
         responseMimeType: "application/json",
         responseSchema: technicalDocSchema,
@@ -787,6 +836,31 @@ REGLA ESTRICTA: NO utilices emojis ni emoticonos en ninguna parte. Mantén un to
 
     const techDoc = JSON.parse(textOutput);
     techDoc.lastUpdated = new Date().toISOString();
+
+    const rawTables = Array.isArray(techDoc.tables) ? techDoc.tables : [];
+    techDoc.tables = rawTables.slice(0, 4).map((t: any, i: number) => ({
+      id: `tbl-ai-${Date.now()}-${i + 1}`,
+      title: String(t?.title || `Tabla ${i + 1}`),
+      headers: Array.isArray(t?.headers) ? t.headers.map((h: any) => String(h || '')) : [],
+      rows: Array.isArray(t?.rows)
+        ? t.rows.map((row: any) =>
+            Array.isArray(row?.cells)
+              ? row.cells.map((c: any) => String(c || ''))
+              : Array.isArray(row)
+                ? row.map((c: any) => String(c || ''))
+                : []
+          )
+        : [],
+    }));
+
+    if (techDoc.tables.length > 0) {
+      const tags = techDoc.tables.map((_: any, i: number) => `[TABLA_${i + 1}]`).join('\n');
+      const diseno = String(techDoc.diseno || '');
+      if (!/\[TABLA_\d+\]/i.test(diseno)) {
+        techDoc.diseno = diseno.trim() ? `${diseno.trim()}\n\n${tags}` : tags;
+      }
+    }
+
     res.json({ success: true, technicalDoc: techDoc });
   } catch (error: any) {
     console.error("Error generating technical doc with Gemini:", error);

@@ -11,9 +11,22 @@ export interface DocumentTitlesConfig {
   section6?: string;
   section7?: string;
   section8?: string;
+  // Visibility toggles for sections and subsections
+  hideSection1?: boolean;
+  hideSection2?: boolean;
+  hideSection3?: boolean;
+  hideSection3_1?: boolean;
+  hideSection3_2?: boolean;
+  hideSection3_3?: boolean;
+  hideSection4?: boolean;
+  hideSection5?: boolean;
+  hideSection6?: boolean;
+  hideSection7?: boolean;
+  hideSection8?: boolean;
+  hiddenSections?: string[];
 }
 
-export const DEFAULT_DOCUMENT_TITLES: Required<DocumentTitlesConfig> = {
+export const DEFAULT_DOCUMENT_TITLES: Required<Omit<DocumentTitlesConfig, 'hideSection1' | 'hideSection2' | 'hideSection3' | 'hideSection3_1' | 'hideSection3_2' | 'hideSection3_3' | 'hideSection4' | 'hideSection5' | 'hideSection6' | 'hideSection7' | 'hideSection8' | 'hiddenSections'>> = {
   mainTitle: 'ANÁLISIS DE CUMPLIMIENTO Y PROPUESTA DE DESARROLLO',
   section1: 'Resumen Ejecutivo',
   section2: 'Beneficios de la Propuesta',
@@ -28,20 +41,43 @@ export const DEFAULT_DOCUMENT_TITLES: Required<DocumentTitlesConfig> = {
   section8: 'Descargo y Cláusula Estándar',
 };
 
-export function getEffectiveTitles(custom?: DocumentTitlesConfig): Required<DocumentTitlesConfig> {
+export function getEffectiveTitles(custom?: DocumentTitlesConfig): Required<Omit<DocumentTitlesConfig, 'hideSection1' | 'hideSection2' | 'hideSection3' | 'hideSection3_1' | 'hideSection3_2' | 'hideSection3_3' | 'hideSection4' | 'hideSection5' | 'hideSection6' | 'hideSection7' | 'hideSection8' | 'hiddenSections'>> & {
+  hideSection1: boolean;
+  hideSection2: boolean;
+  hideSection3: boolean;
+  hideSection3_1: boolean;
+  hideSection3_2: boolean;
+  hideSection3_3: boolean;
+  hideSection4: boolean;
+  hideSection5: boolean;
+  hideSection6: boolean;
+  hideSection7: boolean;
+  hideSection8: boolean;
+} {
   return {
     mainTitle: custom?.mainTitle?.trim() || DEFAULT_DOCUMENT_TITLES.mainTitle,
     section1: custom?.section1?.trim() || DEFAULT_DOCUMENT_TITLES.section1,
     section2: custom?.section2?.trim() || DEFAULT_DOCUMENT_TITLES.section2,
     section3: custom?.section3?.trim() || DEFAULT_DOCUMENT_TITLES.section3,
-    section3_1: custom?.section3_1?.trim() || DEFAULT_DOCUMENT_TITLES.section3_1,
-    section3_2: custom?.section3_2?.trim() || DEFAULT_DOCUMENT_TITLES.section3_2,
-    section3_3: custom?.section3_3?.trim() || DEFAULT_DOCUMENT_TITLES.section3_3,
+    section3_1: custom?.section3_1 !== undefined && custom.section3_1.trim() !== '' ? custom.section3_1.trim() : DEFAULT_DOCUMENT_TITLES.section3_1,
+    section3_2: custom?.section3_2 !== undefined && custom.section3_2.trim() !== '' ? custom.section3_2.trim() : DEFAULT_DOCUMENT_TITLES.section3_2,
+    section3_3: custom?.section3_3 !== undefined && custom.section3_3.trim() !== '' ? custom.section3_3.trim() : DEFAULT_DOCUMENT_TITLES.section3_3,
     section4: custom?.section4?.trim() || DEFAULT_DOCUMENT_TITLES.section4,
     section5: custom?.section5?.trim() || DEFAULT_DOCUMENT_TITLES.section5,
     section6: custom?.section6?.trim() || DEFAULT_DOCUMENT_TITLES.section6,
     section7: custom?.section7?.trim() || DEFAULT_DOCUMENT_TITLES.section7,
     section8: custom?.section8?.trim() || DEFAULT_DOCUMENT_TITLES.section8,
+    hideSection1: !!custom?.hideSection1,
+    hideSection2: !!custom?.hideSection2,
+    hideSection3: !!custom?.hideSection3,
+    hideSection3_1: !!custom?.hideSection3_1,
+    hideSection3_2: !!custom?.hideSection3_2,
+    hideSection3_3: !!custom?.hideSection3_3,
+    hideSection4: !!custom?.hideSection4,
+    hideSection5: !!custom?.hideSection5,
+    hideSection6: !!custom?.hideSection6,
+    hideSection7: !!custom?.hideSection7,
+    hideSection8: !!custom?.hideSection8,
   };
 }
 
@@ -162,6 +198,20 @@ export interface DocumentTable {
   rows: string[][];
 }
 
+export interface TechnicalDoc {
+  ruta: string;
+  flujoOperativo: string;
+  diseno: string;
+  consideracionesTecnicas: string;
+  codigoEjemplo?: string;
+  modulosAfectados?: string[];
+  tablasBD?: string[];
+  lastUpdated?: string;
+  linkedProposalId?: string;
+  linkedProposalName?: string;
+  isStandalone?: boolean;
+}
+
 export interface ProposalSection {
   resumenEjecutivo: string;
   beneficios: string[];
@@ -173,18 +223,26 @@ export interface ProposalSection {
   descargo: string;
   tables?: DocumentTable[];
   slideDeck?: SlideDeck;
+  technicalDoc?: TechnicalDoc;
 }
+
+export type DocumentStatus = 'borrador' | 'en_revision' | 'finalizado' | 'culminado';
 
 export interface SavedProposal {
   id: string;
   version?: string; // e.g. "v1.0", "v2.0", "v1.1 - Enfoque B"
   versionNote?: string; // e.g. "Primera propuesta con integración por API"
+  status?: DocumentStatus; // "borrador" | "en_revision" | "finalizado" | "culminado"
+  statusChangedAt?: string;
   timestamp: string;
   metadata: MetadataHeader;
   content: ProposalSection;
   slideDeck?: SlideDeck;
+  technicalDoc?: TechnicalDoc;
   images: UploadedImage[];
   rawRequirements: string;
-  documentType?: 'proposal' | 'slides';
+  documentType?: 'proposal' | 'slides' | 'technical';
+  linkedProposalId?: string;
+  linkedProposalName?: string;
 }
 

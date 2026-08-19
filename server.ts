@@ -224,6 +224,8 @@ app.post("/api/analyze-source-document", async (req, res) => {
         {
           text: `Analiza el documento de origen y conviértelo en el planteamiento de un requerimiento Advansys.
 
+REGLA DE FORMATO ESTRICTA: NO utilices emojis ni emoticonos en ningún campo. Mantén un tono formal corporativo.
+
 ARCHIVO: ${fileName}
 TIPO: ${extracted.kind}
 CLIENTE (si se conoce): ${metadata?.cliente || "N/A"}
@@ -377,6 +379,9 @@ ${rawRequirements}
     const systemInstruction = `Eres un Arquitecto de Software Senior y Líder del Departamento de Análisis & Riesgo de Advansys.
 Tu trabajo es redactar análisis técnicos formales, guías operativas y propuestas de desarrollo profesionales siguiendo el formato y estilo corporativo de Advansys (referencia Guía Ticket 0000039443).
 
+PROHIBICIÓN ESTRICTA DE EMOJIS:
+NO utilices emojis, emoticonos ni caracteres gráficos informales en ninguna parte de la propuesta (ni en títulos, ni en viñetas, ni en descripciones, ni en descargos). El formato debe ser estrictamente corporativo, sobrio y profesional.
+
 FILTRO DE NIVEL DE TECNICISMO Y AUDIENCIA OBJETIVO (Nivel ${techLevel} de 10):
 - Nivel 1 a 3 (Alta Gerencia / Directiva / Ejecutivo):
   • Audiencia: Presidentes, Directores de Riesgo y Finanzas de Entidades Financieras.
@@ -517,7 +522,7 @@ ${rawRequirements || 'Sin notas adicionales'}
       model: "gemini-3.6-flash",
       contents: { parts: contentsParts },
       config: {
-        systemInstruction: "Eres un Editor Técnico Senior de Software en Advansys. Tu labor es actuar como co-piloto de IA asistiendo al analista humano en la redacción manual de su propuesta técnica.",
+        systemInstruction: "Eres un Editor Técnico Senior de Software en Advansys. Tu labor es actuar como co-piloto de IA asistiendo al analista humano en la redacción manual de su propuesta técnica.\n\nREGLA OBLIGATORIA: NO uses emojis ni emoticonos en ningún texto bajo ninguna circunstancia.",
         temperature: 0.2,
         responseMimeType: "application/json",
         responseSchema: proposalResponseSchema,
@@ -649,9 +654,13 @@ Pasos operativos: ${JSON.stringify(proposal.analisisOperativo || [])}
       config: {
         systemInstruction: `Eres un Diseñador y Consultor de Presentaciones Ejecutivas Senior en Advansys.
 Tu objetivo es estructurar una presentación de 6 a 8 diapositivas profesionales, dinámicas y concisas para la gerencia y equipos técnicos.
+
+PROHIBICIÓN ESTRICTA DE EMOJIS:
+NO utilices emojis, emoticonos ni pictogramas informales en ningún título, viñeta, tarjeta, paso o nota de orador. Toda la presentación debe ser 100% formal y corporativa.
+
 Estructura recomendada:
 1. Portada (layout: 'title')
-2. Contexto & Problemática (layout: 'bullets')
+2. Lo Expuesto / Situación Actual (layout: 'bullets', category: '01. LO EXPUESTO', título: 'Lo Expuesto', presenta fielmente el requerimiento/resumen expuesto)
 3. Beneficios Clave para el Negocio (layout: 'cards', 4 tarjetas)
 4. Alcance & Entregables (layout: 'two-column', izquierda alcance, derecha entregables)
 5. Solución & Arquitectura Técnica (layout: 'image-text' o 'bullets')
@@ -676,6 +685,114 @@ Para cada diapositiva, incluye notas del orador útiles ('speakerNotes') que gu�
     res.status(500).json({
       success: false,
       error: error?.message || "Error al generar la presentación con IA.",
+    });
+  }
+});
+
+// Endpoint to generate internal technical documentation linked to proposal
+app.post("/api/generate-technical-doc", async (req, res) => {
+  try {
+    const ai = getGeminiClient();
+    const { metadata = {}, rawRequirements = '', images = [], proposal = null } = req.body;
+
+    const cliente = metadata.cliente || 'Cliente Corporativo';
+    const proyecto = metadata.nombreProyecto || 'Desarrollo de Software';
+    const ticketNo = metadata.ticketNo || 'TK-2026';
+    const modulo = metadata.moduloAplicacion || 'Módulo Principal';
+
+    let promptContext = `Genera la DOCUMENTACIÓN TÉCNICA INTERNA Y ESPECIFICACIÓN DE DESARROLLO para el equipo de Ingeniería de Software y QA en Advansys.
+Esta documentación es de USO INTERNO y debe enfocarse en la arquitectura, navegación, componentes, base de datos, seguridad y código.
+
+DATOS DEL PROYECTO:
+- Cliente: ${cliente}
+- Nombre del Proyecto: ${proyecto}
+- Ticket No: ${ticketNo}
+- Módulo / Aplicación: ${modulo}
+
+REQUERIMIENTOS Y NOTAS:
+${rawRequirements || 'No se adjuntaron notas directas.'}
+`;
+
+    if (proposal) {
+      promptContext += `\nPROPUESTA TÉCNICA RELACIONADA (Contexto de Negocio y Alcance):
+Resumen: ${proposal.resumenEjecutivo || ''}
+Objetivo: ${proposal.objetivo || ''}
+Descripción: ${proposal.descripcion || ''}
+Alcance: ${JSON.stringify(proposal.alcanceExclusionesEntregables?.alcance || [])}
+Pasos Operativos: ${JSON.stringify(proposal.analisisOperativo || [])}
+`;
+    }
+
+    const technicalDocSchema = {
+      type: Type.OBJECT,
+      properties: {
+        ruta: {
+          type: Type.STRING,
+          description: "Ruta de navegación exacta en el sistema, menú, pantallas/formularios, endpoints y URLs REST de backend involucradas."
+        },
+        flujoOperativo: {
+          type: Type.STRING,
+          description: "Flujo operativo interno detallado paso a paso: disparador de interfaz, validaciones en frontend, capa de servicios, lógica de negocio y persistencia."
+        },
+        diseno: {
+          type: Type.STRING,
+          description: "Diseño técnico de la interfaz y estructura de datos: controles/grillas visuales, entidades de base de datos, tablas maestras y detalles, campos y tipos de datos."
+        },
+        consideracionesTecnicas: {
+          type: Type.STRING,
+          description: "Consideraciones técnicas y de seguridad: control de concurrencia, transacciones ACID, validaciones de integridad, roles/permisos RBAC, auditoría y rendimiento."
+        },
+        codigoEjemplo: {
+          type: Type.STRING,
+          description: "Script SQL de creación o consulta de tablas, scripts DDL/DML, payload JSON de endpoint o snippet de código de ejemplo para desarrollo."
+        },
+        modulosAfectados: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING }
+        },
+        tablasBD: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING }
+        }
+      },
+      required: ["ruta", "flujoOperativo", "diseno", "consideracionesTecnicas", "codigoEjemplo"]
+    };
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: promptContext,
+      config: {
+        systemInstruction: `Eres el Arquitecto de Software y Líder Técnico Senior en Advansys.
+Tu labor es estructurar la Especificación Técnica Interna para los desarrolladores y el equipo de QA.
+Toma en cuenta que este documento NO dice lo mismo que la propuesta comercial porque es de uso interno técnico.
+
+Estructura obligatoria requerida:
+1. Ruta: Ruta exacta de acceso en el sistema, breadcrumbs de menú, nombres de pantallas y endpoints.
+2. Flujo operativo: Secuencia lógica interna paso a paso (UI -> API -> Lógica -> BD).
+3. Diseño: Componentes de interfaz, estructura de datos y tablas de BD afectadas.
+4. Consideraciones técnicas: Validaciones, seguridad, transacciones, manejo de errores y rendimiento.
+5. Código de ejemplo: Scripts SQL (CREATE TABLE / ALTER / SELECT) o payloads JSON y funciones de backend.
+
+REGLA ESTRICTA: NO utilices emojis ni emoticonos en ninguna parte. Mantén un tono de ingeniería riguroso y corporativo.`,
+        temperature: 0.2,
+        responseMimeType: "application/json",
+        responseSchema: technicalDocSchema,
+      }
+    });
+
+    const textOutput = response.text;
+    if (!textOutput) {
+      throw new Error("No se pudo generar la documentación técnica.");
+    }
+
+    const techDoc = JSON.parse(textOutput);
+    techDoc.lastUpdated = new Date().toISOString();
+    res.json({ success: true, technicalDoc: techDoc });
+  } catch (error: any) {
+    console.error("Error generating technical doc with Gemini:", error);
+    res.status(500).json({
+      success: false,
+      error: error?.message || "Error al generar la documentación técnica con IA.",
     });
   }
 });

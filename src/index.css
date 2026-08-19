@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
   --color-brand: #0a3d62;
@@ -84,15 +86,36 @@ html {
   scroll-behavior: smooth;
 }
 
+/* =========================================================================
+   LIGHT THEME WORKSPACE STYLING & HIGH CONTRAST DEFINITIONS
+   Crisp, clean corporate styling with distinct borders, subtle depth,
+   and crystal-clear typography across all panels and forms
+   ========================================================================= */
+
 body {
   overflow-x: hidden;
   font-family: var(--font-sans);
-  background-color: #e8eef4;
+  background-color: #f0f4f8;
   background-image:
-    radial-gradient(ellipse 90% 55% at 8% -12%, rgba(10, 61, 98, 0.14), transparent 55%),
-    radial-gradient(ellipse 70% 45% at 100% 0%, rgba(46, 204, 113, 0.1), transparent 50%),
-    linear-gradient(180deg, #eef3f8 0%, #e4ebf3 100%);
+    radial-gradient(ellipse 90% 55% at 8% -12%, rgba(10, 61, 98, 0.10), transparent 55%),
+    radial-gradient(ellipse 70% 45% at 100% 0%, rgba(46, 204, 113, 0.08), transparent 50%),
+    linear-gradient(180deg, #f8fafc 0%, #edf2f7 100%);
   background-attachment: fixed;
+  color: #0f172a;
+}
+
+/* Light mode form controls definition & focus clarity */
+input:not(.advansys-document-sheet input):not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]),
+textarea:not(.advansys-document-sheet textarea),
+select:not(.advansys-document-sheet select) {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+input:focus:not(.advansys-document-sheet input),
+textarea:focus:not(.advansys-document-sheet textarea),
+select:focus:not(.advansys-document-sheet select) {
+  border-color: #0a3d62 !important;
+  box-shadow: 0 0 0 3px rgba(10, 61, 98, 0.15) !important;
 }
 
 /* Minimalist Lucide stroke */

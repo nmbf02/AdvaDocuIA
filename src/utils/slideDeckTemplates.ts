@@ -28,15 +28,15 @@ export function createDefaultSlideDeck(metadata: MetadataHeader, images: Uploade
         id: 'slide-2',
         slideNumber: 2,
         layout: 'bullets',
-        category: '01. CONTEXTO & PROBLEMÁTICA',
-        title: 'Antecedentes y Situación Actual',
-        subtitle: 'Diagnóstico del escenario operativo y necesidad detectada',
+        category: '01. LO EXPUESTO',
+        title: 'Lo Expuesto (Situación Actual)',
+        subtitle: 'Diagnóstico del escenario operativo y necesidad planteada',
         bullets: [
           'Escenario actual: Procesos operativos con pasos manuales o dependencias susceptibles a optimización.',
           'Incidencia detectada: Necesidad de automatizar la trazabilidad y reducir tiempos de respuesta.',
           'Objetivo de negocio: Garantizar cumplimiento normativo y robustecer la experiencia de usuario.',
         ],
-        speakerNotes: 'Aquí exponemos el contexto inicial y la justificación de por qué es indispensable abordar este desarrollo.',
+        speakerNotes: 'Aquí exponemos literalmente el contexto inicial y la justificación de por qué es indispensable abordar este desarrollo.',
       },
       {
         id: 'slide-3',
@@ -147,22 +147,22 @@ export function convertProposalToSlideDeck(
     speakerNotes: `Presentación formal de la propuesta técnica ${ticket} elaborada por Advansys para ${cliente}.`,
   });
 
-  // Slide 2: Resumen Ejecutivo
+  // Slide 2: Lo Expuesto (Resumen Ejecutivo)
   if (proposal.resumenEjecutivo) {
     const sentences = proposal.resumenEjecutivo
       .split('\n')
       .map(s => s.trim())
-      .filter(s => s.length > 5);
+      .filter(s => s.length > 0);
 
     slides.push({
       id: `slide-${Date.now()}-2`,
       slideNumber: slides.length + 1,
       layout: 'bullets',
-      category: '01. RESUMEN EJECUTIVO',
-      title: 'Resumen de la Propuesta',
-      subtitle: 'Objetivo y visión general de la solución',
-      bullets: sentences.length > 0 ? sentences.slice(0, 4) : [proposal.resumenEjecutivo.slice(0, 260)],
-      speakerNotes: 'Resumen ejecutivo de la necesidad y el alcance estratégico del desarrollo.',
+      category: '01. LO EXPUESTO',
+      title: 'Lo Expuesto',
+      subtitle: 'Planteamiento y requerimiento inicial del cliente',
+      bullets: sentences.length > 0 ? sentences.slice(0, 5) : [proposal.resumenEjecutivo],
+      speakerNotes: `En esta diapositiva se expone literalmente el requerimiento planteado para ${cliente}.`,
     });
   }
 

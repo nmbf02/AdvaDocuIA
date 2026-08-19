@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { BrandingSettings, DocumentTitlesConfig, DEFAULT_DOCUMENT_TITLES, getEffectiveTitles } from '../types';
-import { Settings, X, Image as ImageIcon, Upload, Trash2, Heading1, RotateCcw, Check, Sparkles, Sliders } from 'lucide-react';
+import { Settings, X, Image as ImageIcon, Upload, Trash2, Heading1, RotateCcw, Check, Sparkles, Sliders, Eye, EyeOff } from 'lucide-react';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -28,6 +28,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const updatedTitles: DocumentTitlesConfig = {
       ...branding.customTitles,
       [field]: value,
+    };
+    onChange({
+      ...branding,
+      customTitles: updatedTitles,
+    });
+  };
+
+  const handleToggleHide = (field: keyof DocumentTitlesConfig) => {
+    const updatedTitles: DocumentTitlesConfig = {
+      ...branding.customTitles,
+      [field]: !branding.customTitles?.[field],
     };
     onChange({
       ...branding,
@@ -217,148 +228,344 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   {/* Section 1 */}
-                  <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs">
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      1. Sección 1 (Resumen)
-                    </label>
+                  <div className={`border rounded-xl p-3 shadow-xs transition-colors ${
+                    currentTitles.hideSection1 ? 'bg-slate-100/80 border-slate-300 opacity-80' : 'bg-white border-slate-200'
+                  }`}>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-bold text-slate-700 truncate">
+                        1. Sección 1 (Resumen)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleHide('hideSection1')}
+                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors ${
+                          currentTitles.hideSection1
+                            ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                            : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                        }`}
+                        title={currentTitles.hideSection1 ? 'Sección oculta en el documento' : 'Sección visible en el documento'}
+                      >
+                        {currentTitles.hideSection1 ? <EyeOff className="w-3 h-3 text-amber-700" /> : <Eye className="w-3 h-3 text-emerald-600" />}
+                        <span>{currentTitles.hideSection1 ? 'Oculto' : 'Visible'}</span>
+                      </button>
+                    </div>
                     <input
                       type="text"
+                      disabled={currentTitles.hideSection1}
                       value={currentTitles.section1 ?? ''}
                       onChange={(e) => handleTitleChange('section1', e.target.value)}
                       placeholder={DEFAULT_DOCUMENT_TITLES.section1}
-                      className="w-full bg-slate-50/50 border border-slate-200 focus:bg-white focus:border-[#0A3D62] rounded-lg px-2.5 py-1.5 text-xs text-slate-800"
+                      className="w-full bg-slate-50/50 border border-slate-200 focus:bg-white focus:border-[#0A3D62] rounded-lg px-2.5 py-1.5 text-xs text-slate-800 disabled:opacity-50"
                     />
                   </div>
 
                   {/* Section 2 */}
-                  <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs">
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      2. Sección 2 (Beneficios)
-                    </label>
+                  <div className={`border rounded-xl p-3 shadow-xs transition-colors ${
+                    currentTitles.hideSection2 ? 'bg-slate-100/80 border-slate-300 opacity-80' : 'bg-white border-slate-200'
+                  }`}>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-bold text-slate-700 truncate">
+                        2. Sección 2 (Beneficios)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleHide('hideSection2')}
+                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors ${
+                          currentTitles.hideSection2
+                            ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                            : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                        }`}
+                        title={currentTitles.hideSection2 ? 'Sección oculta en el documento' : 'Sección visible en el documento'}
+                      >
+                        {currentTitles.hideSection2 ? <EyeOff className="w-3 h-3 text-amber-700" /> : <Eye className="w-3 h-3 text-emerald-600" />}
+                        <span>{currentTitles.hideSection2 ? 'Oculto' : 'Visible'}</span>
+                      </button>
+                    </div>
                     <input
                       type="text"
+                      disabled={currentTitles.hideSection2}
                       value={currentTitles.section2 ?? ''}
                       onChange={(e) => handleTitleChange('section2', e.target.value)}
                       placeholder={DEFAULT_DOCUMENT_TITLES.section2}
-                      className="w-full bg-slate-50/50 border border-slate-200 focus:bg-white focus:border-[#0A3D62] rounded-lg px-2.5 py-1.5 text-xs text-slate-800"
+                      className="w-full bg-slate-50/50 border border-slate-200 focus:bg-white focus:border-[#0A3D62] rounded-lg px-2.5 py-1.5 text-xs text-slate-800 disabled:opacity-50"
                     />
                   </div>
 
                   {/* Section 3 */}
-                  <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs sm:col-span-2">
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      3. Sección 3 (Alcance y Entregables)
-                    </label>
+                  <div className={`border rounded-xl p-3 shadow-xs sm:col-span-2 transition-colors ${
+                    currentTitles.hideSection3 ? 'bg-slate-100/80 border-slate-300 opacity-80' : 'bg-white border-slate-200'
+                  }`}>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-bold text-slate-700">
+                        3. Sección 3 (Alcance, Exclusiones y Entregables)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleHide('hideSection3')}
+                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors ${
+                          currentTitles.hideSection3
+                            ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                            : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                        }`}
+                        title={currentTitles.hideSection3 ? 'Toda la Sección 3 oculta' : 'Sección 3 visible'}
+                      >
+                        {currentTitles.hideSection3 ? <EyeOff className="w-3 h-3 text-amber-700" /> : <Eye className="w-3 h-3 text-emerald-600" />}
+                        <span>{currentTitles.hideSection3 ? 'Sección Oculta' : 'Sección Visible'}</span>
+                      </button>
+                    </div>
                     <input
                       type="text"
+                      disabled={currentTitles.hideSection3}
                       value={currentTitles.section3 ?? ''}
                       onChange={(e) => handleTitleChange('section3', e.target.value)}
                       placeholder={DEFAULT_DOCUMENT_TITLES.section3}
-                      className="w-full bg-slate-50/50 border border-slate-200 focus:bg-white focus:border-[#0A3D62] rounded-lg px-2.5 py-1.5 text-xs text-slate-800 mb-2"
+                      className="w-full bg-slate-50/50 border border-slate-200 focus:bg-white focus:border-[#0A3D62] rounded-lg px-2.5 py-1.5 text-xs text-slate-800 mb-2 disabled:opacity-50"
                     />
 
-                    {/* Sub-items for Section 3 */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-slate-100">
-                      <div>
-                        <span className="text-[10px] font-medium text-slate-500 block mb-0.5">3.1 Alcance:</span>
-                        <input
-                          type="text"
-                          value={currentTitles.section3_1 ?? ''}
-                          onChange={(e) => handleTitleChange('section3_1', e.target.value)}
-                          placeholder={DEFAULT_DOCUMENT_TITLES.section3_1}
-                          className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-800"
-                        />
-                      </div>
-                      <div>
-                        <span className="text-[10px] font-medium text-slate-500 block mb-0.5">3.2 Exclusiones:</span>
-                        <input
-                          type="text"
-                          value={currentTitles.section3_2 ?? ''}
-                          onChange={(e) => handleTitleChange('section3_2', e.target.value)}
-                          placeholder={DEFAULT_DOCUMENT_TITLES.section3_2}
-                          className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-800"
-                        />
-                      </div>
-                      <div>
-                        <span className="text-[10px] font-medium text-slate-500 block mb-0.5">3.3 Entregables:</span>
-                        <input
-                          type="text"
-                          value={currentTitles.section3_3 ?? ''}
-                          onChange={(e) => handleTitleChange('section3_3', e.target.value)}
-                          placeholder={DEFAULT_DOCUMENT_TITLES.section3_3}
-                          className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-800"
-                        />
+                    {/* Sub-items for Section 3 with individual toggles */}
+                    <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+                        Apartados del Ítem 3 (Configura título o activa/desactiva para no mostrar):
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        {/* 3.1 */}
+                        <div className={`p-2 rounded-lg border ${currentTitles.hideSection3_1 ? 'bg-slate-100 border-slate-300' : 'bg-slate-50/80 border-slate-200'}`}>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] font-bold text-slate-700">3.1 Alcance:</span>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleHide('hideSection3_1')}
+                              className={`p-1 rounded text-[10px] font-semibold inline-flex items-center gap-1 ${
+                                currentTitles.hideSection3_1 ? 'text-amber-700 bg-amber-100' : 'text-emerald-700 bg-white hover:bg-emerald-50 border border-slate-200'
+                              }`}
+                              title={currentTitles.hideSection3_1 ? 'Oculto en el documento' : 'Visible en el documento'}
+                            >
+                              {currentTitles.hideSection3_1 ? <EyeOff className="w-2.5 h-2.5" /> : <Eye className="w-2.5 h-2.5" />}
+                              <span>{currentTitles.hideSection3_1 ? 'Oculto' : 'Mostrar'}</span>
+                            </button>
+                          </div>
+                          <input
+                            type="text"
+                            disabled={currentTitles.hideSection3_1 || currentTitles.hideSection3}
+                            value={currentTitles.section3_1 ?? ''}
+                            onChange={(e) => handleTitleChange('section3_1', e.target.value)}
+                            placeholder={DEFAULT_DOCUMENT_TITLES.section3_1}
+                            className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-800 disabled:opacity-50"
+                          />
+                        </div>
+
+                        {/* 3.2 */}
+                        <div className={`p-2 rounded-lg border ${currentTitles.hideSection3_2 ? 'bg-slate-100 border-slate-300' : 'bg-slate-50/80 border-slate-200'}`}>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] font-bold text-slate-700">3.2 Exclusiones:</span>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleHide('hideSection3_2')}
+                              className={`p-1 rounded text-[10px] font-semibold inline-flex items-center gap-1 ${
+                                currentTitles.hideSection3_2 ? 'text-amber-700 bg-amber-100' : 'text-emerald-700 bg-white hover:bg-emerald-50 border border-slate-200'
+                              }`}
+                              title={currentTitles.hideSection3_2 ? 'Oculto en el documento' : 'Visible en el documento'}
+                            >
+                              {currentTitles.hideSection3_2 ? <EyeOff className="w-2.5 h-2.5" /> : <Eye className="w-2.5 h-2.5" />}
+                              <span>{currentTitles.hideSection3_2 ? 'Oculto' : 'Mostrar'}</span>
+                            </button>
+                          </div>
+                          <input
+                            type="text"
+                            disabled={currentTitles.hideSection3_2 || currentTitles.hideSection3}
+                            value={currentTitles.section3_2 ?? ''}
+                            onChange={(e) => handleTitleChange('section3_2', e.target.value)}
+                            placeholder={DEFAULT_DOCUMENT_TITLES.section3_2}
+                            className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-800 disabled:opacity-50"
+                          />
+                        </div>
+
+                        {/* 3.3 */}
+                        <div className={`p-2 rounded-lg border ${currentTitles.hideSection3_3 ? 'bg-slate-100 border-slate-300' : 'bg-slate-50/80 border-slate-200'}`}>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] font-bold text-slate-700">3.3 Entregables:</span>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleHide('hideSection3_3')}
+                              className={`p-1 rounded text-[10px] font-semibold inline-flex items-center gap-1 ${
+                                currentTitles.hideSection3_3 ? 'text-amber-700 bg-amber-100' : 'text-emerald-700 bg-white hover:bg-emerald-50 border border-slate-200'
+                              }`}
+                              title={currentTitles.hideSection3_3 ? 'Oculto en el documento' : 'Visible en el documento'}
+                            >
+                              {currentTitles.hideSection3_3 ? <EyeOff className="w-2.5 h-2.5" /> : <Eye className="w-2.5 h-2.5" />}
+                              <span>{currentTitles.hideSection3_3 ? 'Oculto' : 'Mostrar'}</span>
+                            </button>
+                          </div>
+                          <input
+                            type="text"
+                            disabled={currentTitles.hideSection3_3 || currentTitles.hideSection3}
+                            value={currentTitles.section3_3 ?? ''}
+                            onChange={(e) => handleTitleChange('section3_3', e.target.value)}
+                            placeholder={DEFAULT_DOCUMENT_TITLES.section3_3}
+                            className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-[11px] text-slate-800 disabled:opacity-50"
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
 
                   {/* Section 4 */}
-                  <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs">
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      4. Sección 4 (Objetivos)
-                    </label>
+                  <div className={`border rounded-xl p-3 shadow-xs transition-colors ${
+                    currentTitles.hideSection4 ? 'bg-slate-100/80 border-slate-300 opacity-80' : 'bg-white border-slate-200'
+                  }`}>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-bold text-slate-700 truncate">
+                        4. Sección 4 (Objetivos)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleHide('hideSection4')}
+                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors ${
+                          currentTitles.hideSection4
+                            ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                            : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                        }`}
+                        title={currentTitles.hideSection4 ? 'Sección oculta en el documento' : 'Sección visible en el documento'}
+                      >
+                        {currentTitles.hideSection4 ? <EyeOff className="w-3 h-3 text-amber-700" /> : <Eye className="w-3 h-3 text-emerald-600" />}
+                        <span>{currentTitles.hideSection4 ? 'Oculto' : 'Visible'}</span>
+                      </button>
+                    </div>
                     <input
                       type="text"
+                      disabled={currentTitles.hideSection4}
                       value={currentTitles.section4 ?? ''}
                       onChange={(e) => handleTitleChange('section4', e.target.value)}
                       placeholder={DEFAULT_DOCUMENT_TITLES.section4}
-                      className="w-full bg-slate-50/50 border border-slate-200 focus:bg-white focus:border-[#0A3D62] rounded-lg px-2.5 py-1.5 text-xs text-slate-800"
+                      className="w-full bg-slate-50/50 border border-slate-200 focus:bg-white focus:border-[#0A3D62] rounded-lg px-2.5 py-1.5 text-xs text-slate-800 disabled:opacity-50"
                     />
                   </div>
 
                   {/* Section 5 */}
-                  <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs">
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      5. Sección 5 (Descripción de Solución)
-                    </label>
+                  <div className={`border rounded-xl p-3 shadow-xs transition-colors ${
+                    currentTitles.hideSection5 ? 'bg-slate-100/80 border-slate-300 opacity-80' : 'bg-white border-slate-200'
+                  }`}>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-bold text-slate-700 truncate">
+                        5. Sección 5 (Descripción de Solución)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleHide('hideSection5')}
+                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors ${
+                          currentTitles.hideSection5
+                            ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                            : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                        }`}
+                        title={currentTitles.hideSection5 ? 'Sección oculta en el documento' : 'Sección visible en el documento'}
+                      >
+                        {currentTitles.hideSection5 ? <EyeOff className="w-3 h-3 text-amber-700" /> : <Eye className="w-3 h-3 text-emerald-600" />}
+                        <span>{currentTitles.hideSection5 ? 'Oculto' : 'Visible'}</span>
+                      </button>
+                    </div>
                     <input
                       type="text"
+                      disabled={currentTitles.hideSection5}
                       value={currentTitles.section5 ?? ''}
                       onChange={(e) => handleTitleChange('section5', e.target.value)}
                       placeholder={DEFAULT_DOCUMENT_TITLES.section5}
-                      className="w-full bg-slate-50/50 border border-slate-200 focus:bg-white focus:border-[#0A3D62] rounded-lg px-2.5 py-1.5 text-xs text-slate-800"
+                      className="w-full bg-slate-50/50 border border-slate-200 focus:bg-white focus:border-[#0A3D62] rounded-lg px-2.5 py-1.5 text-xs text-slate-800 disabled:opacity-50"
                     />
                   </div>
 
                   {/* Section 6 */}
-                  <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs">
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      6. Sección 6 (Índice Operativo)
-                    </label>
+                  <div className={`border rounded-xl p-3 shadow-xs transition-colors ${
+                    currentTitles.hideSection6 ? 'bg-slate-100/80 border-slate-300 opacity-80' : 'bg-white border-slate-200'
+                  }`}>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-bold text-slate-700 truncate">
+                        6. Sección 6 (Índice Operativo)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleHide('hideSection6')}
+                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors ${
+                          currentTitles.hideSection6
+                            ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                            : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                        }`}
+                        title={currentTitles.hideSection6 ? 'Sección oculta en el documento' : 'Sección visible en el documento'}
+                      >
+                        {currentTitles.hideSection6 ? <EyeOff className="w-3 h-3 text-amber-700" /> : <Eye className="w-3 h-3 text-emerald-600" />}
+                        <span>{currentTitles.hideSection6 ? 'Oculto' : 'Visible'}</span>
+                      </button>
+                    </div>
                     <input
                       type="text"
+                      disabled={currentTitles.hideSection6}
                       value={currentTitles.section6 ?? ''}
                       onChange={(e) => handleTitleChange('section6', e.target.value)}
                       placeholder={DEFAULT_DOCUMENT_TITLES.section6}
-                      className="w-full bg-slate-50/50 border border-slate-200 focus:bg-white focus:border-[#0A3D62] rounded-lg px-2.5 py-1.5 text-xs text-slate-800"
+                      className="w-full bg-slate-50/50 border border-slate-200 focus:bg-white focus:border-[#0A3D62] rounded-lg px-2.5 py-1.5 text-xs text-slate-800 disabled:opacity-50"
                     />
                   </div>
 
                   {/* Section 7 */}
-                  <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs">
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      7. Sección 7 (Análisis Operativo Detallado)
-                    </label>
+                  <div className={`border rounded-xl p-3 shadow-xs transition-colors ${
+                    currentTitles.hideSection7 ? 'bg-slate-100/80 border-slate-300 opacity-80' : 'bg-white border-slate-200'
+                  }`}>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-bold text-slate-700 truncate">
+                        7. Sección 7 (Análisis Operativo Detallado)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleHide('hideSection7')}
+                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors ${
+                          currentTitles.hideSection7
+                            ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                            : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                        }`}
+                        title={currentTitles.hideSection7 ? 'Sección oculta en el documento' : 'Sección visible en el documento'}
+                      >
+                        {currentTitles.hideSection7 ? <EyeOff className="w-3 h-3 text-amber-700" /> : <Eye className="w-3 h-3 text-emerald-600" />}
+                        <span>{currentTitles.hideSection7 ? 'Oculto' : 'Visible'}</span>
+                      </button>
+                    </div>
                     <input
                       type="text"
+                      disabled={currentTitles.hideSection7}
                       value={currentTitles.section7 ?? ''}
                       onChange={(e) => handleTitleChange('section7', e.target.value)}
                       placeholder={DEFAULT_DOCUMENT_TITLES.section7}
-                      className="w-full bg-slate-50/50 border border-slate-200 focus:bg-white focus:border-[#0A3D62] rounded-lg px-2.5 py-1.5 text-xs text-slate-800"
+                      className="w-full bg-slate-50/50 border border-slate-200 focus:bg-white focus:border-[#0A3D62] rounded-lg px-2.5 py-1.5 text-xs text-slate-800 disabled:opacity-50"
                     />
                   </div>
 
                   {/* Section 8 */}
-                  <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs sm:col-span-2">
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      8. Sección 8 (Descargo y Cláusula Estándar)
-                    </label>
+                  <div className={`border rounded-xl p-3 shadow-xs sm:col-span-2 transition-colors ${
+                    currentTitles.hideSection8 ? 'bg-slate-100/80 border-slate-300 opacity-80' : 'bg-white border-slate-200'
+                  }`}>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-bold text-slate-700">
+                        8. Sección 8 (Descargo y Cláusula Estándar)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleHide('hideSection8')}
+                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors ${
+                          currentTitles.hideSection8
+                            ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                            : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                        }`}
+                        title={currentTitles.hideSection8 ? 'Sección oculta en el documento' : 'Sección visible en el documento'}
+                      >
+                        {currentTitles.hideSection8 ? <EyeOff className="w-3 h-3 text-amber-700" /> : <Eye className="w-3 h-3 text-emerald-600" />}
+                        <span>{currentTitles.hideSection8 ? 'Oculto' : 'Visible'}</span>
+                      </button>
+                    </div>
                     <input
                       type="text"
+                      disabled={currentTitles.hideSection8}
                       value={currentTitles.section8 ?? ''}
                       onChange={(e) => handleTitleChange('section8', e.target.value)}
                       placeholder={DEFAULT_DOCUMENT_TITLES.section8}
-                      className="w-full bg-slate-50/50 border border-slate-200 focus:bg-white focus:border-[#0A3D62] rounded-lg px-2.5 py-1.5 text-xs text-slate-800"
+                      className="w-full bg-slate-50/50 border border-slate-200 focus:bg-white focus:border-[#0A3D62] rounded-lg px-2.5 py-1.5 text-xs text-slate-800 disabled:opacity-50"
                     />
                   </div>
                 </div>

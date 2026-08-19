@@ -14,6 +14,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { SourceDocumentUploader } from './SourceDocumentUploader';
+import { TextFormattingToolbar, handleAutoBulletKeyDown } from './TextFormattingToolbar';
 
 interface RequirementsInputProps {
   value: string;
@@ -99,6 +100,13 @@ export const RequirementsInput: React.FC<RequirementsInputProps> = ({
   const incidenciaFileRef = useRef<HTMLInputElement>(null);
   const cuestionantesFileRef = useRef<HTMLInputElement>(null);
   const flujoFileRef = useRef<HTMLInputElement>(null);
+
+  // Textarea refs for rich formatting
+  const premisaTextRef = useRef<HTMLTextAreaElement>(null);
+  const incidenciaTextRef = useRef<HTMLTextAreaElement>(null);
+  const cuestionantesTextRef = useRef<HTMLTextAreaElement>(null);
+  const flujoTextRef = useRef<HTMLTextAreaElement>(null);
+  const unifiedTextRef = useRef<HTMLTextAreaElement>(null);
 
   // Keep sections in sync when value changes externally (e.g., presets or resets)
   useEffect(() => {
@@ -189,7 +197,7 @@ export const RequirementsInput: React.FC<RequirementsInputProps> = ({
   };
 
   return (
-    <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-sm border border-white p-3 sm:p-4 flex flex-col min-w-0 max-w-full overflow-x-hidden">
+    <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-sm border border-slate-200/90 p-3 sm:p-4 flex flex-col min-w-0 max-w-full overflow-x-hidden">
       
       {/* Section Header */}
       <div className="flex flex-col border-b border-slate-100 pb-3 mb-4 gap-2 min-w-0">
@@ -330,11 +338,20 @@ export const RequirementsInput: React.FC<RequirementsInputProps> = ({
                 </div>
               </div>
 
+              <TextFormattingToolbar
+                textareaRef={premisaTextRef}
+                value={sections.premisa}
+                onChange={(v) => updateSectionField('premisa', v)}
+                showTableButton={false}
+              />
+
               <textarea
+                ref={premisaTextRef}
                 value={sections.premisa}
                 onChange={(e) => updateSectionField('premisa', e.target.value)}
-                placeholder="Describe la premisa inicial, arquitectura actual o escenario de negocio del cliente..."
-                className="w-full min-w-0 max-w-full p-2.5 text-xs bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-800 font-mono leading-relaxed resize-y min-h-[75px]"
+                onKeyDown={(e) => handleAutoBulletKeyDown(e, sections.premisa, (v) => updateSectionField('premisa', v))}
+                placeholder="Describe la premisa inicial, arquitectura actual o escenario de negocio del cliente... (usa • Viñeta o escribe '• ' o '1. ')"
+                className="w-full min-w-0 max-w-full p-2.5 text-xs bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-800 font-sans leading-relaxed resize-y min-h-[75px]"
               />
 
               {/* Quick insert image tags */}
@@ -400,11 +417,20 @@ export const RequirementsInput: React.FC<RequirementsInputProps> = ({
                 </div>
               </div>
 
+              <TextFormattingToolbar
+                textareaRef={incidenciaTextRef}
+                value={sections.incidencia}
+                onChange={(v) => updateSectionField('incidencia', v)}
+                showTableButton={false}
+              />
+
               <textarea
+                ref={incidenciaTextRef}
                 value={sections.incidencia}
                 onChange={(e) => updateSectionField('incidencia', e.target.value)}
-                placeholder="Detalla el error, cuello de botella, brecha operativa o falla que motiva este análisis..."
-                className="w-full min-w-0 max-w-full p-2.5 text-xs bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-800 font-mono leading-relaxed resize-y min-h-[85px]"
+                onKeyDown={(e) => handleAutoBulletKeyDown(e, sections.incidencia, (v) => updateSectionField('incidencia', v))}
+                placeholder="Detalla el error, cuello de botella, brecha operativa o falla que motiva este análisis... (usa • Viñeta o escribe '• ' o '1. ')"
+                className="w-full min-w-0 max-w-full p-2.5 text-xs bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-800 font-sans leading-relaxed resize-y min-h-[85px]"
               />
 
               {/* Quick insert image tags */}
@@ -470,11 +496,20 @@ export const RequirementsInput: React.FC<RequirementsInputProps> = ({
                 </div>
               </div>
 
+              <TextFormattingToolbar
+                textareaRef={cuestionantesTextRef}
+                value={sections.cuestionantes}
+                onChange={(v) => updateSectionField('cuestionantes', v)}
+                showTableButton={false}
+              />
+
               <textarea
+                ref={cuestionantesTextRef}
                 value={sections.cuestionantes}
                 onChange={(e) => updateSectionField('cuestionantes', e.target.value)}
-                placeholder="Puntos a investigar, preguntas de arquitectura, volumetría o dudas técnicas del cliente..."
-                className="w-full min-w-0 max-w-full p-2.5 text-xs bg-white border border-blue-200 rounded-lg focus:ring-2 focus:ring-[#1E5F8A] text-slate-800 font-mono leading-relaxed resize-y min-h-[85px]"
+                onKeyDown={(e) => handleAutoBulletKeyDown(e, sections.cuestionantes, (v) => updateSectionField('cuestionantes', v))}
+                placeholder="Puntos a investigar, preguntas de arquitectura, volumetría o dudas técnicas del cliente... (usa • Viñeta o escribe '• ' o '1. ')"
+                className="w-full min-w-0 max-w-full p-2.5 text-xs bg-white border border-blue-200 rounded-lg focus:ring-2 focus:ring-[#1E5F8A] text-slate-800 font-sans leading-relaxed resize-y min-h-[85px]"
               />
 
               {/* Quick insert image tags */}
@@ -540,11 +575,20 @@ export const RequirementsInput: React.FC<RequirementsInputProps> = ({
                 </div>
               </div>
 
+              <TextFormattingToolbar
+                textareaRef={flujoTextRef}
+                value={sections.flujoActual}
+                onChange={(v) => updateSectionField('flujoActual', v)}
+                showTableButton={false}
+              />
+
               <textarea
+                ref={flujoTextRef}
                 value={sections.flujoActual}
                 onChange={(e) => updateSectionField('flujoActual', e.target.value)}
-                placeholder="Enumera paso a paso cómo se ejecuta el proceso hoy en día (ej. 1. Descarga reportes, 2. Filtra Excel...)..."
-                className="w-full min-w-0 max-w-full p-2.5 text-xs bg-white border border-emerald-200 rounded-lg focus:ring-2 focus:ring-[#2ECC71] text-slate-800 font-mono leading-relaxed resize-y min-h-[85px]"
+                onKeyDown={(e) => handleAutoBulletKeyDown(e, sections.flujoActual, (v) => updateSectionField('flujoActual', v))}
+                placeholder="Enumera paso a paso cómo se ejecuta el proceso hoy en día (ej. 1. Descarga reportes, 2. Filtra Excel...)... (usa • Viñeta o escribe '• ' o '1. ')"
+                className="w-full min-w-0 max-w-full p-2.5 text-xs bg-white border border-emerald-200 rounded-lg focus:ring-2 focus:ring-[#2ECC71] text-slate-800 font-sans leading-relaxed resize-y min-h-[85px]"
               />
 
               {/* Quick insert image tags */}
@@ -572,24 +616,41 @@ export const RequirementsInput: React.FC<RequirementsInputProps> = ({
 
       {/* VIEW MODE 2: UNIFIED TEXTAREA */}
       {viewMode === 'unified' && (
-        <div className="relative flex-1 min-h-[280px]">
-          <div className="absolute top-2 right-2 z-10">
-            <ClearTextButton
-              disabled={!value.trim()}
-              onClear={() => {
-                onChange('');
-                setSections({ premisa: '', incidencia: '', cuestionantes: '', flujoActual: '' });
+        <div className="relative flex-1 min-h-[280px] space-y-1.5">
+          <div className="flex items-center justify-between">
+            <TextFormattingToolbar
+              textareaRef={unifiedTextRef}
+              value={value}
+              onChange={(newVal) => {
+                onChange(newVal);
+                setSections(parseRawToSections(newVal));
               }}
+              showTableButton={false}
+              className="flex-1"
             />
+            <div className="ml-2">
+              <ClearTextButton
+                disabled={!value.trim()}
+                onClear={() => {
+                  onChange('');
+                  setSections({ premisa: '', incidencia: '', cuestionantes: '', flujoActual: '' });
+                }}
+              />
+            </div>
           </div>
           <textarea
+            ref={unifiedTextRef}
             value={value}
             onChange={(e) => {
               onChange(e.target.value);
               setSections(parseRawToSections(e.target.value));
             }}
-            placeholder="Escribe o pega libremente el documento de planteamiento, notas o requerimientos..."
-            className="w-full min-w-0 max-w-full h-full min-h-[280px] p-3.5 pr-10 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] focus:bg-white transition-all text-slate-800 resize-y font-mono leading-relaxed"
+            onKeyDown={(e) => handleAutoBulletKeyDown(e, value, (newVal) => {
+              onChange(newVal);
+              setSections(parseRawToSections(newVal));
+            })}
+            placeholder="Escribe o pega libremente el documento de planteamiento, notas o requerimientos... (usa • Viñeta o escribe '• ' o '1. ')"
+            className="w-full min-w-0 max-w-full min-h-[260px] p-3.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] focus:bg-white transition-all text-slate-800 resize-y font-sans leading-relaxed"
           />
         </div>
       )}

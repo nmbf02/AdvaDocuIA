@@ -74,7 +74,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ images, onChange }
   };
 
   return (
-    <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-sm border border-white p-3 sm:p-4 min-w-0 max-w-full overflow-x-hidden">
+    <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-sm border border-slate-200/90 p-3 sm:p-4 min-w-0 max-w-full overflow-x-hidden">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3 mb-4">
         <div className="flex items-center space-x-2 min-w-0">
           <div className="w-8 h-8 rounded-xl bg-blue-50 text-[#0A3D62] flex items-center justify-center font-bold text-sm border border-blue-200 shrink-0">

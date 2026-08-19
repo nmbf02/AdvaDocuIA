@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { SavedProposal } from '../types';
-import { X, Calendar, Building2, FileText, Trash2, ArrowRight, Copy, GitBranch, Search, Check, Tag, Sparkles, Filter, RotateCcw } from 'lucide-react';
+import { SavedProposal, DocumentStatus } from '../types';
+import { X, Calendar, Building2, FileText, Trash2, ArrowRight, Copy, GitBranch, Search, Check, Tag, Sparkles, Filter, RotateCcw, CheckCircle2, CheckCheck, Clock, ShieldCheck, Award } from 'lucide-react';
 
 interface HistoryModalProps {
   isOpen: boolean;
@@ -9,6 +9,7 @@ interface HistoryModalProps {
   onSelectProposal: (proposal: SavedProposal) => void;
   onDeleteProposal: (id: string) => void;
   onDuplicateProposal?: (proposal: SavedProposal) => void;
+  onUpdateStatus?: (id: string, status: DocumentStatus) => void;
 }
 
 export const HistoryModal: React.FC<HistoryModalProps> = ({
@@ -17,15 +18,25 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   proposals,
   onSelectProposal,
   onDeleteProposal,
-  onDuplicateProposal
+  onDuplicateProposal,
+  onUpdateStatus
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [statusTab, setStatusTab] = useState<'all' | 'in_progress' | 'completed'>('all');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterCliente, setFilterCliente] = useState('all');
   const [filterTicket, setFilterTicket] = useState('all');
   const [filterVersion, setFilterVersion] = useState('all');
   const [filterPeriod, setFilterPeriod] = useState<'all' | 'today' | '7d' | '30d' | 'month'>('all');
   const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'client' | 'project'>('newest');
+
+  const counts = useMemo(() => {
+    const total = proposals.length;
+    const completed = proposals.filter((p) => p.status === 'finalizado' || p.status === 'culminado').length;
+    const inProgress = total - completed;
+    return { total, completed, inProgress };
+  }, [proposals]);
 
   const uniqueClientes = useMemo(() => {
     const set = new Set<string>();
@@ -55,6 +66,8 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   }, [proposals]);
 
   const hasActiveFilters =
+    statusTab !== 'all' ||
+    filterStatus !== 'all' ||
     filterCliente !== 'all' ||
     filterTicket !== 'all' ||
     filterVersion !== 'all' ||
@@ -64,6 +77,8 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
 
   const clearFilters = () => {
     setSearchQuery('');
+    setStatusTab('all');
+    setFilterStatus('all');
     setFilterCliente('all');
     setFilterTicket('all');
     setFilterVersion('all');
@@ -93,6 +108,16 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
 
   const filteredProposals = proposals
     .filter((p) => {
+      const currentStatus = p.status || 'borrador';
+      const isCompleted = currentStatus === 'finalizado' || currentStatus === 'culminado';
+
+      // Status Tab filter
+      if (statusTab === 'completed' && !isCompleted) return false;
+      if (statusTab === 'in_progress' && isCompleted) return false;
+
+      // Status Dropdown filter
+      if (filterStatus !== 'all' && currentStatus !== filterStatus) return false;
+
       const q = searchQuery.toLowerCase().trim();
       const ticketKey = (p.metadata.ticketNo || p.metadata.propuestaNo || '').trim();
       const versionKey = (p.version || 'v1.0').trim();
@@ -111,7 +136,8 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
         (p.metadata.propuestaNo || '').toLowerCase().includes(q) ||
         (p.metadata.moduloAplicacion || '').toLowerCase().includes(q) ||
         versionKey.toLowerCase().includes(q) ||
-        (p.versionNote || '').toLowerCase().includes(q)
+        (p.versionNote || '').toLowerCase().includes(q) ||
+        currentStatus.toLowerCase().includes(q)
       );
     })
     .sort((a, b) => {
@@ -128,7 +154,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   // Copy proposal contents to clipboard
   const handleCopyTextToClipboard = (item: SavedProposal) => {
     const c = item.content;
-    const textToCopy = `=== ${item.metadata.nombreProyecto || 'Propuesta'} [${item.version || 'v1.0'}] ===
+    const textToCopy = `=== ${item.metadata.nombreProyecto || 'Propuesta'} [${item.version || 'v1.0'}] [${(item.status || 'Borrador').toUpperCase()}] ===
 Cliente: ${item.metadata.cliente || 'N/A'}
 Ticket: ${item.metadata.ticketNo || 'N/A'} | Fecha: ${item.metadata.fecha || ''}
 
@@ -162,6 +188,40 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
     setTimeout(() => setCopiedId(null), 2500);
   };
 
+  const getStatusBadge = (status?: DocumentStatus) => {
+    switch (status) {
+      case 'finalizado':
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 text-xs font-bold bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-md">
+            <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+            Finalizado
+          </span>
+        );
+      case 'culminado':
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 text-xs font-bold bg-teal-100 text-teal-900 border border-teal-300 rounded-md">
+            <CheckCheck className="w-3.5 h-3.5 mr-1 text-teal-600" />
+            Culminado
+          </span>
+        );
+      case 'en_revision':
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 text-xs font-bold bg-sky-100 text-sky-900 border border-sky-300 rounded-md">
+            <Clock className="w-3.5 h-3.5 mr-1 text-sky-600" />
+            En Revisión
+          </span>
+        );
+      case 'borrador':
+      default:
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-slate-200 text-slate-800 border border-slate-300 rounded-md">
+            <FileText className="w-3.5 h-3.5 mr-1 text-slate-500" />
+            Borrador
+          </span>
+        );
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col h-[88vh] max-h-[88vh]">
@@ -171,9 +231,9 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
           <div className="flex items-center space-x-2">
             <GitBranch className="w-5 h-5 text-[#2ECC71]" />
             <div>
-              <h2 className="text-base font-bold">Historial</h2>
+              <h2 className="text-base font-bold">Historial de Documentos</h2>
               <p className="text-[11px] text-blue-200">
-                Busca, filtra y vuelve a abrir documentos guardados
+                Gestiona tus propuestas, revisa versiones y marca documentos como finalizados o culminados
               </p>
             </div>
           </div>
@@ -185,8 +245,56 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
           </button>
         </div>
 
-        {/* Search + Filters — always visible, never collapsed */}
-        <div className="shrink-0 p-3 px-4 sm:px-6 bg-slate-100 border-b border-slate-300 space-y-2.5">
+        {/* Section Tabs: Todos / En Progreso / Finalizados & Culminados */}
+        <div className="bg-white px-4 sm:px-6 pt-3 pb-0 border-b border-slate-200 flex items-center gap-2 overflow-x-auto shrink-0">
+          <button
+            onClick={() => setStatusTab('all')}
+            className={`pb-2.5 px-3 text-xs font-bold flex items-center gap-1.5 border-b-2 transition-all shrink-0 ${
+              statusTab === 'all'
+                ? 'border-[#0A3D62] text-[#0A3D62]'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>Todos los documentos</span>
+            <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-slate-100 text-slate-700 font-semibold ml-1">
+              {counts.total}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setStatusTab('in_progress')}
+            className={`pb-2.5 px-3 text-xs font-bold flex items-center gap-1.5 border-b-2 transition-all shrink-0 ${
+              statusTab === 'in_progress'
+                ? 'border-amber-500 text-amber-900'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5 text-amber-500" />
+            <span>En Proceso / Borradores</span>
+            <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-amber-100 text-amber-800 font-semibold ml-1">
+              {counts.inProgress}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setStatusTab('completed')}
+            className={`pb-2.5 px-3 text-xs font-bold flex items-center gap-1.5 border-b-2 transition-all shrink-0 ${
+              statusTab === 'completed'
+                ? 'border-[#2ECC71] text-emerald-800'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <CheckCircle2 className="w-3.5 h-3.5 text-[#2ECC71]" />
+            <span>Finalizados / Culminados</span>
+            <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-emerald-100 text-emerald-900 font-bold ml-1">
+              {counts.completed}
+            </span>
+          </button>
+        </div>
+
+        {/* Search + Filters — always visible */}
+        <div className="shrink-0 p-3 px-4 sm:px-6 bg-slate-50 border-b border-slate-200 space-y-2.5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 min-w-0">
             <div className="relative flex-1 min-w-0">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
@@ -194,7 +302,7 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Buscar por cliente, proyecto, versión o ticket..."
+                placeholder="Buscar por cliente, proyecto, versión, estado o ticket..."
                 className="w-full min-w-0 pl-9 pr-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-800"
               />
             </div>
@@ -203,30 +311,40 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
                 <button
                   type="button"
                   onClick={clearFilters}
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-[#0A3D62] bg-white hover:bg-slate-50 border border-slate-300 rounded-lg"
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-[#0A3D62] bg-white hover:bg-slate-50 border border-slate-300 rounded-lg shadow-2xs"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  Limpiar
+                  Limpiar filtros
                 </button>
               )}
               <span className="text-xs font-semibold text-slate-600">
-                {filteredProposals.length} de {proposals.length}
+                Mostrando {filteredProposals.length} de {proposals.length}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 text-[11px] font-bold text-[#0A3D62] uppercase tracking-wide">
-            <Filter className="w-3.5 h-3.5" />
-            Filtros
-          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 min-w-0">
+            <label className="min-w-0">
+              <span className="block text-[10px] font-bold text-[#0A3D62] mb-1">Estado</span>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="w-full min-w-0 px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
+              >
+                <option value="all">Todos</option>
+                <option value="borrador">Borrador</option>
+                <option value="en_revision">En Revisión</option>
+                <option value="finalizado">Finalizado</option>
+                <option value="culminado">Culminado</option>
+              </select>
+            </label>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 min-w-0">
             <label className="min-w-0">
               <span className="block text-[10px] font-bold text-[#0A3D62] mb-1">Cliente</span>
               <select
                 value={filterCliente}
                 onChange={(e) => setFilterCliente(e.target.value)}
-                className="w-full min-w-0 px-2 py-2 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
+                className="w-full min-w-0 px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
               >
                 <option value="all">Todos</option>
                 {uniqueClientes.map((c) => (
@@ -240,7 +358,7 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
               <select
                 value={filterTicket}
                 onChange={(e) => setFilterTicket(e.target.value)}
-                className="w-full min-w-0 px-2 py-2 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
+                className="w-full min-w-0 px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
               >
                 <option value="all">Todos</option>
                 {uniqueTickets.map((t) => (
@@ -254,7 +372,7 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
               <select
                 value={filterVersion}
                 onChange={(e) => setFilterVersion(e.target.value)}
-                className="w-full min-w-0 px-2 py-2 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
+                className="w-full min-w-0 px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
               >
                 <option value="all">Todas</option>
                 {uniqueVersions.map((v) => (
@@ -268,7 +386,7 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
               <select
                 value={filterPeriod}
                 onChange={(e) => setFilterPeriod(e.target.value as typeof filterPeriod)}
-                className="w-full min-w-0 px-2 py-2 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
+                className="w-full min-w-0 px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
               >
                 <option value="all">Cualquier fecha</option>
                 <option value="today">Hoy</option>
@@ -278,12 +396,12 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
               </select>
             </label>
 
-            <label className="min-w-0 col-span-2 md:col-span-1">
+            <label className="min-w-0">
               <span className="block text-[10px] font-bold text-[#0A3D62] mb-1">Ordenar</span>
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-                className="w-full min-w-0 px-2 py-2 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
+                className="w-full min-w-0 px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
               >
                 <option value="newest">Más reciente</option>
                 <option value="oldest">Más antiguo</option>
@@ -293,6 +411,19 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
             </label>
           </div>
         </div>
+
+        {/* Section Banner if viewing Completed items */}
+        {statusTab === 'completed' && (
+          <div className="bg-emerald-50 px-4 sm:px-6 py-2 border-b border-emerald-200 flex items-center justify-between text-xs text-emerald-900 shrink-0">
+            <div className="flex items-center gap-1.5 font-bold">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span>Sección de Documentos Finalizados y Culminados</span>
+            </div>
+            <span className="text-[11px] text-emerald-700 hidden sm:inline">
+              Documentos listos para entrega o cierre formal
+            </span>
+          </div>
+        )}
 
         {/* Modal Content List */}
         <div className="p-4 sm:p-6 overflow-y-auto min-h-0 flex-1 space-y-3">
@@ -307,23 +438,38 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
           ) : filteredProposals.length === 0 ? (
             <div className="text-center py-8 text-slate-400">
               <Search className="w-8 h-8 mx-auto mb-2 opacity-30" />
-              <p className="text-xs font-semibold text-slate-600">No hay versiones con esos filtros.</p>
+              <p className="text-xs font-semibold text-slate-600">No hay documentos con los filtros seleccionados.</p>
+              {statusTab === 'completed' && (
+                <p className="text-xs text-slate-400 mt-1">
+                  Puedes marcar cualquier documento del historial como "Finalizado" o "Culminado" usando su selector de estado.
+                </p>
+              )}
             </div>
           ) : (
             filteredProposals.map((item) => {
               const versionLabel = item.version || 'v1.0';
+              const currentStatus = item.status || 'borrador';
+              const isFinished = currentStatus === 'finalizado' || currentStatus === 'culminado';
+
               return (
                 <div
                   key={item.id}
-                  className="bg-slate-50 hover:bg-blue-50/50 p-4 rounded-xl border border-slate-200 hover:border-[#0A3D62] transition-all flex flex-col md:flex-row items-start md:items-center justify-between gap-4 group"
+                  className={`p-4 rounded-xl border transition-all flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 group ${
+                    isFinished
+                      ? 'bg-emerald-50/40 hover:bg-emerald-50/80 border-emerald-200 hover:border-emerald-400 shadow-2xs'
+                      : 'bg-slate-50 hover:bg-blue-50/50 border-slate-200 hover:border-[#0A3D62]'
+                  }`}
                 >
-                  <div className="space-y-1.5 flex-1 min-w-0">
+                  <div className="space-y-2 flex-1 min-w-0">
                     <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                       {/* Version Badge */}
-                      <span className="inline-flex items-center px-2.5 py-0.5 text-xs font-bold bg-[#2ECC71] text-slate-950 rounded-full border border-emerald-500/40 shadow-xs">
+                      <span className="inline-flex items-center px-2.5 py-0.5 text-xs font-bold bg-[#2ECC71] text-slate-950 rounded-full border border-emerald-500/40 shadow-2xs">
                         <Tag className="w-3 h-3 mr-1 text-slate-900" />
                         {versionLabel}
                       </span>
+
+                      {/* Status Badge */}
+                      {getStatusBadge(item.status)}
 
                       {/* Ticket Badge */}
                       <span className="text-xs font-bold px-2 py-0.5 bg-[#0A3D62] text-white rounded">
@@ -358,19 +504,75 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
                           minute: '2-digit'
                         })}
                       </span>
+                      {isFinished && item.statusChangedAt && (
+                        <span className="flex items-center text-emerald-700 font-medium">
+                          <Check className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                          Marcado {currentStatus} el {new Date(item.statusChangedAt).toLocaleDateString('es-ES', {
+                            day: 'numeric',
+                            month: 'short',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </span>
+                      )}
                     </div>
                   </div>
 
-                  {/* Actions Bar */}
-                  <div className="flex flex-wrap items-center gap-2 shrink-0 self-end md:self-center">
+                  {/* Actions & Status Control Bar */}
+                  <div className="flex flex-wrap items-center gap-2 shrink-0 self-stretch lg:self-center justify-end">
                     
+                    {/* Status Changer Selector */}
+                    {onUpdateStatus && (
+                      <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-200 shadow-2xs">
+                        <span className="text-[10px] font-bold text-slate-500 px-1 hidden sm:inline">Estado:</span>
+                        <select
+                          value={currentStatus}
+                          onChange={(e) => onUpdateStatus(item.id, e.target.value as DocumentStatus)}
+                          className={`text-xs font-bold rounded-md px-2 py-1 border transition-colors focus:ring-2 focus:ring-[#0A3D62] ${
+                            isFinished
+                              ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                              : currentStatus === 'en_revision'
+                              ? 'bg-sky-50 text-sky-900 border-sky-300'
+                              : 'bg-slate-50 text-slate-700 border-slate-200'
+                          }`}
+                          title="Cambiar el estado de este documento"
+                        >
+                          <option value="borrador">Borrador</option>
+                          <option value="en_revision">En Revisión</option>
+                          <option value="finalizado">Finalizado</option>
+                          <option value="culminado">Culminado</option>
+                        </select>
+
+                        {/* Quick toggle button */}
+                        {!isFinished ? (
+                          <button
+                            onClick={() => onUpdateStatus(item.id, 'finalizado')}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 rounded transition-colors"
+                            title="Marcar rápidamente como Finalizado"
+                          >
+                            <CheckCircle2 className="w-3 h-3 text-emerald-700" />
+                            <span>Finalizar</span>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => onUpdateStatus(item.id, 'borrador')}
+                            className="inline-flex items-center gap-1 px-1.5 py-1 text-[11px] font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors"
+                            title="Reabrir y pasar a Borrador"
+                          >
+                            <RotateCcw className="w-3 h-3 text-slate-500" />
+                            <span>Reabrir</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+
                     {/* Load into Editor */}
                     <button
                       onClick={() => {
                         onSelectProposal(item);
                         onClose();
                       }}
-                      className="inline-flex items-center px-3 py-1.5 text-xs font-bold text-white bg-[#0A3D62] hover:bg-[#1E5F8A] rounded-lg transition-colors shadow-xs"
+                      className="inline-flex items-center px-3 py-1.5 text-xs font-bold text-white bg-[#0A3D62] hover:bg-[#1E5F8A] rounded-lg transition-colors shadow-2xs"
                       title="Cargar esta versión en el editor"
                     >
                       <span>Cargar</span>
@@ -383,18 +585,18 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
                         onClick={() => {
                           onDuplicateProposal(item);
                         }}
-                        className="inline-flex items-center px-2.5 py-1.5 text-xs font-bold text-[#0A3D62] bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors shadow-xs"
+                        className="inline-flex items-center px-2.5 py-1.5 text-xs font-bold text-[#0A3D62] bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors shadow-2xs"
                         title="Duplicar y crear una versión nueva derivada de esta"
                       >
                         <Copy className="w-3.5 h-3.5 mr-1 text-[#1E5F8A]" />
-                        <span>Duplicar Versión</span>
+                        <span className="hidden sm:inline">Duplicar</span>
                       </button>
                     )}
 
                     {/* Copy Text to Clipboard */}
                     <button
                       onClick={() => handleCopyTextToClipboard(item)}
-                      className={`inline-flex items-center px-2.5 py-1.5 text-xs font-semibold rounded-lg transition-colors border shadow-xs ${
+                      className={`inline-flex items-center px-2.5 py-1.5 text-xs font-semibold rounded-lg transition-colors border shadow-2xs ${
                         copiedId === item.id
                           ? 'bg-emerald-600 text-white border-emerald-700'
                           : 'bg-white text-slate-700 hover:bg-slate-100 border-slate-300'
@@ -409,7 +611,7 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
                       ) : (
                         <>
                           <FileText className="w-3.5 h-3.5 mr-1 text-slate-500" />
-                          <span>Copiar Texto</span>
+                          <span className="hidden sm:inline">Copiar</span>
                         </>
                       )}
                     </button>
@@ -434,7 +636,7 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
         <div className="shrink-0 bg-slate-50 p-3 sm:p-4 border-t border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
           <span className="text-slate-500 flex items-start gap-1.5 min-w-0">
             <Sparkles className="w-3.5 h-3.5 mt-0.5 text-[#2ECC71] shrink-0" />
-            <span>Puedes mantener múltiples versiones (ej. v1 para Vía API, v2 para Vía Webhook) de un mismo ticket.</span>
+            <span>Los documentos marcados como <strong>Finalizado</strong> o <strong>Culminado</strong> quedan archivados formalmente en su propia sección.</span>
           </span>
           <button
             onClick={onClose}

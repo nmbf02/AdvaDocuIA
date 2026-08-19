@@ -21,6 +21,8 @@ interface HeaderProps {
   onReset: () => void;
   onOpenHistory: () => void;
   onOpenSettings: () => void;
+  onRevertToSaved?: () => void;
+  hasSavedVersion?: boolean;
   onGoHome?: () => void;
   theme?: 'light' | 'dark';
   onToggleTheme?: () => void;
@@ -34,6 +36,8 @@ export const Header: React.FC<HeaderProps> = ({
   onReset,
   onOpenHistory,
   onOpenSettings,
+  onRevertToSaved,
+  hasSavedVersion = true,
   onGoHome,
   theme = 'light',
   onToggleTheme,
@@ -159,8 +163,8 @@ export const Header: React.FC<HeaderProps> = ({
 
               {/* Dropdown Menu Panel */}
               {isMenuOpen && (
-                <div className="absolute right-0 mt-2 w-56 rounded-xl bg-slate-900 text-slate-100 border border-slate-700 shadow-2xl py-1.5 z-50 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-100">
-                  <div className="px-3 py-1.5 border-b border-slate-800 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                <div className="absolute right-0 mt-2 w-56 rounded-xl bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 shadow-2xl py-1.5 z-50 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-100">
+                  <div className="px-3 py-1.5 border-b border-slate-100 dark:border-slate-800 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                     Acciones de Documento
                   </div>
 
@@ -171,12 +175,29 @@ export const Header: React.FC<HeaderProps> = ({
                         setIsMenuOpen(false);
                         onGoHome();
                       }}
-                      className="w-full text-left px-3 py-2 text-xs text-slate-200 hover:text-white hover:bg-slate-800 flex items-center gap-2.5 transition-colors cursor-pointer"
+                      className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:text-[#0A3D62] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2.5 transition-colors cursor-pointer"
                     >
-                      <Home className="w-4 h-4 text-blue-400" />
+                      <Home className="w-4 h-4 text-[#0A3D62] dark:text-blue-400" />
                       <div>
                         <p className="font-semibold leading-none">Inicio / Bienvenida</p>
-                        <p className="text-[10px] text-slate-400 mt-0.5">Elegir nuevo o continuar</p>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Elegir nuevo o continuar</p>
+                      </div>
+                    </button>
+                  )}
+
+                  {onRevertToSaved && hasSavedVersion && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMenuOpen(false);
+                        onRevertToSaved();
+                      }}
+                      className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:text-[#0A3D62] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2.5 transition-colors cursor-pointer"
+                    >
+                      <RotateCcw className="w-4 h-4 text-[#0A3D62] dark:text-blue-400" />
+                      <div>
+                        <p className="font-semibold leading-none">Volver al último guardado</p>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Recuperar versión guardada</p>
                       </div>
                     </button>
                   )}
@@ -187,12 +208,12 @@ export const Header: React.FC<HeaderProps> = ({
                       setIsMenuOpen(false);
                       onLoadPreset();
                     }}
-                    className="w-full text-left px-3 py-2 text-xs text-slate-200 hover:text-white hover:bg-slate-800 flex items-center gap-2.5 transition-colors cursor-pointer"
+                    className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:text-emerald-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2.5 transition-colors cursor-pointer"
                   >
-                    <Sparkles className="w-4 h-4 text-emerald-400" />
+                    <Sparkles className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                     <div>
                       <p className="font-semibold leading-none">Cargar Ejemplo Demo</p>
-                      <p className="text-[10px] text-slate-400 mt-0.5">Llenar datos de prueba</p>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Llenar datos de prueba</p>
                     </div>
                   </button>
 
@@ -202,16 +223,16 @@ export const Header: React.FC<HeaderProps> = ({
                       setIsMenuOpen(false);
                       onReset();
                     }}
-                    className="w-full text-left px-3 py-2 text-xs text-red-300 hover:text-red-200 hover:bg-red-950/40 flex items-center gap-2.5 transition-colors cursor-pointer"
+                    className="w-full text-left px-3 py-2 text-xs text-red-600 dark:text-red-300 hover:text-red-700 dark:hover:text-red-200 hover:bg-red-50 dark:hover:bg-red-950/40 flex items-center gap-2.5 transition-colors cursor-pointer"
                   >
-                    <RotateCcw className="w-4 h-4 text-red-400" />
+                    <RotateCcw className="w-4 h-4 text-red-500 dark:text-red-400" />
                     <div>
                       <p className="font-semibold leading-none">Limpiar Formulario</p>
-                      <p className="text-[10px] text-red-400/80 mt-0.5">Empezar documento de cero</p>
+                      <p className="text-[10px] text-red-500/80 dark:text-red-400/80 mt-0.5">Empezar documento de cero</p>
                     </div>
                   </button>
 
-                  <div className="my-1 border-t border-slate-800" />
+                  <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
 
                   <button
                     type="button"
@@ -219,12 +240,12 @@ export const Header: React.FC<HeaderProps> = ({
                       setIsMenuOpen(false);
                       onOpenSettings();
                     }}
-                    className="w-full text-left px-3 py-2 text-xs text-slate-200 hover:text-white hover:bg-slate-800 flex items-center gap-2.5 transition-colors cursor-pointer"
+                    className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:text-emerald-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2.5 transition-colors cursor-pointer"
                   >
-                    <Palette className="w-4 h-4 text-emerald-400" />
+                    <Palette className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                     <div>
                       <p className="font-semibold leading-none">Identidad y Encabezados</p>
-                      <p className="text-[10px] text-slate-400 mt-0.5">Logo y títulos del banner</p>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Logo y títulos del banner</p>
                     </div>
                   </button>
                 </div>

@@ -1,26 +1,36 @@
-import React, { useState } from 'react';
-import { ProposalSection, MetadataHeader, UploadedImage, DocumentTable, getEffectiveTitles, SlideDeck } from '../types';
-import { FileDown, FileText, Edit3, Eye, Plus, Trash2, Sparkles, Wand2, Loader2, Cpu, Save, Check, GitBranch, Tag, X, Layers, CheckCircle2, Presentation } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { ProposalSection, MetadataHeader, UploadedImage, DocumentTable, getEffectiveTitles, SlideDeck, DocumentStatus } from '../types';
+import { FileDown, FileText, Edit3, Eye, Plus, Trash2, Sparkles, Wand2, Loader2, Cpu, Save, Check, GitBranch, Tag, X, Layers, CheckCircle2, CheckCheck, Presentation, Bold, ArrowRight, ArrowRightLeft, RotateCcw, Terminal } from 'lucide-react';
 import { generateAdvansysDocx } from '../utils/docxGenerator';
 import { downloadAdvansysPdf } from '../utils/pdfGenerator';
 import { generateAdvansysPptx } from '../utils/pptxGenerator';
 import { DocxPreview } from './DocxPreview';
 import { DocumentTablesEditor, InsertTableButton, createEmptyDocumentTable, tableTag } from './DocumentTablesEditor';
 import { SlideDeckEditor } from './SlideDeckEditor';
+import { TechnicalDocEditor } from './TechnicalDocEditor';
 import { convertProposalToSlideDeck, createDefaultSlideDeck } from '../utils/slideDeckTemplates';
+import { TextFormattingToolbar, handleAutoBulletKeyDown, toggleBoldAtTarget } from './TextFormattingToolbar';
 
 interface ProposalEditorProps {
   proposal: ProposalSection;
   metadata: MetadataHeader;
   images: UploadedImage[];
   rawRequirements?: string;
+  history?: SavedProposal[];
   onChange: (updated: ProposalSection) => void;
   onSave?: () => void;
   onSaveNewVersion?: (versionTag: string, versionNote: string) => void;
+  onRevertToSaved?: () => void;
+  hasSavedVersion?: boolean;
   currentVersion?: string;
+  status?: DocumentStatus;
+  onStatusChange?: (newStatus: DocumentStatus) => void;
   lastSavedTime?: string | null;
   showSavedToast?: boolean;
-  initialTab?: 'editor' | 'preview' | 'slides';
+  initialTab?: 'editor' | 'preview' | 'slides' | 'technical';
+  onMetadataChange?: (updatedMetadata: MetadataHeader) => void;
+  onLinkProposal?: (proposal: SavedProposal, syncContext: boolean) => void;
+  onUnlinkProposal?: () => void;
 }
 
 export const ProposalEditor: React.FC<ProposalEditorProps> = ({
@@ -28,15 +38,23 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
   metadata,
   images,
   rawRequirements = '',
+  history = [],
   onChange,
   onSave,
   onSaveNewVersion,
+  onRevertToSaved,
+  hasSavedVersion = true,
   currentVersion = 'v1.0',
+  status = 'borrador',
+  onStatusChange,
   lastSavedTime,
   showSavedToast,
   initialTab = 'editor',
+  onMetadataChange,
+  onLinkProposal,
+  onUnlinkProposal,
 }) => {
-  const [activeTab, setActiveTab] = useState<'editor' | 'preview' | 'slides'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'editor' | 'preview' | 'slides' | 'technical'>(initialTab);
   const [activeSectionFilter, setActiveSectionFilter] = useState<string>('all');
   const [isExporting, setIsExporting] = useState<'docx' | 'pdf' | 'pptx' | null>(null);
   const [isRefining, setIsRefining] = useState(false);
@@ -47,6 +65,13 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
   const [isNewVersionModalOpen, setIsNewVersionModalOpen] = useState(false);
   const [newVersionTag, setNewVersionTag] = useState('v2.0');
   const [newVersionNote, setNewVersionNote] = useState('');
+
+  // Refs for text formatting and auto-bullets
+  const resumenRef = useRef<HTMLTextAreaElement>(null);
+  const objetivoRef = useRef<HTMLTextAreaElement>(null);
+  const descripcionRef = useRef<HTMLTextAreaElement>(null);
+  const descargoRef = useRef<HTMLTextAreaElement>(null);
+  const stepRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
 
   const titles = getEffectiveTitles(metadata.customTitles);
 
@@ -211,6 +236,28 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
     });
   };
 
+  const handleMoveScopeItem = (
+    from: 'alcance' | 'exclusiones' | 'entregables',
+    to: 'alcance' | 'exclusiones' | 'entregables',
+    index: number
+  ) => {
+    const fromList = [...(proposal.alcanceExclusionesEntregables?.[from] || [])];
+    if (index < 0 || index >= fromList.length) return;
+    const [itemToMove] = fromList.splice(index, 1);
+    const toList = [...(proposal.alcanceExclusionesEntregables?.[to] || []), itemToMove];
+
+    onChange({
+      ...proposal,
+      alcanceExclusionesEntregables: {
+        alcance: proposal.alcanceExclusionesEntregables?.alcance || [],
+        exclusiones: proposal.alcanceExclusionesEntregables?.exclusiones || [],
+        entregables: proposal.alcanceExclusionesEntregables?.entregables || [],
+        [from]: fromList,
+        [to]: toList
+      }
+    });
+  };
+
   // Operative Step Helpers
   const handleStepChange = (index: number, field: 'titulo' | 'explicacion', val: string) => {
     const steps = [...(proposal.analisisOperativo || [])];
@@ -329,6 +376,28 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                 <Tag className="w-3 h-3 mr-1 text-slate-950" />
                 {currentVersion}
               </span>
+              {status === 'finalizado' && (
+                <span className="px-2.5 py-0.5 text-xs font-bold bg-emerald-400 text-slate-950 rounded-full border border-emerald-300 inline-flex items-center">
+                  <CheckCircle2 className="w-3 h-3 mr-1" />
+                  Finalizado
+                </span>
+              )}
+              {status === 'culminado' && (
+                <span className="px-2.5 py-0.5 text-xs font-bold bg-teal-300 text-slate-950 rounded-full border border-teal-200 inline-flex items-center">
+                  <CheckCheck className="w-3 h-3 mr-1" />
+                  Culminado
+                </span>
+              )}
+              {status === 'en_revision' && (
+                <span className="px-2.5 py-0.5 text-xs font-bold bg-sky-300 text-slate-950 rounded-full border border-sky-200 inline-flex items-center">
+                  En Revisión
+                </span>
+              )}
+              {status === 'borrador' && (
+                <span className="px-2 py-0.5 text-xs font-medium bg-white/20 text-blue-100 rounded-full inline-flex items-center">
+                  Borrador
+                </span>
+              )}
             </h2>
             <p className="text-xs text-blue-100/80 truncate">Edita el texto, mira la previa o descarga Word y PDF</p>
           </div>
@@ -347,6 +416,20 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
             >
               <Save className="w-3.5 h-3.5 mr-1.5" />
               <span>Guardar cambios</span>
+            </button>
+          )}
+
+          {/* Volver al guardado Button */}
+          {onRevertToSaved && (
+            <button
+              onClick={onRevertToSaved}
+              type="button"
+              disabled={!hasSavedVersion}
+              className="inline-flex items-center justify-center px-2.5 py-2 text-xs font-bold text-white bg-white/10 hover:bg-white/20 active:scale-95 transition-all rounded-xl border border-white/20 disabled:opacity-40 disabled:pointer-events-none"
+              title={lastSavedTime ? `Volver a la versión guardada (${lastSavedTime})` : "Volver al último archivo guardado"}
+            >
+              <RotateCcw className="w-3.5 h-3.5 sm:mr-1.5 text-blue-200" />
+              <span className="hidden sm:inline">Volver al guardado</span>
             </button>
           )}
 
@@ -396,7 +479,19 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
               }`}
             >
               <Edit3 className="w-3.5 h-3.5 sm:mr-1" />
-              <span className="hidden sm:inline">Editor</span>
+              <span className="hidden sm:inline">Propuesta</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('technical')}
+              className={`px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-lg flex items-center transition-all ${
+                activeTab === 'technical'
+                  ? 'bg-white text-[#0A3D62] shadow font-bold'
+                  : 'text-blue-100/80 hover:text-white'
+              }`}
+              title="Documentación Técnica Interna (Ruta, Flujo, Diseño, Consideraciones y Código)"
+            >
+              <Terminal className="w-3.5 h-3.5 sm:mr-1 text-[#2ECC71]" />
+              <span className="hidden sm:inline">Doc. Técnica</span>
             </button>
             <button
               onClick={() => setActiveTab('preview')}
@@ -407,7 +502,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
               }`}
             >
               <Eye className="w-3.5 h-3.5 sm:mr-1" />
-              <span className="hidden sm:inline">Previa Doc</span>
+              <span className="hidden sm:inline">Previa</span>
             </button>
             <button
               onClick={() => setActiveTab('slides')}
@@ -529,8 +624,29 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
       </div>
 
       {/* Main Container Content */}
-      {activeTab === 'slides' ? (
-        <div className="p-3 sm:p-4 bg-slate-950 rounded-b-xl overflow-x-hidden min-h-[520px] min-w-0">
+      {activeTab === 'technical' ? (
+        <div className="p-2 sm:p-4 bg-slate-100/70 dark:bg-slate-950 rounded-b-xl overflow-x-hidden min-h-[520px] min-w-0">
+          <TechnicalDocEditor
+            technicalDoc={proposal.technicalDoc}
+            metadata={metadata}
+            proposal={proposal}
+            images={images}
+            rawRequirements={rawRequirements}
+            history={history}
+            onChange={(updatedTechDoc) => {
+              onChange({
+                ...proposal,
+                technicalDoc: updatedTechDoc,
+              });
+            }}
+            onSave={onSave}
+            onMetadataChange={onMetadataChange}
+            onLinkProposal={onLinkProposal}
+            onUnlinkProposal={onUnlinkProposal}
+          />
+        </div>
+      ) : activeTab === 'slides' ? (
+        <div className="p-2 sm:p-4 bg-slate-100/70 dark:bg-slate-950 rounded-b-xl overflow-x-hidden min-h-[520px] min-w-0">
           <SlideDeckEditor
             deck={activeSlideDeck}
             metadata={metadata}
@@ -542,7 +658,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
           />
         </div>
       ) : activeTab === 'preview' ? (
-        <div className="p-3 bg-slate-100/90 rounded-b-xl overflow-x-auto min-h-[400px] min-w-0">
+        <div className="p-3 bg-slate-100/90 dark:bg-slate-950 rounded-b-xl overflow-x-auto min-h-[400px] min-w-0">
           <DocxPreview metadata={metadata} proposal={proposal} images={images} />
         </div>
       ) : (
@@ -556,23 +672,33 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                   1. {titles.section1}
                 </label>
                 <div className="flex flex-wrap items-center gap-2">
-                <InsertTableButton onClick={() => handleInsertTableInField('resumenEjecutivo')} />
-                <button
-                  onClick={() => handleAIRefine('refine_section', 'resumenEjecutivo')}
-                  disabled={isRefining}
-                  className="inline-flex items-center px-2 py-1 text-[11px] font-semibold text-[#0A3D62] bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded transition-colors disabled:opacity-50"
-                >
-                  <Sparkles className="w-3 h-3 mr-1 text-[#2ECC71]" />
-                  Mejorar con IA
-                </button>
+                  <button
+                    onClick={() => handleAIRefine('refine_section', 'resumenEjecutivo')}
+                    disabled={isRefining}
+                    className="inline-flex items-center px-2 py-1 text-[11px] font-semibold text-[#0A3D62] bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded transition-colors disabled:opacity-50"
+                  >
+                    <Sparkles className="w-3 h-3 mr-1 text-[#2ECC71]" />
+                    Mejorar con IA
+                  </button>
                 </div>
               </div>
+
+              {/* Formatting Toolbar for Bullets, Numbers, Bold, Tables */}
+              <TextFormattingToolbar
+                textareaRef={resumenRef}
+                value={proposal.resumenEjecutivo || ''}
+                onChange={(v) => handleStringChange('resumenEjecutivo', v)}
+                onInsertTable={() => handleInsertTableInField('resumenEjecutivo')}
+              />
+
               <textarea
+                ref={resumenRef}
                 value={proposal.resumenEjecutivo}
                 onChange={(e) => handleStringChange('resumenEjecutivo', e.target.value)}
-                placeholder="Escribe el resumen ejecutivo de la propuesta..."
+                onKeyDown={(e) => handleAutoBulletKeyDown(e, proposal.resumenEjecutivo, (v) => handleStringChange('resumenEjecutivo', v))}
+                placeholder="Escribe el resumen ejecutivo de la propuesta... (usa los botones de arriba o escribe '• ' o '1. ' para viñetas automáticas)"
                 rows={4}
-                className="w-full min-w-0 max-w-full p-3 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-800"
+                className="w-full min-w-0 max-w-full p-3 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-800 font-sans leading-relaxed"
               />
               {renderInlineTables(proposal.resumenEjecutivo)}
             </div>
@@ -610,14 +736,35 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                   </p>
                 )}
                 {proposal.beneficios?.map((b, idx) => (
-                  <div key={idx} className="flex items-center gap-2 min-w-0">
+                  <div key={idx} className="flex items-center gap-1.5 min-w-0">
                     <span className="text-xs font-bold text-[#2ECC71] shrink-0">#{idx + 1}</span>
                     <input
                       type="text"
                       value={b}
                       onChange={(e) => handleBeneficioChange(idx, e.target.value)}
+                      onKeyDown={(e) => handleAutoBulletKeyDown(e, b, (v) => handleBeneficioChange(idx, v))}
+                      placeholder="Escribe el beneficio... (selecciona y pulsa B o Ctrl+B para negrita)"
                       className="flex-1 min-w-0 max-w-full p-2 text-sm bg-white border border-slate-200 rounded-lg focus:ring-1 focus:ring-[#0A3D62] text-slate-800"
                     />
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        const input = e.currentTarget.parentElement?.querySelector('input') as HTMLInputElement | null;
+                        const result = toggleBoldAtTarget(input, b);
+                        handleBeneficioChange(idx, result.newText);
+                        setTimeout(() => {
+                          if (input) {
+                            input.focus();
+                            input.setSelectionRange(result.selStart, result.selEnd);
+                          }
+                        }, 10);
+                      }}
+                      title="Poner en negrita (Ctrl+B)"
+                      className="p-1.5 text-slate-500 hover:text-[#0A3D62] hover:bg-slate-200 rounded text-xs font-bold border border-slate-200 bg-white shrink-0"
+                    >
+                      <Bold className="w-3.5 h-3.5" />
+                    </button>
                     <button
                       onClick={() => handleRemoveBeneficio(idx)}
                       className="p-1.5 text-slate-400 hover:text-red-600 rounded"
@@ -665,14 +812,57 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                     <p className="text-[11px] text-slate-400 italic">Sin ítems de alcance. Presiona "+ Agregar punto" para redactar.</p>
                   )}
                   {proposal.alcanceExclusionesEntregables?.alcance?.map((item, idx) => (
-                    <div key={idx} className="flex items-center gap-2 min-w-0">
+                    <div key={idx} className="flex items-center gap-1.5 min-w-0">
                       <input
                         type="text"
                         value={item}
                         onChange={(e) => handleScopeListChange('alcance', idx, e.target.value)}
+                        onKeyDown={(e) => handleAutoBulletKeyDown(e, item, (v) => handleScopeListChange('alcance', idx, v))}
+                        placeholder="Descripción del alcance... (Ctrl+B para negrita)"
                         className="flex-1 min-w-0 max-w-full p-1.5 text-xs bg-slate-50 border border-slate-200 rounded text-slate-800"
                       />
-                      <button onClick={() => handleRemoveScopeItem('alcance', idx)} className="text-slate-400 hover:text-red-600">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          const input = e.currentTarget.parentElement?.querySelector('input') as HTMLInputElement | null;
+                          const result = toggleBoldAtTarget(input, item);
+                          handleScopeListChange('alcance', idx, result.newText);
+                          setTimeout(() => {
+                            if (input) {
+                              input.focus();
+                              input.setSelectionRange(result.selStart, result.selEnd);
+                            }
+                          }, 10);
+                        }}
+                        title="Poner en negrita (Ctrl+B)"
+                        className="p-1 text-slate-500 hover:text-[#0A3D62] hover:bg-slate-200 rounded text-xs font-bold border border-slate-200 bg-white shrink-0"
+                      >
+                        <Bold className="w-3 h-3" />
+                      </button>
+
+                      {/* Move to 3.2 or 3.3 */}
+                      <div className="inline-flex items-center gap-0.5 shrink-0 bg-slate-100 p-0.5 rounded border border-slate-200">
+                        <span className="text-[9px] text-slate-400 font-semibold px-1 hidden sm:inline">Mover a:</span>
+                        <button
+                          type="button"
+                          onClick={() => handleMoveScopeItem('alcance', 'exclusiones', idx)}
+                          title="Mover texto a 3.2 Exclusiones sin tener que reescribirlo"
+                          className="px-1.5 py-0.5 text-[10px] font-bold text-slate-700 hover:text-[#0A3D62] hover:bg-white rounded transition-colors"
+                        >
+                          → 3.2
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMoveScopeItem('alcance', 'entregables', idx)}
+                          title="Mover texto a 3.3 Entregables sin tener que reescribirlo"
+                          className="px-1.5 py-0.5 text-[10px] font-bold text-emerald-800 hover:text-emerald-950 hover:bg-white rounded transition-colors"
+                        >
+                          → 3.3
+                        </button>
+                      </div>
+
+                      <button onClick={() => handleRemoveScopeItem('alcance', idx)} title="Eliminar ítem" className="text-slate-400 hover:text-red-600 p-1">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -698,14 +888,57 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                     <p className="text-[11px] text-slate-400 italic">Sin exclusiones registradas. Presiona "+ Agregar exclusión".</p>
                   )}
                   {proposal.alcanceExclusionesEntregables?.exclusiones?.map((item, idx) => (
-                    <div key={idx} className="flex items-center gap-2 min-w-0">
+                    <div key={idx} className="flex items-center gap-1.5 min-w-0">
                       <input
                         type="text"
                         value={item}
                         onChange={(e) => handleScopeListChange('exclusiones', idx, e.target.value)}
+                        onKeyDown={(e) => handleAutoBulletKeyDown(e, item, (v) => handleScopeListChange('exclusiones', idx, v))}
+                        placeholder="Exclusión o elemento fuera de alcance... (Ctrl+B para negrita)"
                         className="flex-1 min-w-0 max-w-full p-1.5 text-xs bg-slate-50 border border-slate-200 rounded text-slate-800"
                       />
-                      <button onClick={() => handleRemoveScopeItem('exclusiones', idx)} className="text-slate-400 hover:text-red-600">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          const input = e.currentTarget.parentElement?.querySelector('input') as HTMLInputElement | null;
+                          const result = toggleBoldAtTarget(input, item);
+                          handleScopeListChange('exclusiones', idx, result.newText);
+                          setTimeout(() => {
+                            if (input) {
+                              input.focus();
+                              input.setSelectionRange(result.selStart, result.selEnd);
+                            }
+                          }, 10);
+                        }}
+                        title="Poner en negrita (Ctrl+B)"
+                        className="p-1 text-slate-500 hover:text-[#0A3D62] hover:bg-slate-200 rounded text-xs font-bold border border-slate-200 bg-white shrink-0"
+                      >
+                        <Bold className="w-3 h-3" />
+                      </button>
+
+                      {/* Move to 3.1 or 3.3 */}
+                      <div className="inline-flex items-center gap-0.5 shrink-0 bg-slate-100 p-0.5 rounded border border-slate-200">
+                        <span className="text-[9px] text-slate-400 font-semibold px-1 hidden sm:inline">Mover a:</span>
+                        <button
+                          type="button"
+                          onClick={() => handleMoveScopeItem('exclusiones', 'alcance', idx)}
+                          title="Mover texto a 3.1 Alcance sin tener que reescribirlo"
+                          className="px-1.5 py-0.5 text-[10px] font-bold text-blue-700 hover:text-blue-900 hover:bg-white rounded transition-colors"
+                        >
+                          → 3.1
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMoveScopeItem('exclusiones', 'entregables', idx)}
+                          title="Mover texto a 3.3 Entregables sin tener que reescribirlo"
+                          className="px-1.5 py-0.5 text-[10px] font-bold text-emerald-800 hover:text-emerald-950 hover:bg-white rounded transition-colors"
+                        >
+                          → 3.3
+                        </button>
+                      </div>
+
+                      <button onClick={() => handleRemoveScopeItem('exclusiones', idx)} title="Eliminar ítem" className="text-slate-400 hover:text-red-600 p-1">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -731,14 +964,57 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                     <p className="text-[11px] text-slate-400 italic">Sin entregables registrados. Presiona "+ Agregar entregable".</p>
                   )}
                   {proposal.alcanceExclusionesEntregables?.entregables?.map((item, idx) => (
-                    <div key={idx} className="flex items-center gap-2 min-w-0">
+                    <div key={idx} className="flex items-center gap-1.5 min-w-0">
                       <input
                         type="text"
                         value={item}
                         onChange={(e) => handleScopeListChange('entregables', idx, e.target.value)}
+                        onKeyDown={(e) => handleAutoBulletKeyDown(e, item, (v) => handleScopeListChange('entregables', idx, v))}
+                        placeholder="Entregable del proyecto... (Ctrl+B para negrita)"
                         className="flex-1 min-w-0 max-w-full p-1.5 text-xs bg-slate-50 border border-slate-200 rounded text-slate-800"
                       />
-                      <button onClick={() => handleRemoveScopeItem('entregables', idx)} className="text-slate-400 hover:text-red-600">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          const input = e.currentTarget.parentElement?.querySelector('input') as HTMLInputElement | null;
+                          const result = toggleBoldAtTarget(input, item);
+                          handleScopeListChange('entregables', idx, result.newText);
+                          setTimeout(() => {
+                            if (input) {
+                              input.focus();
+                              input.setSelectionRange(result.selStart, result.selEnd);
+                            }
+                          }, 10);
+                        }}
+                        title="Poner en negrita (Ctrl+B)"
+                        className="p-1 text-slate-500 hover:text-[#0A3D62] hover:bg-slate-200 rounded text-xs font-bold border border-slate-200 bg-white shrink-0"
+                      >
+                        <Bold className="w-3 h-3" />
+                      </button>
+
+                      {/* Move to 3.1 or 3.2 */}
+                      <div className="inline-flex items-center gap-0.5 shrink-0 bg-slate-100 p-0.5 rounded border border-slate-200">
+                        <span className="text-[9px] text-slate-400 font-semibold px-1 hidden sm:inline">Mover a:</span>
+                        <button
+                          type="button"
+                          onClick={() => handleMoveScopeItem('entregables', 'alcance', idx)}
+                          title="Mover texto a 3.1 Alcance sin tener que reescribirlo"
+                          className="px-1.5 py-0.5 text-[10px] font-bold text-blue-700 hover:text-blue-900 hover:bg-white rounded transition-colors"
+                        >
+                          → 3.1
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMoveScopeItem('entregables', 'exclusiones', idx)}
+                          title="Mover texto a 3.2 Exclusiones sin tener que reescribirlo"
+                          className="px-1.5 py-0.5 text-[10px] font-bold text-slate-700 hover:text-[#0A3D62] hover:bg-white rounded transition-colors"
+                        >
+                          → 3.2
+                        </button>
+                      </div>
+
+                      <button onClick={() => handleRemoveScopeItem('entregables', idx)} title="Eliminar ítem" className="text-slate-400 hover:text-red-600 p-1">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -757,23 +1033,32 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                   4. {titles.section4}
                 </label>
                 <div className="flex flex-wrap items-center gap-2">
-                <InsertTableButton onClick={() => handleInsertTableInField('objetivo')} />
-                <button
-                  onClick={() => handleAIRefine('refine_section', 'objetivo')}
-                  disabled={isRefining}
-                  className="inline-flex items-center px-2 py-1 text-[11px] font-semibold text-[#0A3D62] bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded transition-colors disabled:opacity-50"
-                >
-                  <Sparkles className="w-3 h-3 mr-1 text-[#2ECC71]" />
-                  Mejorar con IA
-                </button>
+                  <button
+                    onClick={() => handleAIRefine('refine_section', 'objetivo')}
+                    disabled={isRefining}
+                    className="inline-flex items-center px-2 py-1 text-[11px] font-semibold text-[#0A3D62] bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded transition-colors disabled:opacity-50"
+                  >
+                    <Sparkles className="w-3 h-3 mr-1 text-[#2ECC71]" />
+                    Mejorar con IA
+                  </button>
                 </div>
               </div>
+
+              <TextFormattingToolbar
+                textareaRef={objetivoRef}
+                value={proposal.objetivo || ''}
+                onChange={(v) => handleStringChange('objetivo', v)}
+                onInsertTable={() => handleInsertTableInField('objetivo')}
+              />
+
               <textarea
+                ref={objetivoRef}
                 value={proposal.objetivo}
                 onChange={(e) => handleStringChange('objetivo', e.target.value)}
-                placeholder="Describa el objetivo general y específico..."
+                onKeyDown={(e) => handleAutoBulletKeyDown(e, proposal.objetivo, (v) => handleStringChange('objetivo', v))}
+                placeholder="Describa el objetivo general y específico... (usa • Viñeta o escribe '• ' o '1. ' para listas automáticas)"
                 rows={3}
-                className="w-full min-w-0 max-w-full p-3 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-800"
+                className="w-full min-w-0 max-w-full p-3 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-800 font-sans leading-relaxed"
               />
               {renderInlineTables(proposal.objetivo)}
             </div>
@@ -787,23 +1072,32 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                   5. {titles.section5}
                 </label>
                 <div className="flex flex-wrap items-center gap-2">
-                <InsertTableButton onClick={() => handleInsertTableInField('descripcion')} />
-                <button
-                  onClick={() => handleAIRefine('refine_section', 'descripcion')}
-                  disabled={isRefining}
-                  className="inline-flex items-center px-2 py-1 text-[11px] font-semibold text-[#0A3D62] bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded transition-colors disabled:opacity-50"
-                >
-                  <Sparkles className="w-3 h-3 mr-1 text-[#2ECC71]" />
-                  Mejorar con IA
-                </button>
+                  <button
+                    onClick={() => handleAIRefine('refine_section', 'descripcion')}
+                    disabled={isRefining}
+                    className="inline-flex items-center px-2 py-1 text-[11px] font-semibold text-[#0A3D62] bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded transition-colors disabled:opacity-50"
+                  >
+                    <Sparkles className="w-3 h-3 mr-1 text-[#2ECC71]" />
+                    Mejorar con IA
+                  </button>
                 </div>
               </div>
+
+              <TextFormattingToolbar
+                textareaRef={descripcionRef}
+                value={proposal.descripcion || ''}
+                onChange={(v) => handleStringChange('descripcion', v)}
+                onInsertTable={() => handleInsertTableInField('descripcion')}
+              />
+
               <textarea
+                ref={descripcionRef}
                 value={proposal.descripcion}
                 onChange={(e) => handleStringChange('descripcion', e.target.value)}
-                placeholder="Escriba el detalle de la solución arquitectónica propuesta..."
+                onKeyDown={(e) => handleAutoBulletKeyDown(e, proposal.descripcion, (v) => handleStringChange('descripcion', v))}
+                placeholder="Escriba el detalle de la solución arquitectónica propuesta... (usa • Viñeta o escribe '• ' o '1. ' para listas automáticas)"
                 rows={4}
-                className="w-full min-w-0 max-w-full p-3 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-800"
+                className="w-full min-w-0 max-w-full p-3 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-800 font-sans leading-relaxed"
               />
               {renderInlineTables(proposal.descripcion)}
             </div>
@@ -879,18 +1173,21 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                         />
                       </div>
 
-                      <div>
+                      <div className="space-y-1.5">
                         <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Explicación Técnica Detallada:</label>
+                        <TextFormattingToolbar
+                          value={step.explicacion || ''}
+                          onChange={(v) => handleStepChange(idx, 'explicacion', v)}
+                          onInsertTable={() => handleInsertTableInStep(idx)}
+                        />
                         <textarea
                           value={step.explicacion}
                           onChange={(e) => handleStepChange(idx, 'explicacion', e.target.value)}
-                          placeholder="Detalle los procedimientos, llamadas a API o reglas de negocio..."
+                          onKeyDown={(e) => handleAutoBulletKeyDown(e, step.explicacion, (v) => handleStepChange(idx, 'explicacion', v))}
+                          placeholder="Detalle los procedimientos, llamadas a API o reglas de negocio... (usa • Viñeta o escribe '• ' o '1. ')"
                           rows={3}
-                          className="w-full min-w-0 max-w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded text-slate-800"
+                          className="w-full min-w-0 max-w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded text-slate-800 font-sans leading-relaxed"
                         />
-                        <div className="pt-1">
-                          <InsertTableButton onClick={() => handleInsertTableInStep(idx)} />
-                        </div>
                         {renderInlineTables(step.explicacion)}
                       </div>
                     </div>
@@ -931,22 +1228,31 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                   8. {titles.section8}
                 </label>
                 <div className="flex flex-wrap items-center gap-2">
-                <InsertTableButton onClick={() => handleInsertTableInField('descargo')} />
-                <button
-                  onClick={() => handleAIRefine('refine_section', 'descargo')}
-                  disabled={isRefining}
-                  className="inline-flex items-center px-2 py-1 text-[11px] font-semibold text-[#0A3D62] bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded transition-colors disabled:opacity-50"
-                >
-                  <Sparkles className="w-3 h-3 mr-1 text-[#2ECC71]" />
-                  Refinar Cláusula
-                </button>
+                  <button
+                    onClick={() => handleAIRefine('refine_section', 'descargo')}
+                    disabled={isRefining}
+                    className="inline-flex items-center px-2 py-1 text-[11px] font-semibold text-[#0A3D62] bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded transition-colors disabled:opacity-50"
+                  >
+                    <Sparkles className="w-3 h-3 mr-1 text-[#2ECC71]" />
+                    Refinar Cláusula
+                  </button>
                 </div>
               </div>
+
+              <TextFormattingToolbar
+                textareaRef={descargoRef}
+                value={proposal.descargo || ''}
+                onChange={(v) => handleStringChange('descargo', v)}
+                onInsertTable={() => handleInsertTableInField('descargo')}
+              />
+
               <textarea
+                ref={descargoRef}
                 value={proposal.descargo}
                 onChange={(e) => handleStringChange('descargo', e.target.value)}
+                onKeyDown={(e) => handleAutoBulletKeyDown(e, proposal.descargo, (v) => handleStringChange('descargo', v))}
                 rows={3}
-                className="w-full min-w-0 max-w-full p-3 text-xs bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-700 italic"
+                className="w-full min-w-0 max-w-full p-3 text-xs bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-700 italic font-sans leading-relaxed"
               />
               {renderInlineTables(proposal.descargo)}
             </div>

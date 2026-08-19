@@ -1,6 +1,7 @@
 import React from 'react';
 import { MetadataHeader } from '../types';
-import { Building2, Calendar, FileCode, Hash, Bookmark, Tag, Layers, Sliders, Cpu, Gauge, AlignJustify, Quote } from 'lucide-react';
+import { Building2, Calendar, FileCode, Hash, Bookmark, Tag, Layers, Sliders, Cpu, Gauge, AlignJustify, Quote, Bold } from 'lucide-react';
+import { handleAutoBulletKeyDown } from './TextFormattingToolbar';
 
 interface MetadataFormProps {
   metadata: MetadataHeader;
@@ -90,7 +91,7 @@ export const MetadataForm: React.FC<MetadataFormProps> = ({ metadata, onChange }
   const paraphraseInfo = getParaphraseLevelInfo(currentParaphraseLevel);
 
   return (
-    <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-sm border border-white p-3 sm:p-4 min-w-0 max-w-full overflow-x-hidden">
+    <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-sm border border-slate-200/90 p-3 sm:p-4 min-w-0 max-w-full overflow-x-hidden">
       <div className="flex items-start gap-2 border-b border-slate-100 pb-3 mb-4 min-w-0">
           <div className="w-8 h-8 rounded-xl bg-blue-50 text-[#0A3D62] flex items-center justify-center font-bold text-sm border border-blue-200 shrink-0">
           1
@@ -104,14 +105,18 @@ export const MetadataForm: React.FC<MetadataFormProps> = ({ metadata, onChange }
       <div className="grid grid-cols-1 @md:grid-cols-2 gap-3 min-w-0">
         {/* Cliente */}
         <div className="@md:col-span-2 min-w-0">
-          <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center truncate">
-            <Building2 className="w-3.5 h-3.5 mr-1 text-[#0A3D62] shrink-0" />
-            <span>Cliente / Empresa</span>
+          <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between truncate">
+            <span className="flex items-center">
+              <Building2 className="w-3.5 h-3.5 mr-1 text-[#0A3D62] shrink-0" />
+              <span>Cliente / Empresa</span>
+            </span>
+            <span className="text-[10px] text-slate-400 font-normal">Ctrl+B para negrita</span>
           </label>
           <input
             type="text"
             value={metadata.cliente}
             onChange={(e) => handleChange('cliente', e.target.value)}
+            onKeyDown={(e) => handleAutoBulletKeyDown(e, metadata.cliente, (v) => handleChange('cliente', v))}
             placeholder="Ej: Banco Metropolitano S.A."
             className="w-full min-w-0 max-w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] focus:bg-white transition-all text-slate-800"
           />
@@ -141,6 +146,7 @@ export const MetadataForm: React.FC<MetadataFormProps> = ({ metadata, onChange }
             type="text"
             value={metadata.ticketNo}
             onChange={(e) => handleChange('ticketNo', e.target.value)}
+            onKeyDown={(e) => handleAutoBulletKeyDown(e, metadata.ticketNo || '', (v) => handleChange('ticketNo', v))}
             placeholder="Ej: TK-2026-8894"
             className="w-full min-w-0 max-w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] focus:bg-white transition-all text-slate-800"
           />
@@ -156,6 +162,7 @@ export const MetadataForm: React.FC<MetadataFormProps> = ({ metadata, onChange }
             type="text"
             value={metadata.guiaNo}
             onChange={(e) => handleChange('guiaNo', e.target.value)}
+            onKeyDown={(e) => handleAutoBulletKeyDown(e, metadata.guiaNo || '', (v) => handleChange('guiaNo', v))}
             placeholder="Ej: GUI-ADV-042"
             className="w-full min-w-0 max-w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] focus:bg-white transition-all text-slate-800"
           />
@@ -171,6 +178,7 @@ export const MetadataForm: React.FC<MetadataFormProps> = ({ metadata, onChange }
             type="text"
             value={metadata.propuestaNo}
             onChange={(e) => handleChange('propuestaNo', e.target.value)}
+            onKeyDown={(e) => handleAutoBulletKeyDown(e, metadata.propuestaNo || '', (v) => handleChange('propuestaNo', v))}
             placeholder="Ej: PROP-ADV-2026-0158"
             className="w-full min-w-0 max-w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] focus:bg-white transition-all text-slate-800"
           />
@@ -178,14 +186,18 @@ export const MetadataForm: React.FC<MetadataFormProps> = ({ metadata, onChange }
 
         {/* Nombre del Proyecto */}
         <div className="@md:col-span-2 min-w-0">
-          <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center truncate">
-            <FileCode className="w-3.5 h-3.5 mr-1 text-[#0A3D62] shrink-0" />
-            <span>Nombre del Proyecto</span>
+          <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between truncate">
+            <span className="flex items-center">
+              <FileCode className="w-3.5 h-3.5 mr-1 text-[#0A3D62] shrink-0" />
+              <span>Nombre del Proyecto</span>
+            </span>
+            <span className="text-[10px] text-slate-400 font-normal">Ctrl+B para negrita</span>
           </label>
           <input
             type="text"
             value={metadata.nombreProyecto}
             onChange={(e) => handleChange('nombreProyecto', e.target.value)}
+            onKeyDown={(e) => handleAutoBulletKeyDown(e, metadata.nombreProyecto || '', (v) => handleChange('nombreProyecto', v))}
             placeholder="Ej: Módulo Autónomo de Conciliación Bancaria"
             className="w-full min-w-0 max-w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] focus:bg-white transition-all text-slate-800"
           />
@@ -193,14 +205,18 @@ export const MetadataForm: React.FC<MetadataFormProps> = ({ metadata, onChange }
 
         {/* Módulo / Aplicación */}
         <div className="@md:col-span-2 min-w-0">
-          <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center truncate">
-            <Layers className="w-3.5 h-3.5 mr-1 text-[#0A3D62] shrink-0" />
-            <span>Módulo / Aplicación</span>
+          <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between truncate">
+            <span className="flex items-center">
+              <Layers className="w-3.5 h-3.5 mr-1 text-[#0A3D62] shrink-0" />
+              <span>Módulo / Aplicación</span>
+            </span>
+            <span className="text-[10px] text-slate-400 font-normal">Ctrl+B para negrita</span>
           </label>
           <input
             type="text"
             value={metadata.moduloAplicacion}
             onChange={(e) => handleChange('moduloAplicacion', e.target.value)}
+            onKeyDown={(e) => handleAutoBulletKeyDown(e, metadata.moduloAplicacion || '', (v) => handleChange('moduloAplicacion', v))}
             placeholder="Ej: Advansys Core Banking Integrator v4.2"
             className="w-full min-w-0 max-w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] focus:bg-white transition-all text-slate-800"
           />
@@ -390,21 +406,21 @@ export const MetadataForm: React.FC<MetadataFormProps> = ({ metadata, onChange }
 
       {/* Header Banner & Footer Customization */}
       <div className="mt-4 pt-4 border-t border-slate-200">
-        <div className="flex items-center gap-2 mb-3 min-w-0">
+        <div className="flex items-center gap-2 mb-2 min-w-0">
           <Sliders className="w-4 h-4 text-[#0A3D62] shrink-0" />
           <h3 className="text-xs font-bold text-[#0A3D62] uppercase tracking-wide leading-snug break-words">
-            Personalización de carátula
+            Personalización de Encabezados (Header) y Pie de Página (Footer)
           </h3>
         </div>
-        <p className="text-[11px] text-slate-500 mb-3">
-          Textos de la portada. El logo se cambia en <span className="font-semibold text-[#0A3D62]">Ajustes</span> (arriba a la derecha).
+        <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">
+          Edita los textos que se muestran en el <strong>encabezado superior</strong> y en el <strong>pie de página</strong> de las páginas siguientes (páginas 2 en adelante) tanto en Word (.docx) como en PDF. El logo se configura en <span className="font-semibold text-[#0A3D62]">Ajustes</span> (arriba a la derecha).
         </p>
 
-        <div className="grid grid-cols-1 gap-3 min-w-0">
-          {/* Header Tag */}
+        <div className="grid grid-cols-1 gap-3.5 min-w-0">
+          {/* Header Brand Tag */}
           <div>
             <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-              Etiqueta de la portada
+              Marca o Etiqueta del Encabezado (Header)
             </label>
             <input
               type="text"
@@ -413,26 +429,32 @@ export const MetadataForm: React.FC<MetadataFormProps> = ({ metadata, onChange }
               placeholder="ADVANSYS"
               className="w-full min-w-0 max-w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] focus:bg-white transition-all text-slate-800"
             />
+            <p className="text-[10px] text-slate-400 mt-0.5">
+              Se muestra en el banner de la primera página y en la esquina superior izquierda del Header en las páginas 2+.
+            </p>
           </div>
 
-          {/* Subtítulo Banner */}
+          {/* Subtítulo Header */}
           <div>
             <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-              Subtítulo de la portada
+              Subtítulo del Encabezado (Header de páginas siguientes)
             </label>
             <input
               type="text"
               value={metadata.headerSubtitle ?? ''}
               onChange={(e) => handleChange('headerSubtitle', e.target.value)}
-              placeholder="Opcional (Ej: ADVANSYS TECHNICAL ARCHITECTURE & SOLUTIONS)"
+              placeholder="Ej: DOCUMENTACIÓN TÉCNICA Y ANÁLISIS DE CUMPLIMIENTO"
               className="w-full min-w-0 max-w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] focus:bg-white transition-all text-slate-800"
             />
+            <p className="text-[10px] text-slate-400 mt-0.5">
+              Texto que acompaña a la marca en el Header superior de las páginas siguientes.
+            </p>
           </div>
 
           {/* Pie de Página */}
           <div>
             <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-              Pie de Página (Footer)
+              Texto del Pie de Página (Footer de todas las páginas)
             </label>
             <input
               type="text"
@@ -441,6 +463,9 @@ export const MetadataForm: React.FC<MetadataFormProps> = ({ metadata, onChange }
               placeholder="Advansys SRL"
               className="w-full min-w-0 max-w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] focus:bg-white transition-all text-slate-800"
             />
+            <p className="text-[10px] text-slate-400 mt-0.5">
+              Aparece en la parte inferior de las páginas junto a la numeración automática <em>(Página X de Y)</em>.
+            </p>
           </div>
         </div>
       </div>

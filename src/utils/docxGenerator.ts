@@ -349,6 +349,35 @@ function createContentTable(table: DocumentTable): Table {
   });
 }
 
+function parseBoldRuns(text: string): TextRun[] {
+  const runs: TextRun[] = [];
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  for (const part of parts) {
+    if (!part) continue;
+    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+      runs.push(
+        new TextRun({
+          text: part.slice(2, -2),
+          bold: true,
+          color: COLOR_TEXT_DARK,
+          size: 22,
+          font: 'Calibri',
+        })
+      );
+    } else {
+      runs.push(
+        new TextRun({
+          text: part,
+          color: COLOR_TEXT_DARK,
+          size: 22,
+          font: 'Calibri',
+        })
+      );
+    }
+  }
+  return runs.length > 0 ? runs : [new TextRun({ text: text, color: COLOR_TEXT_DARK, size: 22, font: 'Calibri' })];
+}
+
 function pushTextWithTables(
   docElements: (Paragraph | Table)[],
   text: string,
@@ -388,23 +417,77 @@ function pushTextWithTables(
       continue;
     }
 
-    const trimmed = part.replace(/\s+$/, '');
-    if (!trimmed.trim()) continue;
-    docElements.push(
-      new Paragraph({
-        spacing: { before: 80, after: 120 },
-        alignment: AlignmentType.BOTH,
-        children: [
-          new TextRun({
-            text: trimmed.trim(),
-            color: COLOR_TEXT_DARK,
-            size: 22,
-            font: 'Calibri',
-          }),
-        ],
-      })
-    );
-    wroteSomething = true;
+    const rawBlock = part.trim();
+    if (!rawBlock) continue;
+
+    // Split paragraphs and lines to detect bulleted lists or numbered lists
+    const lines = rawBlock.split('\n');
+    let currentParagraphLines: string[] = [];
+
+    const flushCurrentParagraph = () => {
+      if (currentParagraphLines.length === 0) return;
+      const pText = currentParagraphLines.join(' ').trim();
+      if (pText) {
+        docElements.push(
+          new Paragraph({
+            spacing: { before: 60, after: 100 },
+            alignment: AlignmentType.BOTH,
+            children: parseBoldRuns(pText),
+          })
+        );
+        wroteSomething = true;
+      }
+      currentParagraphLines = [];
+    };
+
+    for (const rawLine of lines) {
+      const trimmedLine = rawLine.trim();
+      if (!trimmedLine) {
+        flushCurrentParagraph();
+        continue;
+      }
+
+      // Check for bullet point: • or - or *
+      const bulletMatch = rawLine.match(/^(\s*)([•\-\*])\s+(.*)$/);
+      // Check for numbered item: 1. or 2. etc.
+      const numberMatch = rawLine.match(/^(\s*)(\d+)[\.\)]\s+(.*)$/);
+
+      if (bulletMatch) {
+        flushCurrentParagraph();
+        const indentLevel = bulletMatch[1].length >= 4 ? 1 : 0;
+        docElements.push(
+          new Paragraph({
+            bullet: { level: indentLevel },
+            spacing: { before: 40, after: 40 },
+            children: parseBoldRuns(bulletMatch[3]),
+          })
+        );
+        wroteSomething = true;
+      } else if (numberMatch) {
+        flushCurrentParagraph();
+        const num = numberMatch[2];
+        docElements.push(
+          new Paragraph({
+            spacing: { before: 40, after: 40 },
+            children: [
+              new TextRun({
+                text: `${num}. `,
+                bold: true,
+                color: COLOR_PRIMARY_BLUE,
+                size: 22,
+                font: 'Calibri',
+              }),
+              ...parseBoldRuns(numberMatch[3]),
+            ],
+          })
+        );
+        wroteSomething = true;
+      } else {
+        currentParagraphLines.push(trimmedLine);
+      }
+    }
+
+    flushCurrentParagraph();
   }
 
   if (!wroteSomething && source.trim()) {
@@ -412,14 +495,7 @@ function pushTextWithTables(
       new Paragraph({
         spacing: { before: 80, after: 120 },
         alignment: AlignmentType.BOTH,
-        children: [
-          new TextRun({
-            text: source,
-            color: COLOR_TEXT_DARK,
-            size: 22,
-            font: 'Calibri',
-          }),
-        ],
+        children: parseBoldRuns(source),
       })
     );
   }
@@ -543,20 +619,149 @@ export async function generateAdvansysDocx(
   docElements.push(new Paragraph({ text: '', spacing: { after: 240 } }));
 
   // 1. Resumen Ejecutivo
-  docElements.push(createSectionHeader(titles.section1, '1'));
-  pushTextWithTables(docElements, proposal.resumenEjecutivo || 'Sin resumen provisto.', contentTables, usedTables);
+  if (!titles.hideSection1) {
+    docElements.push(createSectionHeader(titles.section1, '1'));
+    pushTextWithTables(docElements, proposal.resumenEjecutivo || 'Sin resumen provisto.', contentTables, usedTables);
+  }
 
   // 2. Beneficios de la Propuesta
-  docElements.push(createSectionHeader(titles.section2, '2'));
-  if (proposal.beneficios && proposal.beneficios.length > 0) {
-    proposal.beneficios.forEach((b) => {
+  if (!titles.hideSection2) {
+    docElements.push(createSectionHeader(titles.section2, '2'));
+    if (proposal.beneficios && proposal.beneficios.length > 0) {
+      proposal.beneficios.forEach((b) => {
+        docElements.push(
+          new Paragraph({
+            bullet: { level: 0 },
+            spacing: { before: 60, after: 60 },
+            children: parseBoldRuns(b),
+          })
+        );
+      });
+    } else {
       docElements.push(
         new Paragraph({
-          bullet: { level: 0 },
+          text: 'No se han detallado beneficios específicos.',
+          spacing: { before: 60, after: 60 },
+        })
+      );
+    }
+  }
+
+  // 3. Alcance, Exclusiones y Entregables
+  if (!titles.hideSection3) {
+    docElements.push(createSectionHeader(titles.section3, '3'));
+
+    // Alcance
+    if (!titles.hideSection3_1) {
+      docElements.push(
+        new Paragraph({
+          spacing: { before: 120, after: 60 },
+          children: [
+            new TextRun({
+              text: titles.section3_1.startsWith('3.1') ? titles.section3_1 : `3.1 ${titles.section3_1}`,
+              bold: true,
+              color: COLOR_SECONDARY_BLUE,
+              size: 24,
+              font: 'Calibri',
+            }),
+          ],
+        })
+      );
+      (proposal.alcanceExclusionesEntregables?.alcance || []).forEach((item) => {
+        docElements.push(
+          new Paragraph({
+            bullet: { level: 0 },
+            spacing: { before: 40, after: 40 },
+            children: parseBoldRuns(item),
+          })
+        );
+      });
+    }
+
+    // Exclusiones
+    if (!titles.hideSection3_2) {
+      docElements.push(
+        new Paragraph({
+          spacing: { before: 120, after: 60 },
+          children: [
+            new TextRun({
+              text: titles.section3_2.startsWith('3.2') ? titles.section3_2 : `3.2 ${titles.section3_2}`,
+              bold: true,
+              color: COLOR_SECONDARY_BLUE,
+              size: 24,
+              font: 'Calibri',
+            }),
+          ],
+        })
+      );
+      (proposal.alcanceExclusionesEntregables?.exclusiones || []).forEach((item) => {
+        docElements.push(
+          new Paragraph({
+            bullet: { level: 0 },
+            spacing: { before: 40, after: 40 },
+            children: parseBoldRuns(item),
+          })
+        );
+      });
+    }
+
+    // Entregables
+    if (!titles.hideSection3_3) {
+      docElements.push(
+        new Paragraph({
+          spacing: { before: 120, after: 60 },
+          children: [
+            new TextRun({
+              text: titles.section3_3.startsWith('3.3') ? titles.section3_3 : `3.3 ${titles.section3_3}`,
+              bold: true,
+              color: COLOR_SECONDARY_BLUE,
+              size: 24,
+              font: 'Calibri',
+            }),
+          ],
+        })
+      );
+      (proposal.alcanceExclusionesEntregables?.entregables || []).forEach((item) => {
+        docElements.push(
+          new Paragraph({
+            bullet: { level: 0 },
+            spacing: { before: 40, after: 40 },
+            children: parseBoldRuns(item),
+          })
+        );
+      });
+    }
+  }
+
+  // 4. Objetivo (Starts on Page 2 after Section 3)
+  if (!titles.hideSection4) {
+    docElements.push(createSectionHeader(titles.section4, '4', true));
+    pushTextWithTables(docElements, proposal.objetivo || '', contentTables, usedTables);
+  }
+
+  // 5. Descripción
+  if (!titles.hideSection5) {
+    docElements.push(createSectionHeader(titles.section5, '5'));
+    pushTextWithTables(docElements, proposal.descripcion || '', contentTables, usedTables);
+  }
+
+  // 6. Índice Análisis Operativo
+  if (!titles.hideSection6) {
+    docElements.push(createSectionHeader(titles.section6, '6'));
+    (proposal.indiceAnalisisOperativo || []).forEach((item, idx) => {
+      docElements.push(
+        new Paragraph({
           spacing: { before: 60, after: 60 },
           children: [
             new TextRun({
-              text: b,
+              text: `${idx + 1}. `,
+              bold: true,
+              color: COLOR_PRIMARY_BLUE,
+              size: 22,
+              font: 'Calibri',
+            }),
+            new TextRun({
+              text: item,
               color: COLOR_TEXT_DARK,
               size: 22,
               font: 'Calibri',
@@ -565,231 +770,94 @@ export async function generateAdvansysDocx(
         })
       );
     });
-  } else {
-    docElements.push(
-      new Paragraph({
-        text: 'No se han detallado beneficios específicos.',
-        spacing: { before: 60, after: 60 },
-      })
-    );
   }
 
-  // 3. Alcance, Exclusiones y Entregables
-  docElements.push(createSectionHeader(titles.section3, '3'));
-
-  // Alcance
-  docElements.push(
-    new Paragraph({
-      spacing: { before: 120, after: 60 },
-      children: [
-        new TextRun({
-          text: titles.section3_1.startsWith('3.1') ? titles.section3_1 : `3.1 ${titles.section3_1}`,
-          bold: true,
-          color: COLOR_SECONDARY_BLUE,
-          size: 24,
-          font: 'Calibri',
-        }),
-      ],
-    })
-  );
-  (proposal.alcanceExclusionesEntregables?.alcance || []).forEach((item) => {
-    docElements.push(
-      new Paragraph({
-        bullet: { level: 0 },
-        spacing: { before: 40, after: 40 },
-        children: [
-          new TextRun({
-            text: item,
-            color: COLOR_TEXT_DARK,
-            size: 22,
-            font: 'Calibri',
-          }),
-        ],
-      })
-    );
-  });
-
-  // Exclusiones
-  docElements.push(
-    new Paragraph({
-      spacing: { before: 120, after: 60 },
-      children: [
-        new TextRun({
-          text: titles.section3_2.startsWith('3.2') ? titles.section3_2 : `3.2 ${titles.section3_2}`,
-          bold: true,
-          color: COLOR_SECONDARY_BLUE,
-          size: 24,
-          font: 'Calibri',
-        }),
-      ],
-    })
-  );
-  (proposal.alcanceExclusionesEntregables?.exclusiones || []).forEach((item) => {
-    docElements.push(
-      new Paragraph({
-        bullet: { level: 0 },
-        spacing: { before: 40, after: 40 },
-        children: [
-          new TextRun({
-            text: item,
-            color: COLOR_TEXT_DARK,
-            size: 22,
-            font: 'Calibri',
-          }),
-        ],
-      })
-    );
-  });
-
-  // Entregables
-  docElements.push(
-    new Paragraph({
-      spacing: { before: 120, after: 60 },
-      children: [
-        new TextRun({
-          text: titles.section3_3.startsWith('3.3') ? titles.section3_3 : `3.3 ${titles.section3_3}`,
-          bold: true,
-          color: COLOR_SECONDARY_BLUE,
-          size: 24,
-          font: 'Calibri',
-        }),
-      ],
-    })
-  );
-  (proposal.alcanceExclusionesEntregables?.entregables || []).forEach((item) => {
-    docElements.push(
-      new Paragraph({
-        bullet: { level: 0 },
-        spacing: { before: 40, after: 40 },
-        children: [
-          new TextRun({
-            text: item,
-            color: COLOR_TEXT_DARK,
-            size: 22,
-            font: 'Calibri',
-          }),
-        ],
-      })
-    );
-  });
-
-  // 4. Objetivo (Starts on Page 2 after Section 3)
-  docElements.push(createSectionHeader(titles.section4, '4', true));
-  pushTextWithTables(docElements, proposal.objetivo || '', contentTables, usedTables);
-
-  // 5. Descripción
-  docElements.push(createSectionHeader(titles.section5, '5'));
-  pushTextWithTables(docElements, proposal.descripcion || '', contentTables, usedTables);
-
-  // 6. Índice Análisis Operativo
-  docElements.push(createSectionHeader(titles.section6, '6'));
-  (proposal.indiceAnalisisOperativo || []).forEach((item, idx) => {
-    docElements.push(
-      new Paragraph({
-        spacing: { before: 60, after: 60 },
-        children: [
-          new TextRun({
-            text: `${idx + 1}. `,
-            bold: true,
-            color: COLOR_PRIMARY_BLUE,
-            size: 22,
-            font: 'Calibri',
-          }),
-          new TextRun({
-            text: item,
-            color: COLOR_TEXT_DARK,
-            size: 22,
-            font: 'Calibri',
-          }),
-        ],
-      })
-    );
-  });
-
   // 7. Análisis Operativo con Imágenes e Ilustraciones
-  docElements.push(createSectionHeader(titles.section7, '7'));
+  if (!titles.hideSection7) {
+    docElements.push(createSectionHeader(titles.section7, '7'));
 
-  if (proposal.analisisOperativo && proposal.analisisOperativo.length > 0) {
-    proposal.analisisOperativo.forEach((step, idx) => {
-      // Step Title
-      docElements.push(
-        new Paragraph({
-          spacing: { before: 180, after: 80 },
-          children: [
-            new TextRun({
-              text: `Paso 7.${idx + 1}: ${step.titulo}`,
-              bold: true,
-              color: COLOR_PRIMARY_BLUE,
-              size: 24, // 12pt
-              font: 'Calibri',
-            }),
-          ],
-        })
-      );
+    if (proposal.analisisOperativo && proposal.analisisOperativo.length > 0) {
+      proposal.analisisOperativo.forEach((step, idx) => {
+        // Step Title
+        docElements.push(
+          new Paragraph({
+            spacing: { before: 180, after: 80 },
+            children: [
+              new TextRun({
+                text: `Paso 7.${idx + 1}: ${step.titulo}`,
+                bold: true,
+                color: COLOR_PRIMARY_BLUE,
+                size: 24, // 12pt
+                font: 'Calibri',
+              }),
+            ],
+          })
+        );
 
-      // Check if image referenced or mapped to step index
-      const linkedImg = imageMapByIndex.get(idx + 1) || processedImages[idx];
+        // Check if image referenced or mapped to step index
+        const linkedImg = imageMapByIndex.get(idx + 1) || processedImages[idx];
 
-      if (linkedImg && linkedImg.bytes && linkedImg.bytes.length > 0) {
-        try {
-          docElements.push(
-            new Paragraph({
-              alignment: AlignmentType.CENTER,
-              spacing: { before: 120, after: 60 },
-              children: [
-                new ImageRun({
-                  data: linkedImg.bytes,
-                  type: 'png',
-                  transformation: {
-                    width: Math.min(linkedImg.width || 500, 500),
-                    height: Math.min(linkedImg.height || 280, 320),
-                  },
-                }),
-              ],
-            })
-          );
+        if (linkedImg && linkedImg.bytes && linkedImg.bytes.length > 0) {
+          try {
+            docElements.push(
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                spacing: { before: 120, after: 60 },
+                children: [
+                  new ImageRun({
+                    data: linkedImg.bytes,
+                    type: 'png',
+                    transformation: {
+                      width: Math.min(linkedImg.width || 500, 500),
+                      height: Math.min(linkedImg.height || 280, 320),
+                    },
+                  }),
+                ],
+              })
+            );
 
-          // Image Caption
-          docElements.push(
-            new Paragraph({
-              alignment: AlignmentType.CENTER,
-              spacing: { before: 40, after: 120 },
-              children: [
-                new TextRun({
-                  text: `[IMAGEN_${linkedImg.index}] ${linkedImg.title}`,
-                  bold: true,
-                  italics: true,
-                  color: COLOR_MUTED_GRAY,
-                  size: 18, // 9pt
-                  font: 'Calibri',
-                }),
-                ...(linkedImg.description ? [
+            // Image Caption
+            docElements.push(
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                spacing: { before: 40, after: 120 },
+                children: [
                   new TextRun({
-                    text: ` - ${linkedImg.description}`,
+                    text: `[IMAGEN_${linkedImg.index}] ${linkedImg.title}`,
+                    bold: true,
                     italics: true,
                     color: COLOR_MUTED_GRAY,
-                    size: 18,
+                    size: 18, // 9pt
                     font: 'Calibri',
-                  })
-                ] : [])
-              ],
-            })
-          );
-        } catch (e) {
-          console.error('Failed to append image to docx:', e);
+                  }),
+                  ...(linkedImg.description ? [
+                    new TextRun({
+                      text: ` - ${linkedImg.description}`,
+                      italics: true,
+                      color: COLOR_MUTED_GRAY,
+                      size: 18,
+                      font: 'Calibri',
+                    })
+                  ] : [])
+                ],
+              })
+            );
+          } catch (e) {
+            console.error('Failed to append image to docx:', e);
+          }
         }
-      }
 
-      // Step Explanation Text
-      pushTextWithTables(docElements, step.explicacion || '', contentTables, usedTables);
-    });
-  } else {
-    docElements.push(
-      new Paragraph({
-        text: 'Se desarrollarán los flujos operativos en la fase detallada.',
-        spacing: { before: 100, after: 100 },
-      })
-    );
+        // Step Explanation Text
+        pushTextWithTables(docElements, step.explicacion || '', contentTables, usedTables);
+      });
+    } else {
+      docElements.push(
+        new Paragraph({
+          text: 'Se desarrollarán los flujos operativos en la fase detallada.',
+          spacing: { before: 100, after: 100 },
+        })
+      );
+    }
   }
 
   // Tablas no referenciadas con [TABLA_n] — se agregan antes del descargo
@@ -819,14 +887,16 @@ export async function generateAdvansysDocx(
   }
 
   // 8. Descargo / Cláusula de Responsabilidad
-  docElements.push(createSectionHeader(titles.section8, '8'));
-  pushTextWithTables(
-    docElements,
-    proposal.descargo ||
-      'La presente propuesta técnica y análisis operativo han sido elaborados exclusivamente por Advansys para uso confidencial del cliente indicado. Los requerimientos, diagramas y estimaciones contenidos están sujetos a validación formal tras la aprobación del acta de inicio de proyecto. Queda prohibida la reproducción parcial o total sin autorización expresa.',
-    contentTables,
-    usedTables
-  );
+  if (!titles.hideSection8) {
+    docElements.push(createSectionHeader(titles.section8, '8'));
+    pushTextWithTables(
+      docElements,
+      proposal.descargo ||
+        'La presente propuesta técnica y análisis operativo han sido elaborados exclusivamente por Advansys para uso confidencial del cliente indicado. Los requerimientos, diagramas y estimaciones contenidos están sujetos a validación formal tras la aprobación del acta de inicio de proyecto. Queda prohibida la reproducción parcial o total sin autorización expresa.',
+      contentTables,
+      usedTables
+    );
+  }
 
   // Build Advansys Header Banner
   const headerLogo = logoBytes
@@ -880,14 +950,14 @@ export async function generateAdvansysDocx(
                   new Paragraph({
                     children: [
                       new TextRun({
-                        text: 'ADVANSYS  |  ',
+                        text: `${(metadata.headerBrandTag || 'ADVANSYS').trim()}  |  `,
                         bold: true,
                         color: 'FFFFFF',
                         size: 22,
                         font: 'Calibri',
                       }),
                       new TextRun({
-                        text: 'DOCUMENTACIÓN TÉCNICA Y ANÁLISIS DE CUMPLIMIENTO',
+                        text: (metadata.headerSubtitle || 'DOCUMENTACIÓN TÉCNICA Y ANÁLISIS DE CUMPLIMIENTO').trim(),
                         bold: true,
                         color: COLOR_ACCENT_GREEN,
                         size: 18,

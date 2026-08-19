@@ -231,16 +231,67 @@ export async function generateAdvansysPdf(
   const renderParagraph = (text?: string): void => {
     if (!text || !text.trim()) return;
     const cleanText = text.trim();
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
-    doc.setTextColor(COLOR_TEXT_DARK[0], COLOR_TEXT_DARK[1], COLOR_TEXT_DARK[2]);
+    const rawLines = cleanText.split('\n');
 
-    const lines = doc.splitTextToSize(cleanText, contentWidth);
-    const needed = lines.length * 3.8 + 2;
-    checkPageBreak(needed);
+    for (const rawLine of rawLines) {
+      const trimmedLine = rawLine.trim();
+      if (!trimmedLine) continue;
 
-    doc.text(lines, margin, cursorY);
-    cursorY += needed;
+      const bulletMatch = rawLine.match(/^(\s*)([•\-\*])\s+(.*)$/);
+      const numberMatch = rawLine.match(/^(\s*)(\d+)[\.\)]\s+(.*)$/);
+
+      if (bulletMatch) {
+        const indentExtra = bulletMatch[1].length >= 4 ? 4.0 : 0;
+        const bulletIndent = 4.5 + indentExtra;
+        const contentStr = bulletMatch[3].replace(/\*\*/g, '');
+        const textWidth = contentWidth - bulletIndent;
+        
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.setTextColor(COLOR_TEXT_DARK[0], COLOR_TEXT_DARK[1], COLOR_TEXT_DARK[2]);
+        const lines = doc.splitTextToSize(contentStr, textWidth);
+        const needed = lines.length * 3.8 + 1.2;
+        checkPageBreak(needed);
+
+        doc.setFillColor(COLOR_ACCENT[0], COLOR_ACCENT[1], COLOR_ACCENT[2]);
+        doc.circle(margin + indentExtra + 1.6, cursorY - 1, 0.7, 'F');
+        doc.text(lines, margin + bulletIndent, cursorY);
+        cursorY += needed;
+      } else if (numberMatch) {
+        const indentExtra = numberMatch[1].length >= 4 ? 4.0 : 0;
+        const numStr = `${numberMatch[2]}.`;
+        const contentStr = numberMatch[3].replace(/\*\*/g, '');
+        const numberIndent = 5.5 + indentExtra;
+        const textWidth = contentWidth - numberIndent;
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+        
+        const lines = doc.splitTextToSize(contentStr, textWidth);
+        const needed = lines.length * 3.8 + 1.2;
+        checkPageBreak(needed);
+
+        doc.text(numStr, margin + indentExtra, cursorY);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(COLOR_TEXT_DARK[0], COLOR_TEXT_DARK[1], COLOR_TEXT_DARK[2]);
+        doc.text(lines, margin + numberIndent, cursorY);
+        cursorY += needed;
+      } else {
+        const contentStr = trimmedLine.replace(/\*\*/g, '');
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.setTextColor(COLOR_TEXT_DARK[0], COLOR_TEXT_DARK[1], COLOR_TEXT_DARK[2]);
+
+        const lines = doc.splitTextToSize(contentStr, contentWidth);
+        const needed = lines.length * 3.8 + 1.8;
+        checkPageBreak(needed);
+
+        doc.text(lines, margin, cursorY);
+        cursorY += needed;
+      }
+    }
   };
 
   const renderBulletList = (items?: string[], prefixColor: [number, number, number] = COLOR_ACCENT): void => {
@@ -333,13 +384,15 @@ export async function generateAdvansysPdf(
   // ==========================================
   // SECTION 1. RESUMEN EJECUTIVO
   // ==========================================
-  renderSectionHeader(titles.section1, '1');
-  renderRichTextWithTables(proposal.resumenEjecutivo, docTables);
+  if (!titles.hideSection1) {
+    renderSectionHeader(titles.section1, '1');
+    renderRichTextWithTables(proposal.resumenEjecutivo, docTables);
+  }
 
   // ==========================================
   // SECTION 2. BENEFICIOS DE LA PROPUESTA
   // ==========================================
-  if (proposal.beneficios && proposal.beneficios.length > 0) {
+  if (!titles.hideSection2 && proposal.beneficios && proposal.beneficios.length > 0) {
     renderSectionHeader(titles.section2, '2');
     renderBulletList(proposal.beneficios);
   }
@@ -347,60 +400,66 @@ export async function generateAdvansysPdf(
   // ==========================================
   // SECTION 3. ALCANCE, EXCLUSIONES Y ENTREGABLES
   // ==========================================
-  const scope = proposal.alcanceExclusionesEntregables;
-  if (scope) {
-    renderSectionHeader(titles.section3, '3');
+  if (!titles.hideSection3) {
+    const scope = proposal.alcanceExclusionesEntregables;
+    if (scope) {
+      renderSectionHeader(titles.section3, '3');
 
-    if (scope.alcance && scope.alcance.length > 0) {
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8.5);
-      doc.setTextColor(COLOR_SECONDARY[0], COLOR_SECONDARY[1], COLOR_SECONDARY[2]);
-      checkPageBreak(8);
-      const s31 = titles.section3_1.startsWith('3.1') ? titles.section3_1 : `3.1 ${titles.section3_1}`;
-      doc.text(s31, margin, cursorY + 2);
-      cursorY += 5;
-      renderBulletList(scope.alcance, COLOR_SECONDARY);
-    }
+      if (!titles.hideSection3_1 && scope.alcance && scope.alcance.length > 0) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(COLOR_SECONDARY[0], COLOR_SECONDARY[1], COLOR_SECONDARY[2]);
+        checkPageBreak(8);
+        const s31 = titles.section3_1.startsWith('3.1') ? titles.section3_1 : `3.1 ${titles.section3_1}`;
+        doc.text(s31, margin, cursorY + 2);
+        cursorY += 5;
+        renderBulletList(scope.alcance, COLOR_SECONDARY);
+      }
 
-    if (scope.exclusiones && scope.exclusiones.length > 0) {
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8.5);
-      doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-      checkPageBreak(8);
-      const s32 = titles.section3_2.startsWith('3.2') ? titles.section3_2 : `3.2 ${titles.section3_2}`;
-      doc.text(s32, margin, cursorY + 2);
-      cursorY += 5;
-      renderBulletList(scope.exclusiones, COLOR_PRIMARY);
-    }
+      if (!titles.hideSection3_2 && scope.exclusiones && scope.exclusiones.length > 0) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+        checkPageBreak(8);
+        const s32 = titles.section3_2.startsWith('3.2') ? titles.section3_2 : `3.2 ${titles.section3_2}`;
+        doc.text(s32, margin, cursorY + 2);
+        cursorY += 5;
+        renderBulletList(scope.exclusiones, COLOR_PRIMARY);
+      }
 
-    if (scope.entregables && scope.entregables.length > 0) {
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8.5);
-      doc.setTextColor(COLOR_ACCENT[0], COLOR_ACCENT[1], COLOR_ACCENT[2]);
-      checkPageBreak(8);
-      const s33 = titles.section3_3.startsWith('3.3') ? titles.section3_3 : `3.3 ${titles.section3_3}`;
-      doc.text(s33, margin, cursorY + 2);
-      cursorY += 5;
-      renderBulletList(scope.entregables, COLOR_ACCENT);
+      if (!titles.hideSection3_3 && scope.entregables && scope.entregables.length > 0) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(COLOR_ACCENT[0], COLOR_ACCENT[1], COLOR_ACCENT[2]);
+        checkPageBreak(8);
+        const s33 = titles.section3_3.startsWith('3.3') ? titles.section3_3 : `3.3 ${titles.section3_3}`;
+        doc.text(s33, margin, cursorY + 2);
+        cursorY += 5;
+        renderBulletList(scope.entregables, COLOR_ACCENT);
+      }
     }
   }
 
   // ==========================================
   // SECTION 4. OBJETIVO GENERAL Y ESPECÍFICOS (Página 2)
   // ==========================================
-  renderSectionHeader(titles.section4, '4', true);
-  renderRichTextWithTables(proposal.objetivo, docTables);
+  if (!titles.hideSection4) {
+    renderSectionHeader(titles.section4, '4', true);
+    renderRichTextWithTables(proposal.objetivo, docTables);
+  }
 
   // ==========================================
   // SECTION 5. DESCRIPCIÓN DE LA SOLUCIÓN PROPUESTA
   // ==========================================
-  renderSectionHeader(titles.section5, '5');
-  renderRichTextWithTables(proposal.descripcion, docTables);
+  if (!titles.hideSection5) {
+    renderSectionHeader(titles.section5, '5');
+    renderRichTextWithTables(proposal.descripcion, docTables);
+  }
 
   // ==========================================
   // SECTION 6. ÍNDICE DE ANÁLISIS OPERATIVO
   // ==========================================
-  if (proposal.indiceAnalisisOperativo && proposal.indiceAnalisisOperativo.length > 0) {
+  if (!titles.hideSection6 && proposal.indiceAnalisisOperativo && proposal.indiceAnalisisOperativo.length > 0) {
     renderSectionHeader(titles.section6, '6');
     for (let i = 0; i < proposal.indiceAnalisisOperativo.length; i++) {
       const item = proposal.indiceAnalisisOperativo[i];
@@ -422,7 +481,7 @@ export async function generateAdvansysPdf(
   // ==========================================
   // SECTION 7. ANÁLISIS OPERATIVO DETALLADO (Paso a Paso con Imágenes)
   // ==========================================
-  if (proposal.analisisOperativo && proposal.analisisOperativo.length > 0) {
+  if (!titles.hideSection7 && proposal.analisisOperativo && proposal.analisisOperativo.length > 0) {
     renderSectionHeader(titles.section7, '7');
 
     for (let idx = 0; idx < proposal.analisisOperativo.length; idx++) {
@@ -524,38 +583,40 @@ export async function generateAdvansysPdf(
   // ==========================================
   // SECTION 8. DESCARGO Y CLÁUSULA ESTÁNDAR
   // ==========================================
-  const descargoText = (proposal.descargo && proposal.descargo.trim())
-    ? proposal.descargo.trim()
-    : 'La presente propuesta técnica y análisis operativo han sido elaborados exclusivamente por Advansys para uso confidencial del cliente indicado. Los requerimientos, diagramas y estimaciones contenidos están sujetos a validación formal tras la aprobación del acta de inicio de proyecto. Queda prohibida la reproducción parcial o total sin autorización expresa.';
+  if (!titles.hideSection8) {
+    const descargoText = (proposal.descargo && proposal.descargo.trim())
+      ? proposal.descargo.trim()
+      : 'La presente propuesta técnica y análisis operativo han sido elaborados exclusivamente por Advansys para uso confidencial del cliente indicado. Los requerimientos, diagramas y estimaciones contenidos están sujetos a validación formal tras la aprobación del acta de inicio de proyecto. Queda prohibida la reproducción parcial o total sin autorización expresa.';
 
-  renderSectionHeader(titles.section8, '8');
+    renderSectionHeader(titles.section8, '8');
 
-  // Render descargo card with exact same styling as Web Preview and Word:
-  // Background: slate-50 (COLOR_BG_LIGHT), border: slate-200 (COLOR_BORDER), font: italic slate-500 (COLOR_MUTED)
-  const paddingX = 4.5;
-  const paddingY = 3.5;
-  const innerWidth = contentWidth - paddingX * 2;
+    // Render descargo card with exact same styling as Web Preview and Word:
+    // Background: slate-50 (COLOR_BG_LIGHT), border: slate-200 (COLOR_BORDER), font: italic slate-500 (COLOR_MUTED)
+    const paddingX = 4.5;
+    const paddingY = 3.5;
+    const innerWidth = contentWidth - paddingX * 2;
 
-  doc.setFont('helvetica', 'italic');
-  doc.setFontSize(8);
-  doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(8);
+    doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
 
-  const descargoLines = doc.splitTextToSize(descargoText, innerWidth);
-  const textBlockHeight = descargoLines.length * 3.8;
-  const cardHeight = textBlockHeight + paddingY * 2 + 1;
+    const descargoLines = doc.splitTextToSize(descargoText, innerWidth);
+    const textBlockHeight = descargoLines.length * 3.8;
+    const cardHeight = textBlockHeight + paddingY * 2 + 1;
 
-  checkPageBreak(cardHeight + 4);
+    checkPageBreak(cardHeight + 4);
 
-  // Background card box
-  doc.setFillColor(COLOR_BG_LIGHT[0], COLOR_BG_LIGHT[1], COLOR_BG_LIGHT[2]);
-  doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
-  doc.setLineWidth(0.2);
-  doc.roundedRect(margin, cursorY, contentWidth, cardHeight, 1.5, 1.5, 'FD');
+    // Background card box
+    doc.setFillColor(COLOR_BG_LIGHT[0], COLOR_BG_LIGHT[1], COLOR_BG_LIGHT[2]);
+    doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
+    doc.setLineWidth(0.2);
+    doc.roundedRect(margin, cursorY, contentWidth, cardHeight, 1.5, 1.5, 'FD');
 
-  // Text inside card
-  doc.text(descargoLines, margin + paddingX, cursorY + paddingY + 3.2);
+    // Text inside card
+    doc.text(descargoLines, margin + paddingX, cursorY + paddingY + 3.2);
 
-  cursorY += cardHeight + 6;
+    cursorY += cardHeight + 6;
+  }
 
   // ==========================================
   // 5. RUNNING HEADERS & FOOTERS ON ALL PAGES
@@ -570,8 +631,9 @@ export async function generateAdvansysPdf(
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7.5);
       doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+      const headerSubtitleText = metadata.headerSubtitle?.trim() || metadata.nombreProyecto?.trim() || 'Propuesta de Desarrollo';
       doc.text(
-        `${metadata.headerBrandTag || 'ADVANSYS'} • ${metadata.nombreProyecto || 'Propuesta de Desarrollo'}`,
+        `${(metadata.headerBrandTag || 'ADVANSYS').trim()} • ${headerSubtitleText}`,
         margin,
         10
       );
@@ -591,7 +653,7 @@ export async function generateAdvansysPdf(
     doc.setFontSize(7.5);
     doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
     doc.text(
-      metadata.footerText || 'DOCUMENTO CONFIDENCIAL • ADVANSYS INGENIERÍA DE SOFTWARE',
+      (metadata.footerText || 'Advansys SRL').trim(),
       margin,
       footerY
     );

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MetadataHeader, UploadedImage, ProposalSection, SavedProposal, BrandingSettings } from './types';
+import { MetadataHeader, UploadedImage, ProposalSection, SavedProposal, BrandingSettings, DocumentStatus } from './types';
 import { Header } from './components/Header';
 import { MetadataForm } from './components/MetadataForm';
 import { RequirementsInput } from './components/RequirementsInput';
@@ -11,7 +11,8 @@ import { SettingsModal } from './components/SettingsModal';
 import { WelcomeIntro } from './components/WelcomeIntro';
 import { ADVANSYS_SAMPLE_METADATA, ADVANSYS_SAMPLE_REQUIREMENTS, ADVANSYS_SAMPLE_IMAGES, EMPTY_MANUAL_PROPOSAL } from './data/presets';
 import { createDefaultSlideDeck, convertProposalToSlideDeck } from './utils/slideDeckTemplates';
-import { Sparkles, Loader2, FileText, AlertCircle, Cpu, Columns2, ClipboardList, Maximize2, Image as ImageIcon, PenLine, NotebookPen, Layers, X, Check, Presentation } from 'lucide-react';
+import { createDefaultTechnicalDoc } from './utils/technicalDocTemplates';
+import { Sparkles, Loader2, FileText, AlertCircle, Cpu, Columns2, ClipboardList, Maximize2, Image as ImageIcon, PenLine, NotebookPen, Layers, X, Check, Presentation, Terminal } from 'lucide-react';
 
 const STORAGE_KEY_HISTORY = 'advansys_docgen_history_v1';
 const STORAGE_KEY_DRAFT = 'advansys_docgen_current_draft_v1';
@@ -60,6 +61,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
 
   // Save State
+  const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(null);
+  const [currentStatus, setCurrentStatus] = useState<DocumentStatus>('borrador');
   const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
   const [showSavedToast, setShowSavedToast] = useState<boolean>(false);
 
@@ -77,11 +80,13 @@ export default function App() {
 
   // Confirm Reset Modal State
   const [isConfirmResetOpen, setIsConfirmResetOpen] = useState<boolean>(false);
+  // Confirm Revert Modal State
+  const [isConfirmRevertOpen, setIsConfirmRevertOpen] = useState<boolean>(false);
 
   // Layout Mode & Tab State
   const [layoutMode, setLayoutMode] = useState<'split' | 'inputs' | 'editor'>('split');
   const [inputTab, setInputTab] = useState<'metadatos' | 'requerimientos' | 'imagenes' | 'all'>('requerimientos');
-  const [editorTab, setEditorTab] = useState<'editor' | 'preview' | 'slides'>('editor');
+  const [editorTab, setEditorTab] = useState<'editor' | 'preview' | 'slides' | 'technical'>('editor');
 
   // Theme State ('light' | 'dark')
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
@@ -115,6 +120,7 @@ export default function App() {
       let draftMetadata: MetadataHeader | undefined;
       if (savedDraft) {
         const parsed = JSON.parse(savedDraft);
+        if (parsed.currentDocumentId) setCurrentDocumentId(parsed.currentDocumentId);
         if (parsed.metadata) {
           draftMetadata = parsed.metadata;
           setMetadata(stripDocumentLogo(parsed.metadata));
@@ -124,6 +130,7 @@ export default function App() {
         if (parsed.proposal) setProposal(parsed.proposal);
         if (parsed.version) setCurrentVersion(parsed.version);
         if (parsed.versionNote) setCurrentVersionNote(parsed.versionNote);
+        if (parsed.status) setCurrentStatus(parsed.status);
         if (parsed.timestamp) {
           const t = new Date(parsed.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           setLastSavedTime(t);
@@ -171,26 +178,34 @@ export default function App() {
     }
   };
 
-  // Save Changes Helper
+  // Save Changes Helper - Updates the current document in-place WITHOUT creating duplicate files
   const handleSaveChanges = () => {
     if (!proposal) return;
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     setLastSavedTime(timeStr);
     
+    // Use or create stable document ID
+    const targetDocId = currentDocumentId || `prop-${Date.now()}`;
+    if (!currentDocumentId) {
+      setCurrentDocumentId(targetDocId);
+    }
+
     const draft = {
+      currentDocumentId: targetDocId,
       metadata,
       rawRequirements,
       images,
       proposal,
       version: currentVersion,
       versionNote: currentVersionNote,
+      status: currentStatus,
       timestamp: now.toISOString()
     };
 
     try {
       localStorage.setItem(STORAGE_KEY_DRAFT, JSON.stringify(draft));
-      saveToHistory(proposal, currentVersion, currentVersionNote);
+      saveToHistory(proposal, currentVersion, currentVersionNote, targetDocId, false);
       setShowSavedToast(true);
       setTimeout(() => setShowSavedToast(false), 3000);
     } catch (e) {
@@ -198,23 +213,84 @@ export default function App() {
     }
   };
 
-  // Save History to localStorage helper
-  const saveToHistory = (newProposal: ProposalSection, customVersion?: string, customNote?: string) => {
+  // Save History helper (handles in-place overwrite vs explicit new version)
+  const saveToHistory = (
+    newProposal: ProposalSection,
+    customVersion?: string,
+    customNote?: string,
+    targetDocId?: string,
+    isNewVersionExplicit = false
+  ) => {
     const versionLabel = customVersion || currentVersion || 'v1.0';
     const noteLabel = customNote !== undefined ? customNote : currentVersionNote;
+    const nowIso = new Date().toISOString();
 
-    const newEntry: SavedProposal = {
-      id: `prop-${Date.now()}`,
-      version: versionLabel,
-      versionNote: noteLabel,
-      timestamp: new Date().toISOString(),
-      metadata,
-      content: newProposal,
-      images,
-      rawRequirements
-    };
+    if (isNewVersionExplicit) {
+      // Create a brand new document / version entry
+      const newEntryId = `prop-${Date.now()}`;
+      setCurrentDocumentId(newEntryId);
+      const newEntry: SavedProposal = {
+        id: newEntryId,
+        version: versionLabel,
+        versionNote: noteLabel,
+        status: currentStatus || 'borrador',
+        timestamp: nowIso,
+        metadata,
+        content: newProposal,
+        images,
+        rawRequirements
+      };
+      const updatedHistory = [newEntry, ...history.filter(h => h.id !== newEntryId).slice(0, 49)];
+      setHistory(updatedHistory);
+      try {
+        localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(updatedHistory));
+      } catch (e) {
+        console.error("Failed to save history:", e);
+      }
+      return;
+    }
 
-    const updatedHistory = [newEntry, ...history.filter(h => h.id !== newEntry.id).slice(0, 29)];
+    // Normal Save in-place:
+    const docIdToUse = targetDocId || currentDocumentId || `prop-${Date.now()}`;
+    if (!currentDocumentId) {
+      setCurrentDocumentId(docIdToUse);
+    }
+
+    const existingIndex = history.findIndex(h => h.id === docIdToUse);
+    let updatedHistory: SavedProposal[];
+
+    if (existingIndex >= 0) {
+      // Overwrite the existing document in place - KEEP same id and status
+      const updatedItem: SavedProposal = {
+        ...history[existingIndex],
+        version: versionLabel,
+        versionNote: noteLabel,
+        status: history[existingIndex].status || currentStatus || 'borrador',
+        statusChangedAt: history[existingIndex].statusChangedAt,
+        timestamp: nowIso,
+        metadata,
+        content: newProposal,
+        images,
+        rawRequirements
+      };
+      updatedHistory = [...history];
+      updatedHistory[existingIndex] = updatedItem;
+    } else {
+      // First save for this new document
+      const newEntry: SavedProposal = {
+        id: docIdToUse,
+        version: versionLabel,
+        versionNote: noteLabel,
+        status: currentStatus || 'borrador',
+        timestamp: nowIso,
+        metadata,
+        content: newProposal,
+        images,
+        rawRequirements
+      };
+      updatedHistory = [newEntry, ...history.slice(0, 49)];
+    }
+
     setHistory(updatedHistory);
     try {
       localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(updatedHistory));
@@ -223,7 +299,31 @@ export default function App() {
     }
   };
 
-  // Save as new version
+  // Update proposal status handler (e.g. Borrador -> Finalizado / Culminado)
+  const handleUpdateProposalStatus = (id: string, status: DocumentStatus) => {
+    const nowIso = new Date().toISOString();
+    const updated = history.map((item) => {
+      if (item.id === id) {
+        return {
+          ...item,
+          status,
+          statusChangedAt: nowIso,
+        };
+      }
+      return item;
+    });
+    setHistory(updated);
+    if (currentDocumentId === id) {
+      setCurrentStatus(status);
+    }
+    try {
+      localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(updated));
+    } catch (e) {
+      console.error("Failed to update proposal status:", e);
+    }
+  };
+
+  // Save as new version (when user explicitly creates a new version)
   const handleSaveNewVersion = (versionTag: string, versionNote: string) => {
     if (!proposal) return;
     setCurrentVersion(versionTag);
@@ -233,7 +333,7 @@ export default function App() {
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     setLastSavedTime(timeStr);
 
-    saveToHistory(proposal, versionTag, versionNote);
+    saveToHistory(proposal, versionTag, versionNote, undefined, true);
     setShowSavedToast(true);
     setTimeout(() => setShowSavedToast(false), 3000);
   };
@@ -250,8 +350,9 @@ export default function App() {
       newVersionLabel = `v${major + 1}.0`;
     }
 
+    const newEntryId = `prop-${Date.now()}`;
     const newEntry: SavedProposal = {
-      id: `prop-${Date.now()}`,
+      id: newEntryId,
       version: newVersionLabel,
       versionNote: `Duplicado derivado de ${srcVersion}`,
       timestamp: new Date().toISOString(),
@@ -270,6 +371,7 @@ export default function App() {
     }
 
     // Load duplicated item into active workspace editor
+    setCurrentDocumentId(newEntryId);
     setMetadata(stripDocumentLogo(newEntry.metadata));
     setRawRequirements(newEntry.rawRequirements);
     setImages(newEntry.images);
@@ -296,6 +398,7 @@ export default function App() {
   };
 
   const handleConfirmReset = () => {
+    setCurrentDocumentId(null);
     setMetadata({
       cliente: '',
       fecha: new Date().toISOString().split('T')[0],
@@ -318,8 +421,77 @@ export default function App() {
     setIsConfirmResetOpen(false);
   };
 
+  // Target saved proposal to revert to
+  const getLastSavedTarget = (): SavedProposal | null => {
+    if (currentDocumentId) {
+      const match = history.find(h => h.id === currentDocumentId);
+      if (match) return match;
+    }
+    if (history.length > 0) {
+      return history[0];
+    }
+    try {
+      const draftStr = localStorage.getItem(STORAGE_KEY_DRAFT);
+      if (draftStr) {
+        const d = JSON.parse(draftStr);
+        if (d.proposal) {
+          return {
+            id: d.currentDocumentId || `prop-${Date.now()}`,
+            version: d.version || 'v1.0',
+            versionNote: d.versionNote || '',
+            status: d.status || 'borrador',
+            timestamp: d.timestamp || new Date().toISOString(),
+            metadata: d.metadata,
+            content: d.proposal,
+            images: d.images || [],
+            rawRequirements: d.rawRequirements || ''
+          };
+        }
+      }
+    } catch (e) {
+      console.error("Error reading last saved draft:", e);
+    }
+    return null;
+  };
+
+  const hasSavedVersionAvailable = Boolean(getLastSavedTarget());
+
+  const handleRequestRevertToLastSaved = () => {
+    const target = getLastSavedTarget();
+    if (!target) return;
+    setIsConfirmRevertOpen(true);
+  };
+
+  const handleConfirmRevert = () => {
+    const target = getLastSavedTarget();
+    if (!target) {
+      setIsConfirmRevertOpen(false);
+      return;
+    }
+
+    setCurrentDocumentId(target.id);
+    setCurrentStatus(target.status || 'borrador');
+    setMetadata(stripDocumentLogo(target.metadata));
+    setRawRequirements(target.rawRequirements || '');
+    setImages(target.images || []);
+    setProposal(JSON.parse(JSON.stringify(target.content)));
+    setCurrentVersion(target.version || 'v1.0');
+    setCurrentVersionNote(target.versionNote || '');
+
+    if (target.timestamp) {
+      const d = new Date(target.timestamp);
+      setLastSavedTime(d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    }
+
+    setIsConfirmRevertOpen(false);
+    setShowSavedToast(true);
+    setTimeout(() => setShowSavedToast(false), 3000);
+  };
+
   // Manual Proposal Initialization
   const handleStartManualDraft = () => {
+    const newDocId = `prop-${Date.now()}`;
+    setCurrentDocumentId(newDocId);
     setProposal(EMPTY_MANUAL_PROPOSAL);
     setError(null);
   };
@@ -333,7 +505,7 @@ export default function App() {
 
     setError(null);
     setIsGenerating(true);
-        setGenerationStep("Leyendo tus notas y datos del documento...");
+    setGenerationStep("Leyendo tus notas y datos del documento...");
 
     try {
       setGenerationStep("Armando el borrador de la propuesta...");
@@ -355,8 +527,12 @@ export default function App() {
       }
 
       setGenerationStep("Revisando secciones y referencias de imágenes...");
+      const docIdToUse = currentDocumentId || `prop-${Date.now()}`;
+      if (!currentDocumentId) {
+        setCurrentDocumentId(docIdToUse);
+      }
       setProposal({ ...data.proposal, tables: proposal?.tables || [] });
-      saveToHistory(data.proposal);
+      saveToHistory(data.proposal, currentVersion, currentVersionNote, docIdToUse, false);
 
     } catch (err: any) {
       console.error("Error generating proposal:", err);
@@ -370,6 +546,7 @@ export default function App() {
   // Welcome Screen Action Handlers
   const handleStartNewFromWelcome = () => {
     // Clear fields for a clean fresh document while keeping branding settings
+    setCurrentDocumentId(null);
     setMetadata({
       cliente: '',
       fecha: new Date().toISOString().split('T')[0],
@@ -399,9 +576,32 @@ export default function App() {
     setEditorTab('slides');
     if (!proposal) {
       const initialDeck = createDefaultSlideDeck(metadata, images);
+      const docId = currentDocumentId || `prop-${Date.now()}`;
+      setCurrentDocumentId(docId);
       setProposal({
         ...EMPTY_MANUAL_PROPOSAL,
         slideDeck: initialDeck,
+      });
+    }
+    setError(null);
+    setShowWelcome(false);
+  };
+
+  const handleStartTechnicalDocFromWelcome = () => {
+    setEditorTab('technical');
+    if (!proposal) {
+      const docId = `doc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const defaultTech = createDefaultTechnicalDoc(metadata, null);
+      setCurrentDocumentId(docId);
+      setProposal({
+        ...EMPTY_MANUAL_PROPOSAL,
+        technicalDoc: defaultTech,
+      });
+    } else if (!proposal.technicalDoc) {
+      const defaultTech = createDefaultTechnicalDoc(metadata, proposal);
+      setProposal({
+        ...proposal,
+        technicalDoc: defaultTech,
       });
     }
     setError(null);
@@ -413,6 +613,7 @@ export default function App() {
   };
 
   const handleLoadHistoryFromWelcome = (saved: SavedProposal) => {
+    setCurrentDocumentId(saved.id);
     setMetadata(stripDocumentLogo(saved.metadata));
     setRawRequirements(saved.rawRequirements || '');
     setImages(saved.images || []);
@@ -457,6 +658,7 @@ export default function App() {
           onToggleTheme={handleToggleTheme}
           onStartNew={handleStartNewFromWelcome}
           onStartSlides={handleStartSlidesFromWelcome}
+          onStartTechnicalDoc={handleStartTechnicalDocFromWelcome}
           onContinueDraft={handleContinueDraftFromWelcome}
           onLoadHistoryItem={handleLoadHistoryFromWelcome}
           onLoadPreset={handleLoadPresetFromWelcome}
@@ -502,6 +704,8 @@ export default function App() {
         onReset={handleReset}
         onOpenHistory={() => setIsHistoryOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onRevertToSaved={handleRequestRevertToLastSaved}
+        hasSavedVersion={hasSavedVersionAvailable}
         onGoHome={() => setShowWelcome(true)}
         theme={theme}
         onToggleTheme={handleToggleTheme}
@@ -532,19 +736,19 @@ export default function App() {
         )}
 
         {/* Workspace Mode Bar Switcher */}
-        <div className="relative sticky top-14 sm:top-16 lg:top-0 z-40 bg-white/90 backdrop-blur-md rounded-2xl p-1.5 sm:p-2 shadow-sm border border-white/80 sticky-bar flex flex-wrap items-center justify-between gap-2 shrink-0">
-          <div className="flex items-center gap-2 text-xs px-1.5 min-w-0">
-            <span className="font-bold text-[#0A3D62]">Vista</span>
-            <span className="text-slate-500 hidden md:inline">Elige si ves los datos, el documento o ambos</span>
+        <div className="relative sticky top-14 sm:top-16 lg:top-0 z-40 bg-slate-900 text-white backdrop-blur-md rounded-2xl p-1.5 sm:p-2 shadow-md border border-slate-800 sticky-bar flex flex-wrap items-center justify-between gap-2 shrink-0">
+          <div className="flex items-center gap-2 text-xs px-2 min-w-0">
+            <span className="font-bold text-[#2ECC71]">Vista</span>
+            <span className="text-slate-300 hidden md:inline">Elige si ves los datos, el documento o ambos</span>
           </div>
 
-          <div className="bg-slate-100/90 p-1 rounded-xl flex items-center gap-0.5 border border-slate-200/80 text-xs w-full sm:w-auto overflow-x-auto no-scrollbar">
+          <div className="bg-slate-800/90 p-1 rounded-xl flex items-center gap-0.5 border border-slate-700/80 text-xs w-full sm:w-auto overflow-x-auto no-scrollbar">
             <button
               onClick={() => setLayoutMode('split')}
-              className={`px-3 py-2 font-semibold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
+              className={`px-3 py-1.5 font-semibold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
                 layoutMode === 'split'
-                  ? 'bg-[#0A3D62] text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                  ? 'bg-[#0A3D62] text-white shadow-sm border border-blue-400/40'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
               }`}
             >
               <Columns2 className="w-3.5 h-3.5" />
@@ -553,10 +757,10 @@ export default function App() {
 
             <button
               onClick={() => setLayoutMode('inputs')}
-              className={`px-3 py-2 font-semibold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
+              className={`px-3 py-1.5 font-semibold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
                 layoutMode === 'inputs'
-                  ? 'bg-[#0A3D62] text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                  ? 'bg-[#0A3D62] text-white shadow-sm border border-blue-400/40'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
               }`}
             >
               <ClipboardList className="w-3.5 h-3.5" />
@@ -566,10 +770,10 @@ export default function App() {
             {proposal && (
               <button
                 onClick={() => setLayoutMode('editor')}
-                className={`px-3 py-2 font-semibold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                className={`px-3 py-1.5 font-semibold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
                   layoutMode === 'editor'
-                    ? 'bg-[#0A3D62] text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                    ? 'bg-[#0A3D62] text-white shadow-sm border border-blue-400/40'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
                 }`}
               >
                 <Maximize2 className="w-3.5 h-3.5" />
@@ -685,7 +889,7 @@ export default function App() {
               )}
 
               {/* Panel 4: Actions (Manual First + AI Assist) */}
-              <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-4 border border-white shadow-sm space-y-2.5 min-w-0 max-w-full overflow-x-hidden">
+              <div className="bg-white/95 backdrop-blur-sm rounded-2xl p-4 border border-slate-200/90 shadow-sm space-y-2.5 min-w-0 max-w-full overflow-x-hidden">
                 <div className="min-w-0 mb-1">
                   <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">
                     Crear documento
@@ -730,6 +934,35 @@ export default function App() {
                   <span className="text-center leading-tight">Escribir a mano</span>
                 </button>
 
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!proposal) {
+                      const docId = `doc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+                      const defaultTech = createDefaultTechnicalDoc(metadata, null);
+                      setCurrentDocumentId(docId);
+                      setProposal({
+                        ...EMPTY_MANUAL_PROPOSAL,
+                        technicalDoc: defaultTech,
+                      });
+                    } else if (!proposal.technicalDoc) {
+                      const defaultTech = createDefaultTechnicalDoc(metadata, proposal);
+                      setProposal({
+                        ...proposal,
+                        technicalDoc: defaultTech,
+                      });
+                    }
+                    setEditorTab('technical');
+                    if (layoutMode === 'inputs') setLayoutMode('split');
+                  }}
+                  disabled={isGenerating}
+                  className="w-full py-2.5 px-3 rounded-xl font-semibold text-xs text-slate-700 bg-slate-50 hover:bg-slate-100 active:scale-[0.99] transition-all flex items-center justify-center gap-2 border border-slate-300/80 disabled:opacity-50"
+                  title="Abrir o crear la sección de Documentación Técnica Interna"
+                >
+                  <Terminal className="w-4 h-4 text-[#2ECC71] shrink-0" />
+                  <span className="text-center leading-tight">Doc. Técnica Interna</span>
+                </button>
+
                 {isGenerating && (
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center space-y-1 toast-in">
                     <div className="flex items-start justify-center gap-2 text-xs font-semibold text-[#0A3D62]">
@@ -762,7 +995,17 @@ export default function App() {
                   onChange={setProposal}
                   onSave={handleSaveChanges}
                   onSaveNewVersion={handleSaveNewVersion}
+                  onRevertToSaved={handleRequestRevertToLastSaved}
+                  hasSavedVersion={hasSavedVersionAvailable}
                   currentVersion={currentVersion}
+                  status={currentStatus}
+                  onStatusChange={(newStatus) => {
+                    if (currentDocumentId) {
+                      handleUpdateProposalStatus(currentDocumentId, newStatus);
+                    } else {
+                      setCurrentStatus(newStatus);
+                    }
+                  }}
                   lastSavedTime={lastSavedTime}
                   showSavedToast={showSavedToast}
                   initialTab={editorTab}
@@ -812,6 +1055,31 @@ export default function App() {
 
                     <button
                       onClick={() => {
+                        setEditorTab('technical');
+                        if (!proposal) {
+                          const docId = `doc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+                          const defaultTech = createDefaultTechnicalDoc(metadata, null);
+                          setCurrentDocumentId(docId);
+                          setProposal({
+                            ...EMPTY_MANUAL_PROPOSAL,
+                            technicalDoc: defaultTech,
+                          });
+                        } else if (!proposal.technicalDoc) {
+                          const defaultTech = createDefaultTechnicalDoc(metadata, proposal);
+                          setProposal({
+                            ...proposal,
+                            technicalDoc: defaultTech,
+                          });
+                        }
+                      }}
+                      className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2.5 text-xs font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl border border-slate-300 transition-all"
+                    >
+                      <Terminal className="w-4 h-4 mr-1.5 text-[#2ECC71]" />
+                      <span>Doc. Técnica</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
                         setEditorTab('slides');
                         const initialDeck = createDefaultSlideDeck(metadata, images);
                         setProposal({
@@ -848,6 +1116,8 @@ export default function App() {
         onClose={() => setIsHistoryOpen(false)}
         proposals={history}
         onSelectProposal={(saved) => {
+          setCurrentDocumentId(saved.id);
+          setCurrentStatus(saved.status || 'borrador');
           setMetadata(stripDocumentLogo(saved.metadata));
           setRawRequirements(saved.rawRequirements || '');
           setImages(saved.images || []);
@@ -861,6 +1131,7 @@ export default function App() {
           localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(updated));
         }}
         onDuplicateProposal={handleDuplicateProposal}
+        onUpdateStatus={handleUpdateProposalStatus}
       />
 
       <SettingsModal
@@ -879,6 +1150,18 @@ export default function App() {
         cancelText="Cancelar"
         onConfirm={handleConfirmReset}
         onCancel={() => setIsConfirmResetOpen(false)}
+      />
+
+      {/* Confirmation Modal for Revert to Last Saved */}
+      <ConfirmModal
+        isOpen={isConfirmRevertOpen}
+        type="info"
+        title="¿Volver al último archivo guardado?"
+        message={`Se restaurará el documento al último estado guardado en el sistema${lastSavedTime ? ` (${lastSavedTime})` : ''}. Se descartarán los cambios no guardados hechos después de esa hora.`}
+        confirmText="Sí, restaurar guardado"
+        cancelText="Cancelar"
+        onConfirm={handleConfirmRevert}
+        onCancel={() => setIsConfirmRevertOpen(false)}
       />
 
     </div>

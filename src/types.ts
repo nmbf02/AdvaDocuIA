@@ -24,9 +24,23 @@ export interface DocumentTitlesConfig {
   hideSection7?: boolean;
   hideSection8?: boolean;
   hiddenSections?: string[];
+
+  // Technical Document Titles and Visibility
+  techMainTitle?: string;
+  techSection1?: string;
+  techSection2?: string;
+  techSection3?: string;
+  techSection4?: string;
+  techSection5?: string;
+  hideTechMainTitle?: boolean;
+  hideTechSection1?: boolean;
+  hideTechSection2?: boolean;
+  hideTechSection3?: boolean;
+  hideTechSection4?: boolean;
+  hideTechSection5?: boolean;
 }
 
-export const DEFAULT_DOCUMENT_TITLES: Required<Omit<DocumentTitlesConfig, 'hideSection1' | 'hideSection2' | 'hideSection3' | 'hideSection3_1' | 'hideSection3_2' | 'hideSection3_3' | 'hideSection4' | 'hideSection5' | 'hideSection6' | 'hideSection7' | 'hideSection8' | 'hiddenSections'>> = {
+export const DEFAULT_DOCUMENT_TITLES: Required<Omit<DocumentTitlesConfig, 'hideSection1' | 'hideSection2' | 'hideSection3' | 'hideSection3_1' | 'hideSection3_2' | 'hideSection3_3' | 'hideSection4' | 'hideSection5' | 'hideSection6' | 'hideSection7' | 'hideSection8' | 'hiddenSections' | 'techMainTitle' | 'techSection1' | 'techSection2' | 'techSection3' | 'techSection4' | 'techSection5' | 'hideTechMainTitle' | 'hideTechSection1' | 'hideTechSection2' | 'hideTechSection3' | 'hideTechSection4' | 'hideTechSection5'>> = {
   mainTitle: 'ANÁLISIS DE CUMPLIMIENTO Y PROPUESTA DE DESARROLLO',
   section1: 'Resumen Ejecutivo',
   section2: 'Beneficios de la Propuesta',
@@ -41,7 +55,46 @@ export const DEFAULT_DOCUMENT_TITLES: Required<Omit<DocumentTitlesConfig, 'hideS
   section8: 'Descargo y Cláusula Estándar',
 };
 
-export function getEffectiveTitles(custom?: DocumentTitlesConfig): Required<Omit<DocumentTitlesConfig, 'hideSection1' | 'hideSection2' | 'hideSection3' | 'hideSection3_1' | 'hideSection3_2' | 'hideSection3_3' | 'hideSection4' | 'hideSection5' | 'hideSection6' | 'hideSection7' | 'hideSection8' | 'hiddenSections'>> & {
+export const DEFAULT_TECHNICAL_DOC_TITLES = {
+  techMainTitle: 'DOCUMENTACIÓN TÉCNICA INTERNA Y ESPECIFICACIÓN DE DESARROLLO',
+  techSection1: 'Ruta de Acceso & Navegación en el Sistema',
+  techSection2: 'Flujo Operativo Interno',
+  techSection3: 'Diseño de Interfaz y Estructura de Datos',
+  techSection4: 'Consideraciones Técnicas y de Seguridad',
+  techSection5: 'Código de Ejemplo / Scripts (si aplica)',
+};
+
+export function getEffectiveTechnicalTitles(custom?: DocumentTitlesConfig): {
+  techMainTitle: string;
+  techSection1: string;
+  techSection2: string;
+  techSection3: string;
+  techSection4: string;
+  techSection5: string;
+  hideTechMainTitle: boolean;
+  hideTechSection1: boolean;
+  hideTechSection2: boolean;
+  hideTechSection3: boolean;
+  hideTechSection4: boolean;
+  hideTechSection5: boolean;
+} {
+  return {
+    techMainTitle: custom?.techMainTitle?.trim() || DEFAULT_TECHNICAL_DOC_TITLES.techMainTitle,
+    techSection1: custom?.techSection1?.trim() || DEFAULT_TECHNICAL_DOC_TITLES.techSection1,
+    techSection2: custom?.techSection2?.trim() || DEFAULT_TECHNICAL_DOC_TITLES.techSection2,
+    techSection3: custom?.techSection3?.trim() || DEFAULT_TECHNICAL_DOC_TITLES.techSection3,
+    techSection4: custom?.techSection4?.trim() || DEFAULT_TECHNICAL_DOC_TITLES.techSection4,
+    techSection5: custom?.techSection5?.trim() || DEFAULT_TECHNICAL_DOC_TITLES.techSection5,
+    hideTechMainTitle: !!custom?.hideTechMainTitle,
+    hideTechSection1: !!custom?.hideTechSection1,
+    hideTechSection2: !!custom?.hideTechSection2,
+    hideTechSection3: !!custom?.hideTechSection3,
+    hideTechSection4: !!custom?.hideTechSection4,
+    hideTechSection5: !!custom?.hideTechSection5,
+  };
+}
+
+export function getEffectiveTitles(custom?: DocumentTitlesConfig): Required<Omit<DocumentTitlesConfig, 'hideSection1' | 'hideSection2' | 'hideSection3' | 'hideSection3_1' | 'hideSection3_2' | 'hideSection3_3' | 'hideSection4' | 'hideSection5' | 'hideSection6' | 'hideSection7' | 'hideSection8' | 'hiddenSections' | 'techMainTitle' | 'techSection1' | 'techSection2' | 'techSection3' | 'techSection4' | 'techSection5' | 'hideTechMainTitle' | 'hideTechSection1' | 'hideTechSection2' | 'hideTechSection3' | 'hideTechSection4' | 'hideTechSection5'>> & {
   hideSection1: boolean;
   hideSection2: boolean;
   hideSection3: boolean;
@@ -211,6 +264,8 @@ export interface DocumentTable {
 }
 
 export interface TechnicalDoc {
+  tituloDocumento?: string;
+  customTitles?: DocumentTitlesConfig;
   ruta: string;
   flujoOperativo: string;
   diseno: string;

@@ -9,10 +9,12 @@ import { TechnicalDocEditor } from './components/TechnicalDocEditor';
 import { HistoryModal } from './components/HistoryModal';
 import { ConfirmModal } from './components/ConfirmModal';
 import { SettingsModal } from './components/SettingsModal';
+import { BackupModal } from './components/BackupModal';
 import { WelcomeIntro } from './components/WelcomeIntro';
 import { ADVANSYS_SAMPLE_METADATA, ADVANSYS_SAMPLE_REQUIREMENTS, ADVANSYS_SAMPLE_IMAGES, EMPTY_MANUAL_PROPOSAL } from './data/presets';
 import { createDefaultSlideDeck, convertProposalToSlideDeck } from './utils/slideDeckTemplates';
 import { createDefaultTechnicalDoc, proposalHasSubstance, copyLinkedProposalMetadata } from './utils/technicalDocTemplates';
+import { AppBackupData } from './utils/backupManager';
 import { Sparkles, Loader2, FileText, AlertCircle, Cpu, Columns2, ClipboardList, Maximize2, Image as ImageIcon, PenLine, NotebookPen, Layers, X, Check } from 'lucide-react';
 
 const STORAGE_KEY_HISTORY = 'advansys_docgen_history_v1';
@@ -102,6 +104,9 @@ export default function App() {
   // History State
   const [history, setHistory] = useState<SavedProposal[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
+
+  // Backup & Restore State
+  const [isBackupOpen, setIsBackupOpen] = useState<boolean>(false);
 
   // Branding / Settings (logo global para todos los documentos)
   const [branding, setBranding] = useState<BrandingSettings>({});
@@ -471,6 +476,86 @@ export default function App() {
 
     setShowSavedToast(true);
     setTimeout(() => setShowSavedToast(false), 3000);
+  };
+
+  // Restore Backup handler (Merge or Replace)
+  const handleRestoreBackup = (backup: AppBackupData, mode: 'merge' | 'replace') => {
+    let nextHistory: SavedProposal[] = [];
+
+    if (mode === 'replace') {
+      nextHistory = backup.history || [];
+    } else {
+      // Merge mode: add imported items, updating existing IDs or keeping newest
+      const existingMap = new Map<string, SavedProposal>();
+      // First put existing
+      history.forEach((h) => existingMap.set(h.id, h));
+      // Overwrite/add with backup items
+      (backup.history || []).forEach((h) => existingMap.set(h.id, h));
+      nextHistory = Array.from(existingMap.values()).sort(
+        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      );
+    }
+
+    setHistory(nextHistory);
+    try {
+      localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(nextHistory));
+    } catch (e) {
+      console.error("Failed to save restored history:", e);
+    }
+
+    // Restore Branding / Settings if present
+    if (backup.settings) {
+      setBranding(backup.settings);
+      try {
+        localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(backup.settings));
+      } catch (e) {
+        console.error("Failed to save restored settings:", e);
+      }
+    }
+
+    // Restore Theme if present
+    if (backup.theme) {
+      setTheme(backup.theme);
+      try {
+        localStorage.setItem(STORAGE_KEY_THEME, backup.theme);
+      } catch (e) {
+        console.error("Failed to save restored theme:", e);
+      }
+      if (backup.theme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    }
+
+    // If replace mode and draft was provided, restore current draft or first history item
+    if (backup.draft && mode === 'replace') {
+      const d = backup.draft;
+      if (d.currentDocumentId) setCurrentDocumentId(d.currentDocumentId);
+      if (d.metadata) setMetadata(stripDocumentLogo(d.metadata));
+      if (d.rawRequirements !== undefined) setRawRequirements(d.rawRequirements);
+      if (d.images) setImages(d.images);
+      if (d.proposal) setProposal(d.proposal);
+      if (d.version) setCurrentVersion(d.version);
+      if (d.versionNote) setCurrentVersionNote(d.versionNote);
+      if (d.status) setCurrentStatus(d.status as DocumentStatus);
+      if (d.workspaceMode === 'technical' || d.proposal?.technicalDoc?.isStandalone) {
+        setWorkspaceMode('technical');
+        setEditorTab('technical');
+      } else if (d.editorTab === 'slides' || d.editorTab === 'preview' || d.editorTab === 'technical') {
+        setEditorTab(d.editorTab as any);
+      }
+      try {
+        localStorage.setItem(STORAGE_KEY_DRAFT, JSON.stringify(d));
+      } catch (e) {
+        console.error("Failed to save restored draft:", e);
+      }
+    } else if (mode === 'replace' && nextHistory.length > 0 && !proposal) {
+      applySavedDocument(nextHistory[0]);
+    }
+
+    setShowSavedToast(true);
+    setTimeout(() => setShowSavedToast(false), 4000);
   };
 
   // Preset Loader
@@ -877,6 +962,7 @@ export default function App() {
             setShowWelcome(false);
             setIsHistoryOpen(true);
           }}
+          onOpenBackup={() => setIsBackupOpen(true)}
         />
 
         {/* History Drawer Modal */}
@@ -893,6 +979,7 @@ export default function App() {
             localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(updated));
           }}
           onDuplicateProposal={handleDuplicateProposal}
+          onOpenBackup={() => setIsBackupOpen(true)}
         />
 
         {/* Branding & Titles Settings Modal */}
@@ -901,6 +988,34 @@ export default function App() {
           branding={branding}
           onChange={handleBrandingChange}
           onClose={() => setIsSettingsOpen(false)}
+          onOpenBackup={() => setIsBackupOpen(true)}
+        />
+
+        {/* Backup & Restore Modal */}
+        <BackupModal
+          isOpen={isBackupOpen}
+          onClose={() => setIsBackupOpen(false)}
+          history={history}
+          branding={branding}
+          currentDraft={
+            proposal
+              ? {
+                  currentDocumentId,
+                  metadata,
+                  rawRequirements,
+                  images,
+                  proposal,
+                  version: currentVersion,
+                  versionNote: currentVersionNote,
+                  status: currentStatus,
+                  workspaceMode,
+                  editorTab,
+                  timestamp: new Date().toISOString(),
+                }
+              : null
+          }
+          theme={theme}
+          onRestoreBackup={handleRestoreBackup}
         />
       </>
     );
@@ -915,6 +1030,7 @@ export default function App() {
         onReset={handleReset}
         onOpenHistory={() => setIsHistoryOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenBackup={() => setIsBackupOpen(true)}
         onRevertToSaved={handleRequestRevertToLastSaved}
         hasSavedVersion={hasSavedVersionAvailable}
         onGoHome={() => setShowWelcome(true)}
@@ -1311,6 +1427,7 @@ export default function App() {
         }}
         onDuplicateProposal={handleDuplicateProposal}
         onUpdateStatus={handleUpdateProposalStatus}
+        onOpenBackup={() => setIsBackupOpen(true)}
       />
 
       <SettingsModal
@@ -1318,6 +1435,34 @@ export default function App() {
         branding={branding}
         onChange={handleBrandingChange}
         onClose={() => setIsSettingsOpen(false)}
+        onOpenBackup={() => setIsBackupOpen(true)}
+      />
+
+      {/* Backup & Restore Modal */}
+      <BackupModal
+        isOpen={isBackupOpen}
+        onClose={() => setIsBackupOpen(false)}
+        history={history}
+        branding={branding}
+        currentDraft={
+          proposal
+            ? {
+                currentDocumentId,
+                metadata,
+                rawRequirements,
+                images,
+                proposal,
+                version: currentVersion,
+                versionNote: currentVersionNote,
+                status: currentStatus,
+                workspaceMode,
+                editorTab,
+                timestamp: new Date().toISOString(),
+              }
+            : null
+        }
+        theme={theme}
+        onRestoreBackup={handleRestoreBackup}
       />
 
       {/* Confirmation Modal for Reset/Clear */}

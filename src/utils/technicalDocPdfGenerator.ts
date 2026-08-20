@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { MetadataHeader, TechnicalDoc, DocumentTable, UploadedImage } from '../types';
+import { MetadataHeader, TechnicalDoc, DocumentTable, UploadedImage, getEffectiveTechnicalTitles } from '../types';
 import { loadSvgOrImageToCanvasPng } from './imageExport';
 import { fitImageSize, getImageAlign, pdfImageX } from './imageLayout';
 
@@ -16,6 +16,9 @@ export async function generateTechnicalDocPdf(
   techDoc: TechnicalDoc,
   images: UploadedImage[] = []
 ): Promise<Blob> {
+  const titles = getEffectiveTechnicalTitles(metadata.customTitles || techDoc.customTitles);
+  const mainTitle = techDoc.tituloDocumento?.trim() || titles.techMainTitle;
+
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -36,13 +39,16 @@ export async function generateTechnicalDocPdf(
   };
 
   // Top header title
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(13);
-  doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-  doc.text('DOCUMENTACIÓN TÉCNICA INTERNA Y ESPECIFICACIÓN DE DESARROLLO', pageWidth / 2, cursorY, {
-    align: 'center',
-  });
-  cursorY += 6;
+  if (!titles.hideTechMainTitle) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+    const titleLines = doc.splitTextToSize(mainTitle.toUpperCase(), contentWidth);
+    doc.text(titleLines, pageWidth / 2, cursorY, {
+      align: 'center',
+    });
+    cursorY += titleLines.length * 4.5 + 2;
+  }
 
   // Metadata Table
   const metaRows = [
@@ -217,20 +223,21 @@ export async function generateTechnicalDocPdf(
           cursorY += lines.length * 4 + 4;
         }
       }
-      if (!content?.trim() && !parts.some((p) => /^\[(TABLA|IMAGEN)_\d+\]$/i.test(p))) {
-        doc.setFont('helvetica', 'italic');
-        doc.setFontSize(8.5);
-        doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-        doc.text('Sin información especificada.', margin, cursorY);
-        cursorY += 8;
-      }
     }
   };
 
-  await renderSection('Ruta de Acceso & Navegación en el Sistema', '1', techDoc.ruta);
-  await renderSection('Flujo Operativo Interno', '2', techDoc.flujoOperativo);
-  await renderSection('Diseño de Interfaz y Estructura de Datos', '3', techDoc.diseno);
-  await renderSection('Consideraciones Técnicas y de Seguridad', '4', techDoc.consideracionesTecnicas);
+  if (!titles.hideTechSection1 && Boolean(techDoc.ruta?.trim())) {
+    await renderSection(titles.techSection1, '1', techDoc.ruta.trim());
+  }
+  if (!titles.hideTechSection2 && Boolean(techDoc.flujoOperativo?.trim())) {
+    await renderSection(titles.techSection2, '2', techDoc.flujoOperativo.trim());
+  }
+  if (!titles.hideTechSection3 && Boolean(techDoc.diseno?.trim())) {
+    await renderSection(titles.techSection3, '3', techDoc.diseno.trim());
+  }
+  if (!titles.hideTechSection4 && Boolean(techDoc.consideracionesTecnicas?.trim())) {
+    await renderSection(titles.techSection4, '4', techDoc.consideracionesTecnicas.trim());
+  }
 
   const usedTableIndexes = new Set<number>();
   const markUsed = (text?: string) => {
@@ -240,10 +247,10 @@ export async function generateTechnicalDocPdf(
       usedTableIndexes.add(parseInt(m[1], 10) - 1);
     }
   };
-  markUsed(techDoc.ruta);
-  markUsed(techDoc.flujoOperativo);
-  markUsed(techDoc.diseno);
-  markUsed(techDoc.consideracionesTecnicas);
+  if (!titles.hideTechSection1 && Boolean(techDoc.ruta?.trim())) markUsed(techDoc.ruta);
+  if (!titles.hideTechSection2 && Boolean(techDoc.flujoOperativo?.trim())) markUsed(techDoc.flujoOperativo);
+  if (!titles.hideTechSection3 && Boolean(techDoc.diseno?.trim())) markUsed(techDoc.diseno);
+  if (!titles.hideTechSection4 && Boolean(techDoc.consideracionesTecnicas?.trim())) markUsed(techDoc.consideracionesTecnicas);
   const unusedTables = (techDoc.tables || []).filter((_, i) => !usedTableIndexes.has(i));
   if (unusedTables.length > 0) {
     checkPageBreak(16);
@@ -266,10 +273,10 @@ export async function generateTechnicalDocPdf(
       usedImageIndexes.add(parseInt(m[1], 10) - 1);
     }
   };
-  markUsedImages(techDoc.ruta);
-  markUsedImages(techDoc.flujoOperativo);
-  markUsedImages(techDoc.diseno);
-  markUsedImages(techDoc.consideracionesTecnicas);
+  if (!titles.hideTechSection1 && Boolean(techDoc.ruta?.trim())) markUsedImages(techDoc.ruta);
+  if (!titles.hideTechSection2 && Boolean(techDoc.flujoOperativo?.trim())) markUsedImages(techDoc.flujoOperativo);
+  if (!titles.hideTechSection3 && Boolean(techDoc.diseno?.trim())) markUsedImages(techDoc.diseno);
+  if (!titles.hideTechSection4 && Boolean(techDoc.consideracionesTecnicas?.trim())) markUsedImages(techDoc.consideracionesTecnicas);
   const unusedImages = images.filter((_, i) => !usedImageIndexes.has(i));
   if (unusedImages.length > 0) {
     checkPageBreak(16);
@@ -288,7 +295,9 @@ export async function generateTechnicalDocPdf(
     }
   }
 
-  await renderSection('Código de Ejemplo / Scripts', '5', techDoc.codigoEjemplo || '', true);
+  if (!titles.hideTechSection5 && Boolean(techDoc.codigoEjemplo?.trim())) {
+    await renderSection(titles.techSection5, '5', techDoc.codigoEjemplo.trim(), true);
+  }
 
   // Footers and Page Numbers
   const totalPages = doc.getNumberOfPages();

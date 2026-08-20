@@ -14,7 +14,8 @@ import {
   Sun,
   Moon,
   Terminal,
-  Code
+  Code,
+  Database
 } from 'lucide-react';
 
 interface WelcomeIntroProps {
@@ -37,6 +38,7 @@ interface WelcomeIntroProps {
   onLoadHistoryItem: (item: SavedProposal) => void;
   onLoadPreset: () => void;
   onOpenHistoryModal: () => void;
+  onOpenBackup?: () => void;
 }
 
 export const WelcomeIntro: React.FC<WelcomeIntroProps> = ({
@@ -53,6 +55,7 @@ export const WelcomeIntro: React.FC<WelcomeIntroProps> = ({
   onLoadHistoryItem,
   onLoadPreset,
   onOpenHistoryModal,
+  onOpenBackup,
 }) => {
   const isDark = theme === 'dark';
   const recentHistory = history.slice(0, 3);
@@ -105,6 +108,18 @@ export const WelcomeIntro: React.FC<WelcomeIntroProps> = ({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            {onOpenBackup && (
+              <button
+                type="button"
+                onClick={onOpenBackup}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white border border-white/15 transition-colors shadow-sm cursor-pointer"
+                title="Descargar o restaurar copia de seguridad"
+              >
+                <Database className="w-3.5 h-3.5 text-[#2ECC71]" />
+                <span className="hidden sm:inline">Copia de Seguridad</span>
+              </button>
+            )}
+
             {onToggleTheme && (
               <button
                 type="button"

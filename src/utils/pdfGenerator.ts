@@ -382,89 +382,111 @@ export async function generateAdvansysPdf(
 
   const docTables = proposal.tables || [];
 
+  // Track page 2 break so first section after sections 1-3 starts on new page
+  let page2BreakEmitted = false;
+  const getPageBreakForLaterSection = () => {
+    if (!page2BreakEmitted) {
+      page2BreakEmitted = true;
+      return true;
+    }
+    return false;
+  };
+
   // ==========================================
   // SECTION 1. RESUMEN EJECUTIVO
   // ==========================================
-  if (!titles.hideSection1) {
+  const hasSection1 = !titles.hideSection1 && Boolean(proposal.resumenEjecutivo && proposal.resumenEjecutivo.trim());
+  if (hasSection1) {
     renderSectionHeader(titles.section1, '1');
-    renderRichTextWithTables(proposal.resumenEjecutivo, docTables);
+    renderRichTextWithTables(proposal.resumenEjecutivo.trim(), docTables);
   }
 
   // ==========================================
   // SECTION 2. BENEFICIOS DE LA PROPUESTA
   // ==========================================
-  if (!titles.hideSection2 && proposal.beneficios && proposal.beneficios.length > 0) {
+  const validBeneficios = (proposal.beneficios || []).filter((b) => b && b.trim().length > 0);
+  const hasSection2 = !titles.hideSection2 && validBeneficios.length > 0;
+  if (hasSection2) {
     renderSectionHeader(titles.section2, '2');
-    renderBulletList(proposal.beneficios);
+    renderBulletList(validBeneficios);
   }
 
   // ==========================================
   // SECTION 3. ALCANCE, EXCLUSIONES Y ENTREGABLES
   // ==========================================
-  if (!titles.hideSection3) {
-    const scope = proposal.alcanceExclusionesEntregables;
-    if (scope) {
-      renderSectionHeader(titles.section3, '3');
+  const scope = proposal.alcanceExclusionesEntregables;
+  const validAlcance = (scope?.alcance || []).filter((i) => i && i.trim().length > 0);
+  const validExclusiones = (scope?.exclusiones || []).filter((i) => i && i.trim().length > 0);
+  const validEntregables = (scope?.entregables || []).filter((i) => i && i.trim().length > 0);
+  const hasSection3_1 = !titles.hideSection3_1 && validAlcance.length > 0;
+  const hasSection3_2 = !titles.hideSection3_2 && validExclusiones.length > 0;
+  const hasSection3_3 = !titles.hideSection3_3 && validEntregables.length > 0;
+  const hasSection3 = !titles.hideSection3 && (hasSection3_1 || hasSection3_2 || hasSection3_3);
 
-      if (!titles.hideSection3_1 && scope.alcance && scope.alcance.length > 0) {
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(8.5);
-        doc.setTextColor(COLOR_SECONDARY[0], COLOR_SECONDARY[1], COLOR_SECONDARY[2]);
-        checkPageBreak(8);
-        const s31 = titles.section3_1.startsWith('3.1') ? titles.section3_1 : `3.1 ${titles.section3_1}`;
-        doc.text(s31, margin, cursorY + 2);
-        cursorY += 5;
-        renderBulletList(scope.alcance, COLOR_SECONDARY);
-      }
+  if (hasSection3) {
+    renderSectionHeader(titles.section3, '3');
 
-      if (!titles.hideSection3_2 && scope.exclusiones && scope.exclusiones.length > 0) {
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(8.5);
-        doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-        checkPageBreak(8);
-        const s32 = titles.section3_2.startsWith('3.2') ? titles.section3_2 : `3.2 ${titles.section3_2}`;
-        doc.text(s32, margin, cursorY + 2);
-        cursorY += 5;
-        renderBulletList(scope.exclusiones, COLOR_PRIMARY);
-      }
+    if (hasSection3_1) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(COLOR_SECONDARY[0], COLOR_SECONDARY[1], COLOR_SECONDARY[2]);
+      checkPageBreak(8);
+      const s31 = titles.section3_1.startsWith('3.1') ? titles.section3_1 : `3.1 ${titles.section3_1}`;
+      doc.text(s31, margin, cursorY + 2);
+      cursorY += 5;
+      renderBulletList(validAlcance, COLOR_SECONDARY);
+    }
 
-      if (!titles.hideSection3_3 && scope.entregables && scope.entregables.length > 0) {
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(8.5);
-        doc.setTextColor(COLOR_ACCENT[0], COLOR_ACCENT[1], COLOR_ACCENT[2]);
-        checkPageBreak(8);
-        const s33 = titles.section3_3.startsWith('3.3') ? titles.section3_3 : `3.3 ${titles.section3_3}`;
-        doc.text(s33, margin, cursorY + 2);
-        cursorY += 5;
-        renderBulletList(scope.entregables, COLOR_ACCENT);
-      }
+    if (hasSection3_2) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+      checkPageBreak(8);
+      const s32 = titles.section3_2.startsWith('3.2') ? titles.section3_2 : `3.2 ${titles.section3_2}`;
+      doc.text(s32, margin, cursorY + 2);
+      cursorY += 5;
+      renderBulletList(validExclusiones, COLOR_PRIMARY);
+    }
+
+    if (hasSection3_3) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(COLOR_ACCENT[0], COLOR_ACCENT[1], COLOR_ACCENT[2]);
+      checkPageBreak(8);
+      const s33 = titles.section3_3.startsWith('3.3') ? titles.section3_3 : `3.3 ${titles.section3_3}`;
+      doc.text(s33, margin, cursorY + 2);
+      cursorY += 5;
+      renderBulletList(validEntregables, COLOR_ACCENT);
     }
   }
 
   // ==========================================
   // SECTION 4. OBJETIVO GENERAL Y ESPECÍFICOS (Página 2)
   // ==========================================
-  if (!titles.hideSection4) {
-    renderSectionHeader(titles.section4, '4', true);
-    renderRichTextWithTables(proposal.objetivo, docTables);
+  const hasSection4 = !titles.hideSection4 && Boolean(proposal.objetivo && proposal.objetivo.trim());
+  if (hasSection4) {
+    renderSectionHeader(titles.section4, '4', getPageBreakForLaterSection());
+    renderRichTextWithTables(proposal.objetivo.trim(), docTables);
   }
 
   // ==========================================
   // SECTION 5. DESCRIPCIÓN DE LA SOLUCIÓN PROPUESTA
   // ==========================================
-  if (!titles.hideSection5) {
-    renderSectionHeader(titles.section5, '5');
-    renderRichTextWithTables(proposal.descripcion, docTables);
+  const hasSection5 = !titles.hideSection5 && Boolean(proposal.descripcion && proposal.descripcion.trim());
+  if (hasSection5) {
+    renderSectionHeader(titles.section5, '5', getPageBreakForLaterSection());
+    renderRichTextWithTables(proposal.descripcion.trim(), docTables);
   }
 
   // ==========================================
   // SECTION 6. ÍNDICE DE ANÁLISIS OPERATIVO
   // ==========================================
-  if (!titles.hideSection6 && proposal.indiceAnalisisOperativo && proposal.indiceAnalisisOperativo.length > 0) {
-    renderSectionHeader(titles.section6, '6');
-    for (let i = 0; i < proposal.indiceAnalisisOperativo.length; i++) {
-      const item = proposal.indiceAnalisisOperativo[i];
-      if (!item) continue;
+  const validIndice = (proposal.indiceAnalisisOperativo || []).filter((item) => item && item.trim().length > 0);
+  const hasSection6 = !titles.hideSection6 && validIndice.length > 0;
+  if (hasSection6) {
+    renderSectionHeader(titles.section6, '6', getPageBreakForLaterSection());
+    for (let i = 0; i < validIndice.length; i++) {
+      const item = validIndice[i];
       const numPrefix = `${i + 1}. `;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8.5);
@@ -482,18 +504,27 @@ export async function generateAdvansysPdf(
   // ==========================================
   // SECTION 7. ANÁLISIS OPERATIVO DETALLADO (Paso a Paso con Imágenes)
   // ==========================================
-  if (!titles.hideSection7 && proposal.analisisOperativo && proposal.analisisOperativo.length > 0) {
-    renderSectionHeader(titles.section7, '7');
+  const validSteps = (proposal.analisisOperativo || []).filter(
+    (step, idx) =>
+      (step.titulo && step.titulo.trim().length > 0) ||
+      (step.explicacion && step.explicacion.trim().length > 0) ||
+      images[idx] ||
+      (step.imagenId && images.some((img) => img.id === step.imagenId))
+  );
+  const hasSection7 = !titles.hideSection7 && validSteps.length > 0;
 
-    for (let idx = 0; idx < proposal.analisisOperativo.length; idx++) {
-      const step = proposal.analisisOperativo[idx];
+  if (hasSection7) {
+    renderSectionHeader(titles.section7, '7', getPageBreakForLaterSection());
+
+    for (let idx = 0; idx < validSteps.length; idx++) {
+      const step = validSteps[idx];
       checkPageBreak(16);
 
       // Step Header Box
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(9);
       doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-      const stepTitle = `Paso 7.${idx + 1}: ${step.titulo}`;
+      const stepTitle = `Paso 7.${idx + 1}: ${step.titulo?.trim() || `Paso ${idx + 1}`}`;
       doc.text(stepTitle, margin, cursorY + 2);
       cursorY += 5.5;
 
@@ -554,8 +585,8 @@ export async function generateAdvansysPdf(
       }
 
       // Step Explanation Text (always rendered below image)
-      if (step.explicacion) {
-        renderRichTextWithTables(step.explicacion, docTables);
+      if (step.explicacion && step.explicacion.trim()) {
+        renderRichTextWithTables(step.explicacion.trim(), docTables);
       }
       cursorY += 3;
     }
@@ -578,21 +609,20 @@ export async function generateAdvansysPdf(
   });
 
   if (unusedTables.length > 0) {
-    renderSectionHeader('Tablas de Apoyo', '');
+    renderSectionHeader('Tablas de Apoyo', '', getPageBreakForLaterSection());
     for (const tbl of unusedTables) {
       renderCustomTable(tbl);
     }
   }
 
   // ==========================================
-  // SECTION 8. DESCARGO Y CLÁUSULA ESTÁNDAR
+  // SECTION 8. DESCARGO Y CLÁUSULA ESTÁNDAR (Only if user provided descargo text)
   // ==========================================
-  if (!titles.hideSection8) {
-    const descargoText = (proposal.descargo && proposal.descargo.trim())
-      ? proposal.descargo.trim()
-      : 'La presente propuesta técnica y análisis operativo han sido elaborados exclusivamente por Advansys para uso confidencial del cliente indicado. Los requerimientos, diagramas y estimaciones contenidos están sujetos a validación formal tras la aprobación del acta de inicio de proyecto. Queda prohibida la reproducción parcial o total sin autorización expresa.';
+  const hasSection8 = !titles.hideSection8 && Boolean(proposal.descargo && proposal.descargo.trim());
+  if (hasSection8) {
+    const descargoText = proposal.descargo!.trim();
 
-    renderSectionHeader(titles.section8, '8');
+    renderSectionHeader(titles.section8, '8', getPageBreakForLaterSection());
 
     // Render descargo card with exact same styling as Web Preview and Word:
     // Background: slate-50 (COLOR_BG_LIGHT), border: slate-200 (COLOR_BORDER), font: italic slate-500 (COLOR_MUTED)
@@ -618,7 +648,6 @@ export async function generateAdvansysPdf(
 
     // Text inside card
     doc.text(descargoLines, margin + paddingX, cursorY + paddingY + 3.2);
-
     cursorY += cardHeight + 6;
   }
 

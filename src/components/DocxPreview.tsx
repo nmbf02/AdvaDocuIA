@@ -81,72 +81,84 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
       <div className="space-y-6">
 
         {/* 1. Resumen Ejecutivo */}
-        {!titles.hideSection1 && (
+        {!titles.hideSection1 && Boolean(proposal.resumenEjecutivo?.trim()) && (
           <div>
             <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
               1. {titles.section1.toUpperCase()}
             </h2>
-            <RichTextBlock text={proposal.resumenEjecutivo} tables={tables} />
+            <RichTextBlock text={proposal.resumenEjecutivo.trim()} tables={tables} />
           </div>
         )}
 
         {/* 2. Beneficios */}
-        {!titles.hideSection2 && (
+        {!titles.hideSection2 && (proposal.beneficios || []).filter(b => b && b.trim().length > 0).length > 0 && (
           <div>
             <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
               2. {titles.section2.toUpperCase()}
             </h2>
             <ul className="list-disc list-inside space-y-1 text-xs text-slate-700">
-              {proposal.beneficios?.map((b, idx) => (
-                <li key={idx} className="leading-relaxed">{formatInlineBold(b)}</li>
-              ))}
+              {proposal.beneficios
+                ?.filter(b => b && b.trim().length > 0)
+                .map((b, idx) => (
+                  <li key={idx} className="leading-relaxed">{formatInlineBold(b)}</li>
+                ))}
             </ul>
           </div>
         )}
 
         {/* 3. Alcance, Exclusiones y Entregables */}
         {!titles.hideSection3 && (
+          (proposal.alcanceExclusionesEntregables?.alcance || []).filter(i => i && i.trim().length > 0).length > 0 ||
+          (proposal.alcanceExclusionesEntregables?.exclusiones || []).filter(i => i && i.trim().length > 0).length > 0 ||
+          (proposal.alcanceExclusionesEntregables?.entregables || []).filter(i => i && i.trim().length > 0).length > 0
+        ) && (
           <div>
             <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
               3. {titles.section3.toUpperCase()}
             </h2>
 
             <div className="space-y-3 text-xs">
-              {!titles.hideSection3_1 && (
+              {!titles.hideSection3_1 && (proposal.alcanceExclusionesEntregables?.alcance || []).filter(i => i && i.trim().length > 0).length > 0 && (
                 <div>
                   <h3 className="font-bold text-[#1E5F8A] mb-1">
                     {titles.section3_1.startsWith('3.1') ? titles.section3_1 : `3.1 ${titles.section3_1}`}
                   </h3>
                   <ul className="list-disc list-inside space-y-0.5 text-slate-700 pl-2">
-                    {proposal.alcanceExclusionesEntregables?.alcance?.map((item, idx) => (
-                      <li key={idx}>{formatInlineBold(item)}</li>
-                    ))}
+                    {proposal.alcanceExclusionesEntregables?.alcance
+                      ?.filter(i => i && i.trim().length > 0)
+                      .map((item, idx) => (
+                        <li key={idx}>{formatInlineBold(item)}</li>
+                      ))}
                   </ul>
                 </div>
               )}
 
-              {!titles.hideSection3_2 && (
+              {!titles.hideSection3_2 && (proposal.alcanceExclusionesEntregables?.exclusiones || []).filter(i => i && i.trim().length > 0).length > 0 && (
                 <div>
                   <h3 className="font-bold text-[#0A3D62] mb-1">
                     {titles.section3_2.startsWith('3.2') ? titles.section3_2 : `3.2 ${titles.section3_2}`}
                   </h3>
                   <ul className="list-disc list-inside space-y-0.5 text-slate-700 pl-2">
-                    {proposal.alcanceExclusionesEntregables?.exclusiones?.map((item, idx) => (
-                      <li key={idx}>{formatInlineBold(item)}</li>
-                    ))}
+                    {proposal.alcanceExclusionesEntregables?.exclusiones
+                      ?.filter(i => i && i.trim().length > 0)
+                      .map((item, idx) => (
+                        <li key={idx}>{formatInlineBold(item)}</li>
+                      ))}
                   </ul>
                 </div>
               )}
 
-              {!titles.hideSection3_3 && (
+              {!titles.hideSection3_3 && (proposal.alcanceExclusionesEntregables?.entregables || []).filter(i => i && i.trim().length > 0).length > 0 && (
                 <div>
                   <h3 className="font-bold text-emerald-800 mb-1">
                     {titles.section3_3.startsWith('3.3') ? titles.section3_3 : `3.3 ${titles.section3_3}`}
                   </h3>
                   <ul className="list-disc list-inside space-y-0.5 text-slate-700 pl-2">
-                    {proposal.alcanceExclusionesEntregables?.entregables?.map((item, idx) => (
-                      <li key={idx}>{formatInlineBold(item)}</li>
-                    ))}
+                    {proposal.alcanceExclusionesEntregables?.entregables
+                      ?.filter(i => i && i.trim().length > 0)
+                      .map((item, idx) => (
+                        <li key={idx}>{formatInlineBold(item)}</li>
+                      ))}
                   </ul>
                 </div>
               )}
@@ -154,79 +166,93 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
           </div>
         )}
 
-        {/* Visual Page Break Indicator (Secciones 1-3 en Página 1, Sección 4 en adelante en Página 2) */}
-        <div className="my-8 py-3 border-y-2 border-dashed border-slate-300 bg-slate-100/70 -mx-6 sm:-mx-10 md:-mx-12 px-6 flex items-center justify-between text-xs text-slate-500 font-semibold select-none">
-          <span className="flex items-center space-x-1.5 text-[#0A3D62]">
-            <FileText className="w-3.5 h-3.5 text-[#0A3D62]" />
-            <span>FIN DE PÁGINA 1 (Secciones 1, 2 y 3)</span>
-          </span>
-          <span className="bg-slate-200 text-slate-700 px-2.5 py-0.5 rounded-full text-[10px] font-mono border border-slate-300 uppercase tracking-wider">
-            Salto de Página (.docx)
-          </span>
-          <span className="flex items-center space-x-1.5 text-[#0A3D62]">
-            <span>INICIO DE PÁGINA 2</span>
-            <FileText className="w-3.5 h-3.5 text-[#0A3D62]" />
-          </span>
-        </div>
+        {/* Visual Page Break Indicator (Only shown if there is content in page 2 onwards) */}
+        {(
+          (!titles.hideSection4 && Boolean(proposal.objetivo?.trim())) ||
+          (!titles.hideSection5 && Boolean(proposal.descripcion?.trim())) ||
+          (!titles.hideSection6 && (proposal.indiceAnalisisOperativo || []).filter(i => i && i.trim().length > 0).length > 0) ||
+          (!titles.hideSection7 && (proposal.analisisOperativo || []).filter(s => (s.titulo && s.titulo.trim().length > 0) || (s.explicacion && s.explicacion.trim().length > 0)).length > 0) ||
+          (!titles.hideSection8 && Boolean(proposal.descargo?.trim()))
+        ) && (
+          <div className="my-8 py-3 border-y-2 border-dashed border-slate-300 bg-slate-100/70 -mx-6 sm:-mx-10 md:-mx-12 px-6 flex items-center justify-between text-xs text-slate-500 font-semibold select-none">
+            <span className="flex items-center space-x-1.5 text-[#0A3D62]">
+              <FileText className="w-3.5 h-3.5 text-[#0A3D62]" />
+              <span>FIN DE PÁGINA 1 (Secciones 1, 2 y 3)</span>
+            </span>
+            <span className="bg-slate-200 text-slate-700 px-2.5 py-0.5 rounded-full text-[10px] font-mono border border-slate-300 uppercase tracking-wider">
+              Salto de Página (.docx)
+            </span>
+            <span className="flex items-center space-x-1.5 text-[#0A3D62]">
+              <span>INICIO DE PÁGINA 2</span>
+              <FileText className="w-3.5 h-3.5 text-[#0A3D62]" />
+            </span>
+          </div>
+        )}
 
         {/* 4. Objetivo */}
-        {!titles.hideSection4 && (
+        {!titles.hideSection4 && Boolean(proposal.objetivo?.trim()) && (
           <div>
             <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
               4. {titles.section4.toUpperCase()}
             </h2>
-            <RichTextBlock text={proposal.objetivo} tables={tables} />
+            <RichTextBlock text={proposal.objetivo.trim()} tables={tables} />
           </div>
         )}
 
         {/* 5. Descripción */}
-        {!titles.hideSection5 && (
+        {!titles.hideSection5 && Boolean(proposal.descripcion?.trim()) && (
           <div>
             <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
               5. {titles.section5.toUpperCase()}
             </h2>
-            <RichTextBlock text={proposal.descripcion} tables={tables} />
+            <RichTextBlock text={proposal.descripcion.trim()} tables={tables} />
           </div>
         )}
 
         {/* 6. Índice Análisis Operativo */}
-        {!titles.hideSection6 && (
+        {!titles.hideSection6 && (proposal.indiceAnalisisOperativo || []).filter(i => i && i.trim().length > 0).length > 0 && (
           <div>
             <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
               6. {titles.section6.toUpperCase()}
             </h2>
             <ol className="list-decimal list-inside space-y-1 text-xs text-slate-700 pl-2">
-              {proposal.indiceAnalisisOperativo?.map((item, idx) => (
-                <li key={idx}>{item}</li>
-              ))}
+              {proposal.indiceAnalisisOperativo
+                ?.filter(item => item && item.trim().length > 0)
+                .map((item, idx) => (
+                  <li key={idx}>{item}</li>
+                ))}
             </ol>
           </div>
         )}
 
         {/* 7. Análisis Operativo */}
-        {!titles.hideSection7 && (
+        {!titles.hideSection7 && (proposal.analisisOperativo || []).filter(s => (s.titulo && s.titulo.trim().length > 0) || (s.explicacion && s.explicacion.trim().length > 0)).length > 0 && (
           <div>
             <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-3">
               7. {titles.section7.toUpperCase()}
             </h2>
 
             <div className="space-y-6 text-xs">
-              {proposal.analisisOperativo?.map((step, idx) => {
-                const img = images[idx];
-                return (
-                  <div key={idx} className="border-l-2 border-[#0A3D62] pl-3 py-1 space-y-2">
-                    <h3 className="font-bold text-[#0A3D62] text-xs">
-                      Paso 7.{idx + 1}: {step.titulo}
-                    </h3>
+              {proposal.analisisOperativo
+                ?.filter(step => (step.titulo && step.titulo.trim().length > 0) || (step.explicacion && step.explicacion.trim().length > 0))
+                .map((step, idx) => {
+                  const img = images[idx];
+                  return (
+                    <div key={idx} className="border-l-2 border-[#0A3D62] pl-3 py-1 space-y-2">
+                      <h3 className="font-bold text-[#0A3D62] text-xs">
+                        Paso 7.{idx + 1}: {step.titulo?.trim() || `Paso ${idx + 1}`}
+                      </h3>
 
-                    {img && (
-                      <PreviewImage image={img} index={idx + 1} />
-                    )}
+                      {img && (
+                        <PreviewImage image={img} index={idx + 1} />
+                      )}
 
-                    <RichTextBlock text={step.explicacion} tables={tables} images={images} />
-                  </div>
-                );
-              })}
+                      {step.explicacion?.trim() && (
+                        <RichTextBlock text={step.explicacion.trim()} tables={tables} images={images} />
+                      )}
+                    </div>
+                  );
+                })}
             </div>
           </div>
         )}
@@ -262,14 +288,14 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
           </div>
         )}
 
-        {/* 8. Descargo */}
-        {!titles.hideSection8 && (
+        {/* 8. Descargo (Only shown if user entered descargo text) */}
+        {!titles.hideSection8 && Boolean(proposal.descargo?.trim()) && (
           <div>
             <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
               8. {titles.section8.toUpperCase()}
             </h2>
             <div className="text-slate-500 italic text-[11px] leading-relaxed bg-slate-50 p-3 rounded border border-slate-200">
-              <RichTextBlock text={proposal.descargo} tables={tables} className="text-slate-500 italic text-[11px] leading-relaxed text-justify" />
+              <RichTextBlock text={proposal.descargo.trim()} tables={tables} className="text-slate-500 italic text-[11px] leading-relaxed text-justify" />
             </div>
           </div>
         )}

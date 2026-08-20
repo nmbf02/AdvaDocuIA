@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ProposalSection, MetadataHeader, UploadedImage, DocumentTable, getEffectiveTitles, SlideDeck, DocumentStatus, SavedProposal } from '../types';
-import { FileDown, FileText, Edit3, Eye, Plus, Trash2, Sparkles, Wand2, Loader2, Cpu, Save, Check, GitBranch, Tag, X, Layers, CheckCircle2, CheckCheck, Presentation, Bold, ArrowRight, ArrowRightLeft, RotateCcw, Terminal } from 'lucide-react';
+import { FileDown, FileText, Edit3, Eye, Plus, Trash2, Sparkles, Wand2, Loader2, Cpu, Save, Check, GitBranch, Tag, X, Layers, CheckCircle2, CheckCheck, Presentation, Bold, ArrowRight, ArrowRightLeft, RotateCcw, Terminal, ChevronDown, ChevronUp, ChevronsUpDown, ChevronsDownUp, Table2 } from 'lucide-react';
 import { generateAdvansysDocx } from '../utils/docxGenerator';
 import { downloadAdvansysPdf } from '../utils/pdfGenerator';
 import { DocxPreview } from './DocxPreview';
@@ -66,7 +66,27 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
     setActiveTab(initialTab);
   }, [initialTab]);
   const [activeSectionFilter, setActiveSectionFilter] = useState<string>('all');
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [isExporting, setIsExporting] = useState<'docx' | 'pdf' | 'pptx' | null>(null);
+
+  const toggleSectionCollapse = (sectionKey: string) => {
+    setCollapsedSections((prev) => ({
+      ...prev,
+      [sectionKey]: !prev[sectionKey],
+    }));
+  };
+
+  const allProposalSectionKeys = ['resumen', 'beneficios', 'alcance', 'objetivo', 'descripcion', 'operativo', 'tablas', 'descargo'];
+  const areAllSectionsCollapsed = allProposalSectionKeys.every((k) => !!collapsedSections[k]);
+
+  const handleToggleAllSections = () => {
+    const newState = !areAllSectionsCollapsed;
+    const nextMap: Record<string, boolean> = {};
+    allProposalSectionKeys.forEach((k) => {
+      nextMap[k] = newState;
+    });
+    setCollapsedSections(nextMap);
+  };
   const [isRefining, setIsRefining] = useState(false);
   const [refiningAction, setRefiningAction] = useState<string | null>(null);
   const [refiningSectionKey, setRefiningSectionKey] = useState<string | null>(null);
@@ -595,33 +615,56 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
 
       {/* Section Quick Navigation Bar for Fast Editing without Infinite Scroll */}
       {activeTab === 'editor' && (
-        <div className="relative bg-white/90 backdrop-blur-md p-2 border-b border-slate-200 flex items-center gap-1.5 overflow-x-auto no-scrollbar text-xs min-w-0 sticky-bar">
-          <span className="text-[10px] font-bold text-slate-400 uppercase px-1.5 shrink-0 tracking-wider">Sección</span>
-          {[
-            { id: 'all', label: 'Ver Todo' },
-            { id: 'resumen', label: '1. Resumen' },
-            { id: 'beneficios', label: '2. Beneficios' },
-            { id: 'alcance', label: '3. Alcance' },
-            { id: 'objetivo', label: '4. Objetivo' },
-            { id: 'descripcion', label: '5. Solución' },
-            { id: 'operativo', label: '6-7. Pasos' },
-            { id: 'tablas', label: 'Tablas' },
-            { id: 'descargo', label: '8. Descargo' }
-          ].map((sec) => (
+        <div className="relative bg-white/90 backdrop-blur-md p-2 border-b border-slate-200 flex flex-wrap items-center justify-between gap-1.5 text-xs min-w-0 sticky-bar">
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar min-w-0 flex-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase px-1.5 shrink-0 tracking-wider">Sección</span>
+            {[
+              { id: 'all', label: 'Ver Todo' },
+              { id: 'resumen', label: '1. Resumen' },
+              { id: 'beneficios', label: '2. Beneficios' },
+              { id: 'alcance', label: '3. Alcance' },
+              { id: 'objetivo', label: '4. Objetivo' },
+              { id: 'descripcion', label: '5. Solución' },
+              { id: 'operativo', label: '6-7. Pasos' },
+              { id: 'tablas', label: 'Tablas' },
+              { id: 'descargo', label: '8. Descargo' }
+            ].map((sec) => (
+              <button
+                key={sec.id}
+                type="button"
+                onClick={() => setActiveSectionFilter(sec.id)}
+                className={`px-2.5 py-1.5 rounded-lg font-semibold whitespace-nowrap transition-all inline-flex items-center gap-1 shrink-0 ${
+                  activeSectionFilter === sec.id
+                    ? 'bg-[#0A3D62] text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                {sec.id === 'all' && <Layers className="w-3.5 h-3.5" />}
+                {sec.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0 pl-1">
             <button
-              key={sec.id}
               type="button"
-              onClick={() => setActiveSectionFilter(sec.id)}
-              className={`px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition-all inline-flex items-center gap-1 ${
-                activeSectionFilter === sec.id
-                  ? 'bg-[#0A3D62] text-white shadow-sm'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
+              onClick={handleToggleAllSections}
+              className="px-2.5 py-1 rounded-lg text-xs font-bold text-[#0A3D62] bg-blue-50 hover:bg-blue-100 border border-blue-200 inline-flex items-center gap-1 transition-all shadow-2xs cursor-pointer"
+              title={areAllSectionsCollapsed ? "Descomprimir / Expandir todas las secciones" : "Comprimir / Plegar todas las secciones"}
             >
-              {sec.id === 'all' && <Layers className="w-3.5 h-3.5" />}
-              {sec.label}
+              {areAllSectionsCollapsed ? (
+                <>
+                  <ChevronsUpDown className="w-3.5 h-3.5 text-[#2ECC71]" />
+                  <span>Descomprimir Todo</span>
+                </>
+              ) : (
+                <>
+                  <ChevronsDownUp className="w-3.5 h-3.5 text-[#0A3D62]" />
+                  <span>Comprimir Todo</span>
+                </>
+              )}
             </button>
-          ))}
+          </div>
         </div>
       )}
       </div>
@@ -670,15 +713,39 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
           <DocxPreview metadata={metadata} proposal={proposal} images={images} />
         </div>
       ) : (
-        <div className="p-3 space-y-6 min-h-[400px] min-w-0 max-w-full overflow-x-hidden">
+        <div className="p-3 space-y-4 min-h-[400px] min-w-0 max-w-full overflow-x-hidden">
           
           {/* Section 1: Resumen Ejecutivo */}
           {(activeSectionFilter === 'all' || activeSectionFilter === 'resumen') && (
-            <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 space-y-2 min-w-0 max-w-full overflow-x-hidden">
-              <div className="flex flex-wrap items-start justify-between gap-2 min-w-0">
-                <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide min-w-0 break-words">
-                  1. {titles.section1}
-                </label>
+            <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 transition-all min-w-0 max-w-full overflow-x-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-2 min-w-0 pb-1">
+                <button
+                  type="button"
+                  onClick={() => toggleSectionCollapse('resumen')}
+                  className="flex items-center gap-2 text-left group cursor-pointer"
+                  title={collapsedSections['resumen'] ? "Descomprimir sección" : "Comprimir sección"}
+                >
+                  <span className="p-1 rounded-md bg-white border border-slate-200 text-slate-500 group-hover:text-[#0A3D62] group-hover:border-blue-300 transition-colors">
+                    {collapsedSections['resumen'] ? (
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    ) : (
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    )}
+                  </span>
+                  <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide min-w-0 break-words cursor-pointer">
+                    1. {titles.section1}
+                  </label>
+                  {proposal.resumenEjecutivo?.trim() ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      {proposal.resumenEjecutivo.trim().length} car.
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-400">
+                      Vacía
+                    </span>
+                  )}
+                </button>
+
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     onClick={() => handleAIRefine('refine_section', 'resumenEjecutivo')}
@@ -688,37 +755,82 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                     <Sparkles className="w-3 h-3 mr-1 text-[#2ECC71]" />
                     Mejorar con IA
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleSectionCollapse('resumen')}
+                    className="px-2 py-1 text-[11px] font-semibold text-slate-600 bg-white hover:bg-slate-100 border border-slate-200 rounded transition-colors"
+                  >
+                    {collapsedSections['resumen'] ? 'Descomprimir' : 'Comprimir'}
+                  </button>
                 </div>
               </div>
 
-              {/* Formatting Toolbar for Bullets, Numbers, Bold, Tables */}
-              <TextFormattingToolbar
-                textareaRef={resumenRef}
-                value={proposal.resumenEjecutivo || ''}
-                onChange={(v) => handleStringChange('resumenEjecutivo', v)}
-                onInsertTable={() => handleInsertTableInField('resumenEjecutivo')}
-              />
+              {collapsedSections['resumen'] ? (
+                <div 
+                  onClick={() => toggleSectionCollapse('resumen')}
+                  className="mt-2 p-2.5 bg-white rounded-lg border border-dashed border-slate-300 text-xs text-slate-600 cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-all flex items-center justify-between gap-2"
+                >
+                  <p className="truncate italic text-slate-500 flex-1">
+                    {proposal.resumenEjecutivo?.trim() || 'Sección comprimida (sin contenido aún). Haz clic para expandir.'}
+                  </p>
+                  <span className="text-[10px] font-bold text-[#0A3D62] shrink-0">Expandir</span>
+                </div>
+              ) : (
+                <div className="space-y-2 mt-2">
+                  {/* Formatting Toolbar for Bullets, Numbers, Bold, Tables */}
+                  <TextFormattingToolbar
+                    textareaRef={resumenRef}
+                    value={proposal.resumenEjecutivo || ''}
+                    onChange={(v) => handleStringChange('resumenEjecutivo', v)}
+                    onInsertTable={() => handleInsertTableInField('resumenEjecutivo')}
+                  />
 
-              <textarea
-                ref={resumenRef}
-                value={proposal.resumenEjecutivo}
-                onChange={(e) => handleStringChange('resumenEjecutivo', e.target.value)}
-                onKeyDown={(e) => handleAutoBulletKeyDown(e, proposal.resumenEjecutivo, (v) => handleStringChange('resumenEjecutivo', v))}
-                placeholder="Escribe el resumen ejecutivo de la propuesta... (usa los botones de arriba o escribe '• ' o '1. ' para viñetas automáticas)"
-                rows={4}
-                className="w-full min-w-0 max-w-full p-3 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-800 font-sans leading-relaxed"
-              />
-              {renderInlineTables(proposal.resumenEjecutivo)}
+                  <textarea
+                    ref={resumenRef}
+                    value={proposal.resumenEjecutivo}
+                    onChange={(e) => handleStringChange('resumenEjecutivo', e.target.value)}
+                    onKeyDown={(e) => handleAutoBulletKeyDown(e, proposal.resumenEjecutivo, (v) => handleStringChange('resumenEjecutivo', v))}
+                    placeholder="Escribe el resumen ejecutivo de la propuesta... (usa los botones de arriba o escribe '• ' o '1. ' para viñetas automáticas)"
+                    rows={4}
+                    className="w-full min-w-0 max-w-full p-3 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-800 font-sans leading-relaxed"
+                  />
+                  {renderInlineTables(proposal.resumenEjecutivo)}
+                </div>
+              )}
             </div>
           )}
 
           {/* Section 2: Beneficios */}
           {(activeSectionFilter === 'all' || activeSectionFilter === 'beneficios') && (
-            <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 space-y-3 min-w-0 max-w-full overflow-x-hidden">
-              <div className="flex flex-wrap items-start justify-between gap-2 min-w-0">
-                <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide min-w-0 break-words">
-                  2. {titles.section2}
-                </label>
+            <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 transition-all min-w-0 max-w-full overflow-x-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-2 min-w-0 pb-1">
+                <button
+                  type="button"
+                  onClick={() => toggleSectionCollapse('beneficios')}
+                  className="flex items-center gap-2 text-left group cursor-pointer"
+                  title={collapsedSections['beneficios'] ? "Descomprimir sección" : "Comprimir sección"}
+                >
+                  <span className="p-1 rounded-md bg-white border border-slate-200 text-slate-500 group-hover:text-[#0A3D62] group-hover:border-blue-300 transition-colors">
+                    {collapsedSections['beneficios'] ? (
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    ) : (
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    )}
+                  </span>
+                  <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide min-w-0 break-words cursor-pointer">
+                    2. {titles.section2}
+                  </label>
+                  {(proposal.beneficios || []).length > 0 ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      {proposal.beneficios.length} punto{proposal.beneficios.length === 1 ? '' : 's'}
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-400">
+                      Vacía
+                    </span>
+                  )}
+                </button>
+
                 <div className="flex flex-wrap items-center gap-2 min-w-0">
                   <button
                     onClick={() => handleAIRefine('refine_section', 'beneficios')}
@@ -735,311 +847,407 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                     <Plus className="w-3 h-3 mr-1" />
                     Añadir punto
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleSectionCollapse('beneficios')}
+                    className="px-2 py-1 text-[11px] font-semibold text-slate-600 bg-white hover:bg-slate-100 border border-slate-200 rounded transition-colors"
+                  >
+                    {collapsedSections['beneficios'] ? 'Descomprimir' : 'Comprimir'}
+                  </button>
                 </div>
               </div>
-              <div className="space-y-2">
-                {(!proposal.beneficios || proposal.beneficios.length === 0) && (
-                  <p className="text-xs text-slate-400 italic bg-white p-2.5 rounded border border-slate-200">
-                    Sin beneficios agregados. Haz clic en "+ Añadir punto" para escribir un beneficio o usa "Sugerir Beneficios".
+
+              {collapsedSections['beneficios'] ? (
+                <div 
+                  onClick={() => toggleSectionCollapse('beneficios')}
+                  className="mt-2 p-2.5 bg-white rounded-lg border border-dashed border-slate-300 text-xs text-slate-600 cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-all flex items-center justify-between gap-2"
+                >
+                  <p className="truncate italic text-slate-500 flex-1">
+                    {proposal.beneficios && proposal.beneficios.length > 0
+                      ? `Puntos (${proposal.beneficios.length}): ${proposal.beneficios.join(' • ')}`
+                      : 'Sección comprimida (sin beneficios). Haz clic para expandir.'}
                   </p>
-                )}
-                {proposal.beneficios?.map((b, idx) => (
-                  <div key={idx} className="flex items-center gap-1.5 min-w-0">
-                    <span className="text-xs font-bold text-[#2ECC71] shrink-0">#{idx + 1}</span>
-                    <input
-                      type="text"
-                      value={b}
-                      onChange={(e) => handleBeneficioChange(idx, e.target.value)}
-                      onKeyDown={(e) => handleAutoBulletKeyDown(e, b, (v) => handleBeneficioChange(idx, v))}
-                      placeholder="Escribe el beneficio... (selecciona y pulsa B o Ctrl+B para negrita)"
-                      className="flex-1 min-w-0 max-w-full p-2 text-sm bg-white border border-slate-200 rounded-lg focus:ring-1 focus:ring-[#0A3D62] text-slate-800"
-                    />
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        const input = e.currentTarget.parentElement?.querySelector('input') as HTMLInputElement | null;
-                        const result = toggleBoldAtTarget(input, b);
-                        handleBeneficioChange(idx, result.newText);
-                        setTimeout(() => {
-                          if (input) {
-                            input.focus();
-                            input.setSelectionRange(result.selStart, result.selEnd);
-                          }
-                        }, 10);
-                      }}
-                      title="Poner en negrita (Ctrl+B)"
-                      className="p-1.5 text-slate-500 hover:text-[#0A3D62] hover:bg-slate-200 rounded text-xs font-bold border border-slate-200 bg-white shrink-0"
-                    >
-                      <Bold className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => handleRemoveBeneficio(idx)}
-                      className="p-1.5 text-slate-400 hover:text-red-600 rounded"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
+                  <span className="text-[10px] font-bold text-[#0A3D62] shrink-0">Expandir</span>
+                </div>
+              ) : (
+                <div className="space-y-2 mt-2">
+                  {(!proposal.beneficios || proposal.beneficios.length === 0) && (
+                    <p className="text-xs text-slate-400 italic bg-white p-2.5 rounded border border-slate-200">
+                      Sin beneficios agregados. Haz clic en "+ Añadir punto" para escribir un beneficio o usa "Sugerir Beneficios".
+                    </p>
+                  )}
+                  {proposal.beneficios?.map((b, idx) => (
+                    <div key={idx} className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-xs font-bold text-[#2ECC71] shrink-0">#{idx + 1}</span>
+                      <input
+                        type="text"
+                        value={b}
+                        onChange={(e) => handleBeneficioChange(idx, e.target.value)}
+                        onKeyDown={(e) => handleAutoBulletKeyDown(e, b, (v) => handleBeneficioChange(idx, v))}
+                        placeholder="Escribe el beneficio... (selecciona y pulsa B o Ctrl+B para negrita)"
+                        className="flex-1 min-w-0 max-w-full p-2 text-sm bg-white border border-slate-200 rounded-lg focus:ring-1 focus:ring-[#0A3D62] text-slate-800"
+                      />
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          const input = e.currentTarget.parentElement?.querySelector('input') as HTMLInputElement | null;
+                          const result = toggleBoldAtTarget(input, b);
+                          handleBeneficioChange(idx, result.newText);
+                          setTimeout(() => {
+                            if (input) {
+                              input.focus();
+                              input.setSelectionRange(result.selStart, result.selEnd);
+                            }
+                          }, 10);
+                        }}
+                        title="Poner en negrita (Ctrl+B)"
+                        className="p-1.5 text-slate-500 hover:text-[#0A3D62] hover:bg-slate-200 rounded text-xs font-bold border border-slate-200 bg-white shrink-0"
+                      >
+                        <Bold className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleRemoveBeneficio(idx)}
+                        className="p-1.5 text-slate-400 hover:text-red-600 rounded"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
           {/* Section 3: Alcance, Exclusiones y Entregables */}
           {(activeSectionFilter === 'all' || activeSectionFilter === 'alcance') && (
-            <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 space-y-4 min-w-0 max-w-full overflow-x-hidden">
-              <div className="flex flex-wrap items-start justify-between gap-2 min-w-0">
-                <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide min-w-0 break-words">
-                  3. {titles.section3}
-                </label>
+            <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 transition-all min-w-0 max-w-full overflow-x-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-2 min-w-0 pb-1">
                 <button
-                  onClick={() => handleAIRefine('refine_section', 'alcanceExclusionesEntregables')}
-                  disabled={isRefining}
-                  className="inline-flex items-center px-2 py-1 text-[11px] font-semibold text-[#0A3D62] bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded transition-colors disabled:opacity-50"
+                  type="button"
+                  onClick={() => toggleSectionCollapse('alcance')}
+                  className="flex items-center gap-2 text-left group cursor-pointer"
+                  title={collapsedSections['alcance'] ? "Descomprimir sección" : "Comprimir sección"}
                 >
-                  <Sparkles className="w-3 h-3 mr-1 text-[#2ECC71]" />
-                  Refinar con IA
+                  <span className="p-1 rounded-md bg-white border border-slate-200 text-slate-500 group-hover:text-[#0A3D62] group-hover:border-blue-300 transition-colors">
+                    {collapsedSections['alcance'] ? (
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    ) : (
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    )}
+                  </span>
+                  <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide min-w-0 break-words cursor-pointer">
+                    3. {titles.section3}
+                  </label>
+                  {((proposal.alcanceExclusionesEntregables?.alcance?.length || 0) + 
+                    (proposal.alcanceExclusionesEntregables?.exclusiones?.length || 0) + 
+                    (proposal.alcanceExclusionesEntregables?.entregables?.length || 0)) > 0 ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      {(proposal.alcanceExclusionesEntregables?.alcance?.length || 0) + 
+                       (proposal.alcanceExclusionesEntregables?.exclusiones?.length || 0) + 
+                       (proposal.alcanceExclusionesEntregables?.entregables?.length || 0)} ítems
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-400">
+                      Vacía
+                    </span>
+                  )}
                 </button>
-              </div>
 
-              {/* Sub-block Alcance */}
-              <div className="bg-white p-3 rounded-lg border border-slate-200">
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-2 min-w-0">
-                  <span className="text-xs font-bold text-[#1E5F8A]">
-                    {titles.section3_1.startsWith('3.1') ? titles.section3_1 : `3.1 ${titles.section3_1}`}:
-                  </span>
+                <div className="flex flex-wrap items-center gap-2">
                   <button
-                    onClick={() => handleAddScopeItem('alcance')}
-                    className="text-[11px] font-semibold text-blue-600 hover:underline"
+                    onClick={() => handleAIRefine('refine_section', 'alcanceExclusionesEntregables')}
+                    disabled={isRefining}
+                    className="inline-flex items-center px-2 py-1 text-[11px] font-semibold text-[#0A3D62] bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded transition-colors disabled:opacity-50"
                   >
-                    + Agregar punto
+                    <Sparkles className="w-3 h-3 mr-1 text-[#2ECC71]" />
+                    Refinar con IA
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleSectionCollapse('alcance')}
+                    className="px-2 py-1 text-[11px] font-semibold text-slate-600 bg-white hover:bg-slate-100 border border-slate-200 rounded transition-colors"
+                  >
+                    {collapsedSections['alcance'] ? 'Descomprimir' : 'Comprimir'}
                   </button>
                 </div>
-                <div className="space-y-1.5">
-                  {(!proposal.alcanceExclusionesEntregables?.alcance || proposal.alcanceExclusionesEntregables.alcance.length === 0) && (
-                    <p className="text-[11px] text-slate-400 italic">Sin ítems de alcance. Presiona "+ Agregar punto" para redactar.</p>
-                  )}
-                  {proposal.alcanceExclusionesEntregables?.alcance?.map((item, idx) => (
-                    <div key={idx} className="flex items-center gap-1.5 min-w-0">
-                      <input
-                        type="text"
-                        value={item}
-                        onChange={(e) => handleScopeListChange('alcance', idx, e.target.value)}
-                        onKeyDown={(e) => handleAutoBulletKeyDown(e, item, (v) => handleScopeListChange('alcance', idx, v))}
-                        placeholder="Descripción del alcance... (Ctrl+B para negrita)"
-                        className="flex-1 min-w-0 max-w-full p-1.5 text-xs bg-slate-50 border border-slate-200 rounded text-slate-800"
-                      />
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          const input = e.currentTarget.parentElement?.querySelector('input') as HTMLInputElement | null;
-                          const result = toggleBoldAtTarget(input, item);
-                          handleScopeListChange('alcance', idx, result.newText);
-                          setTimeout(() => {
-                            if (input) {
-                              input.focus();
-                              input.setSelectionRange(result.selStart, result.selEnd);
-                            }
-                          }, 10);
-                        }}
-                        title="Poner en negrita (Ctrl+B)"
-                        className="p-1 text-slate-500 hover:text-[#0A3D62] hover:bg-slate-200 rounded text-xs font-bold border border-slate-200 bg-white shrink-0"
-                      >
-                        <Bold className="w-3 h-3" />
-                      </button>
-
-                      {/* Move to 3.2 or 3.3 */}
-                      <div className="inline-flex items-center gap-0.5 shrink-0 bg-slate-100 p-0.5 rounded border border-slate-200">
-                        <span className="text-[9px] text-slate-400 font-semibold px-1 hidden sm:inline">Mover a:</span>
-                        <button
-                          type="button"
-                          onClick={() => handleMoveScopeItem('alcance', 'exclusiones', idx)}
-                          title="Mover texto a 3.2 Exclusiones sin tener que reescribirlo"
-                          className="px-1.5 py-0.5 text-[10px] font-bold text-slate-700 hover:text-[#0A3D62] hover:bg-white rounded transition-colors"
-                        >
-                          → 3.2
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleMoveScopeItem('alcance', 'entregables', idx)}
-                          title="Mover texto a 3.3 Entregables sin tener que reescribirlo"
-                          className="px-1.5 py-0.5 text-[10px] font-bold text-emerald-800 hover:text-emerald-950 hover:bg-white rounded transition-colors"
-                        >
-                          → 3.3
-                        </button>
-                      </div>
-
-                      <button onClick={() => handleRemoveScopeItem('alcance', idx)} title="Eliminar ítem" className="text-slate-400 hover:text-red-600 p-1">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
               </div>
 
-              {/* Sub-block Exclusiones */}
-              <div className="bg-white p-3 rounded-lg border border-slate-200">
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-2 min-w-0">
-                  <span className="text-xs font-bold text-slate-700">
-                    {titles.section3_2.startsWith('3.2') ? titles.section3_2 : `3.2 ${titles.section3_2}`}:
-                  </span>
-                  <button
-                    onClick={() => handleAddScopeItem('exclusiones')}
-                    className="text-[11px] font-semibold text-[#0A3D62] hover:underline"
-                  >
-                    + Agregar exclusión
-                  </button>
+              {collapsedSections['alcance'] ? (
+                <div 
+                  onClick={() => toggleSectionCollapse('alcance')}
+                  className="mt-2 p-2.5 bg-white rounded-lg border border-dashed border-slate-300 text-xs text-slate-600 cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-all flex items-center justify-between gap-2"
+                >
+                  <p className="truncate italic text-slate-500 flex-1">
+                    {`Alcance: ${proposal.alcanceExclusionesEntregables?.alcance?.length || 0} | Exclusiones: ${proposal.alcanceExclusionesEntregables?.exclusiones?.length || 0} | Entregables: ${proposal.alcanceExclusionesEntregables?.entregables?.length || 0}`}
+                  </p>
+                  <span className="text-[10px] font-bold text-[#0A3D62] shrink-0">Expandir</span>
                 </div>
-                <div className="space-y-1.5">
-                  {(!proposal.alcanceExclusionesEntregables?.exclusiones || proposal.alcanceExclusionesEntregables.exclusiones.length === 0) && (
-                    <p className="text-[11px] text-slate-400 italic">Sin exclusiones registradas. Presiona "+ Agregar exclusión".</p>
-                  )}
-                  {proposal.alcanceExclusionesEntregables?.exclusiones?.map((item, idx) => (
-                    <div key={idx} className="flex items-center gap-1.5 min-w-0">
-                      <input
-                        type="text"
-                        value={item}
-                        onChange={(e) => handleScopeListChange('exclusiones', idx, e.target.value)}
-                        onKeyDown={(e) => handleAutoBulletKeyDown(e, item, (v) => handleScopeListChange('exclusiones', idx, v))}
-                        placeholder="Exclusión o elemento fuera de alcance... (Ctrl+B para negrita)"
-                        className="flex-1 min-w-0 max-w-full p-1.5 text-xs bg-slate-50 border border-slate-200 rounded text-slate-800"
-                      />
+              ) : (
+                <div className="space-y-3 mt-3">
+                  {/* Sub-block Alcance */}
+                  <div className="bg-white p-3 rounded-lg border border-slate-200">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2 min-w-0">
+                      <span className="text-xs font-bold text-[#1E5F8A]">
+                        {titles.section3_1.startsWith('3.1') ? titles.section3_1 : `3.1 ${titles.section3_1}`}:
+                      </span>
                       <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          const input = e.currentTarget.parentElement?.querySelector('input') as HTMLInputElement | null;
-                          const result = toggleBoldAtTarget(input, item);
-                          handleScopeListChange('exclusiones', idx, result.newText);
-                          setTimeout(() => {
-                            if (input) {
-                              input.focus();
-                              input.setSelectionRange(result.selStart, result.selEnd);
-                            }
-                          }, 10);
-                        }}
-                        title="Poner en negrita (Ctrl+B)"
-                        className="p-1 text-slate-500 hover:text-[#0A3D62] hover:bg-slate-200 rounded text-xs font-bold border border-slate-200 bg-white shrink-0"
+                        onClick={() => handleAddScopeItem('alcance')}
+                        className="text-[11px] font-semibold text-blue-600 hover:underline"
                       >
-                        <Bold className="w-3 h-3" />
-                      </button>
-
-                      {/* Move to 3.1 or 3.3 */}
-                      <div className="inline-flex items-center gap-0.5 shrink-0 bg-slate-100 p-0.5 rounded border border-slate-200">
-                        <span className="text-[9px] text-slate-400 font-semibold px-1 hidden sm:inline">Mover a:</span>
-                        <button
-                          type="button"
-                          onClick={() => handleMoveScopeItem('exclusiones', 'alcance', idx)}
-                          title="Mover texto a 3.1 Alcance sin tener que reescribirlo"
-                          className="px-1.5 py-0.5 text-[10px] font-bold text-blue-700 hover:text-blue-900 hover:bg-white rounded transition-colors"
-                        >
-                          → 3.1
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleMoveScopeItem('exclusiones', 'entregables', idx)}
-                          title="Mover texto a 3.3 Entregables sin tener que reescribirlo"
-                          className="px-1.5 py-0.5 text-[10px] font-bold text-emerald-800 hover:text-emerald-950 hover:bg-white rounded transition-colors"
-                        >
-                          → 3.3
-                        </button>
-                      </div>
-
-                      <button onClick={() => handleRemoveScopeItem('exclusiones', idx)} title="Eliminar ítem" className="text-slate-400 hover:text-red-600 p-1">
-                        <Trash2 className="w-3.5 h-3.5" />
+                        + Agregar punto
                       </button>
                     </div>
-                  ))}
-                </div>
-              </div>
+                    <div className="space-y-1.5">
+                      {(!proposal.alcanceExclusionesEntregables?.alcance || proposal.alcanceExclusionesEntregables.alcance.length === 0) && (
+                        <p className="text-[11px] text-slate-400 italic">Sin ítems de alcance. Presiona "+ Agregar punto" para redactar.</p>
+                      )}
+                      {proposal.alcanceExclusionesEntregables?.alcance?.map((item, idx) => (
+                        <div key={idx} className="flex items-center gap-1.5 min-w-0">
+                          <input
+                            type="text"
+                            value={item}
+                            onChange={(e) => handleScopeListChange('alcance', idx, e.target.value)}
+                            onKeyDown={(e) => handleAutoBulletKeyDown(e, item, (v) => handleScopeListChange('alcance', idx, v))}
+                            placeholder="Descripción del alcance... (Ctrl+B para negrita)"
+                            className="flex-1 min-w-0 max-w-full p-1.5 text-xs bg-slate-50 border border-slate-200 rounded text-slate-800"
+                          />
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              const input = e.currentTarget.parentElement?.querySelector('input') as HTMLInputElement | null;
+                              const result = toggleBoldAtTarget(input, item);
+                              handleScopeListChange('alcance', idx, result.newText);
+                              setTimeout(() => {
+                                if (input) {
+                                  input.focus();
+                                  input.setSelectionRange(result.selStart, result.selEnd);
+                                }
+                              }, 10);
+                            }}
+                            title="Poner en negrita (Ctrl+B)"
+                            className="p-1 text-slate-500 hover:text-[#0A3D62] hover:bg-slate-200 rounded text-xs font-bold border border-slate-200 bg-white shrink-0"
+                          >
+                            <Bold className="w-3 h-3" />
+                          </button>
 
-              {/* Sub-block Entregables */}
-              <div className="bg-white p-3 rounded-lg border border-slate-200">
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-2 min-w-0">
-                  <span className="text-xs font-bold text-emerald-700">
-                    {titles.section3_3.startsWith('3.3') ? titles.section3_3 : `3.3 ${titles.section3_3}`}:
-                  </span>
-                  <button
-                    onClick={() => handleAddScopeItem('entregables')}
-                    className="text-[11px] font-semibold text-emerald-700 hover:underline"
-                  >
-                    + Agregar entregable
-                  </button>
-                </div>
-                <div className="space-y-1.5">
-                  {(!proposal.alcanceExclusionesEntregables?.entregables || proposal.alcanceExclusionesEntregables.entregables.length === 0) && (
-                    <p className="text-[11px] text-slate-400 italic">Sin entregables registrados. Presiona "+ Agregar entregable".</p>
-                  )}
-                  {proposal.alcanceExclusionesEntregables?.entregables?.map((item, idx) => (
-                    <div key={idx} className="flex items-center gap-1.5 min-w-0">
-                      <input
-                        type="text"
-                        value={item}
-                        onChange={(e) => handleScopeListChange('entregables', idx, e.target.value)}
-                        onKeyDown={(e) => handleAutoBulletKeyDown(e, item, (v) => handleScopeListChange('entregables', idx, v))}
-                        placeholder="Entregable del proyecto... (Ctrl+B para negrita)"
-                        className="flex-1 min-w-0 max-w-full p-1.5 text-xs bg-slate-50 border border-slate-200 rounded text-slate-800"
-                      />
+                          {/* Move to 3.2 or 3.3 */}
+                          <div className="inline-flex items-center gap-0.5 shrink-0 bg-slate-100 p-0.5 rounded border border-slate-200">
+                            <span className="text-[9px] text-slate-400 font-semibold px-1 hidden sm:inline">Mover a:</span>
+                            <button
+                              type="button"
+                              onClick={() => handleMoveScopeItem('alcance', 'exclusiones', idx)}
+                              title="Mover texto a 3.2 Exclusiones sin tener que reescribirlo"
+                              className="px-1.5 py-0.5 text-[10px] font-bold text-slate-700 hover:text-[#0A3D62] hover:bg-white rounded transition-colors"
+                            >
+                              → 3.2
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleMoveScopeItem('alcance', 'entregables', idx)}
+                              title="Mover texto a 3.3 Entregables sin tener que reescribirlo"
+                              className="px-1.5 py-0.5 text-[10px] font-bold text-emerald-800 hover:text-emerald-950 hover:bg-white rounded transition-colors"
+                            >
+                              → 3.3
+                            </button>
+                          </div>
+
+                          <button onClick={() => handleRemoveScopeItem('alcance', idx)} title="Eliminar ítem" className="text-slate-400 hover:text-red-600 p-1">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Sub-block Exclusiones */}
+                  <div className="bg-white p-3 rounded-lg border border-slate-200">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2 min-w-0">
+                      <span className="text-xs font-bold text-slate-700">
+                        {titles.section3_2.startsWith('3.2') ? titles.section3_2 : `3.2 ${titles.section3_2}`}:
+                      </span>
                       <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          const input = e.currentTarget.parentElement?.querySelector('input') as HTMLInputElement | null;
-                          const result = toggleBoldAtTarget(input, item);
-                          handleScopeListChange('entregables', idx, result.newText);
-                          setTimeout(() => {
-                            if (input) {
-                              input.focus();
-                              input.setSelectionRange(result.selStart, result.selEnd);
-                            }
-                          }, 10);
-                        }}
-                        title="Poner en negrita (Ctrl+B)"
-                        className="p-1 text-slate-500 hover:text-[#0A3D62] hover:bg-slate-200 rounded text-xs font-bold border border-slate-200 bg-white shrink-0"
+                        onClick={() => handleAddScopeItem('exclusiones')}
+                        className="text-[11px] font-semibold text-[#0A3D62] hover:underline"
                       >
-                        <Bold className="w-3 h-3" />
-                      </button>
-
-                      {/* Move to 3.1 or 3.2 */}
-                      <div className="inline-flex items-center gap-0.5 shrink-0 bg-slate-100 p-0.5 rounded border border-slate-200">
-                        <span className="text-[9px] text-slate-400 font-semibold px-1 hidden sm:inline">Mover a:</span>
-                        <button
-                          type="button"
-                          onClick={() => handleMoveScopeItem('entregables', 'alcance', idx)}
-                          title="Mover texto a 3.1 Alcance sin tener que reescribirlo"
-                          className="px-1.5 py-0.5 text-[10px] font-bold text-blue-700 hover:text-blue-900 hover:bg-white rounded transition-colors"
-                        >
-                          → 3.1
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleMoveScopeItem('entregables', 'exclusiones', idx)}
-                          title="Mover texto a 3.2 Exclusiones sin tener que reescribirlo"
-                          className="px-1.5 py-0.5 text-[10px] font-bold text-slate-700 hover:text-[#0A3D62] hover:bg-white rounded transition-colors"
-                        >
-                          → 3.2
-                        </button>
-                      </div>
-
-                      <button onClick={() => handleRemoveScopeItem('entregables', idx)} title="Eliminar ítem" className="text-slate-400 hover:text-red-600 p-1">
-                        <Trash2 className="w-3.5 h-3.5" />
+                        + Agregar exclusión
                       </button>
                     </div>
-                  ))}
-                </div>
-              </div>
+                    <div className="space-y-1.5">
+                      {(!proposal.alcanceExclusionesEntregables?.exclusiones || proposal.alcanceExclusionesEntregables.exclusiones.length === 0) && (
+                        <p className="text-[11px] text-slate-400 italic">Sin exclusiones registradas. Presiona "+ Agregar exclusión".</p>
+                      )}
+                      {proposal.alcanceExclusionesEntregables?.exclusiones?.map((item, idx) => (
+                        <div key={idx} className="flex items-center gap-1.5 min-w-0">
+                          <input
+                            type="text"
+                            value={item}
+                            onChange={(e) => handleScopeListChange('exclusiones', idx, e.target.value)}
+                            onKeyDown={(e) => handleAutoBulletKeyDown(e, item, (v) => handleScopeListChange('exclusiones', idx, v))}
+                            placeholder="Exclusión o elemento fuera de alcance... (Ctrl+B para negrita)"
+                            className="flex-1 min-w-0 max-w-full p-1.5 text-xs bg-slate-50 border border-slate-200 rounded text-slate-800"
+                          />
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              const input = e.currentTarget.parentElement?.querySelector('input') as HTMLInputElement | null;
+                              const result = toggleBoldAtTarget(input, item);
+                              handleScopeListChange('exclusiones', idx, result.newText);
+                              setTimeout(() => {
+                                if (input) {
+                                  input.focus();
+                                  input.setSelectionRange(result.selStart, result.selEnd);
+                                }
+                              }, 10);
+                            }}
+                            title="Poner en negrita (Ctrl+B)"
+                            className="p-1 text-slate-500 hover:text-[#0A3D62] hover:bg-slate-200 rounded text-xs font-bold border border-slate-200 bg-white shrink-0"
+                          >
+                            <Bold className="w-3 h-3" />
+                          </button>
 
+                          {/* Move to 3.1 or 3.3 */}
+                          <div className="inline-flex items-center gap-0.5 shrink-0 bg-slate-100 p-0.5 rounded border border-slate-200">
+                            <span className="text-[9px] text-slate-400 font-semibold px-1 hidden sm:inline">Mover a:</span>
+                            <button
+                              type="button"
+                              onClick={() => handleMoveScopeItem('exclusiones', 'alcance', idx)}
+                              title="Mover texto a 3.1 Alcance sin tener que reescribirlo"
+                              className="px-1.5 py-0.5 text-[10px] font-bold text-blue-700 hover:text-blue-900 hover:bg-white rounded transition-colors"
+                            >
+                              → 3.1
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleMoveScopeItem('exclusiones', 'entregables', idx)}
+                              title="Mover texto a 3.3 Entregables sin tener que reescribirlo"
+                              className="px-1.5 py-0.5 text-[10px] font-bold text-emerald-800 hover:text-emerald-950 hover:bg-white rounded transition-colors"
+                            >
+                              → 3.3
+                            </button>
+                          </div>
+
+                          <button onClick={() => handleRemoveScopeItem('exclusiones', idx)} title="Eliminar ítem" className="text-slate-400 hover:text-red-600 p-1">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Sub-block Entregables */}
+                  <div className="bg-white p-3 rounded-lg border border-slate-200">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2 min-w-0">
+                      <span className="text-xs font-bold text-emerald-700">
+                        {titles.section3_3.startsWith('3.3') ? titles.section3_3 : `3.3 ${titles.section3_3}`}:
+                      </span>
+                      <button
+                        onClick={() => handleAddScopeItem('entregables')}
+                        className="text-[11px] font-semibold text-emerald-700 hover:underline"
+                      >
+                        + Agregar entregable
+                      </button>
+                    </div>
+                    <div className="space-y-1.5">
+                      {(!proposal.alcanceExclusionesEntregables?.entregables || proposal.alcanceExclusionesEntregables.entregables.length === 0) && (
+                        <p className="text-[11px] text-slate-400 italic">Sin entregables registrados. Presiona "+ Agregar entregable".</p>
+                      )}
+                      {proposal.alcanceExclusionesEntregables?.entregables?.map((item, idx) => (
+                        <div key={idx} className="flex items-center gap-1.5 min-w-0">
+                          <input
+                            type="text"
+                            value={item}
+                            onChange={(e) => handleScopeListChange('entregables', idx, e.target.value)}
+                            onKeyDown={(e) => handleAutoBulletKeyDown(e, item, (v) => handleScopeListChange('entregables', idx, v))}
+                            placeholder="Entregable del proyecto... (Ctrl+B para negrita)"
+                            className="flex-1 min-w-0 max-w-full p-1.5 text-xs bg-slate-50 border border-slate-200 rounded text-slate-800"
+                          />
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              const input = e.currentTarget.parentElement?.querySelector('input') as HTMLInputElement | null;
+                              const result = toggleBoldAtTarget(input, item);
+                              handleScopeListChange('entregables', idx, result.newText);
+                              setTimeout(() => {
+                                if (input) {
+                                  input.focus();
+                                  input.setSelectionRange(result.selStart, result.selEnd);
+                                }
+                              }, 10);
+                            }}
+                            title="Poner en negrita (Ctrl+B)"
+                            className="p-1 text-slate-500 hover:text-[#0A3D62] hover:bg-slate-200 rounded text-xs font-bold border border-slate-200 bg-white shrink-0"
+                          >
+                            <Bold className="w-3 h-3" />
+                          </button>
+
+                          {/* Move to 3.1 or 3.2 */}
+                          <div className="inline-flex items-center gap-0.5 shrink-0 bg-slate-100 p-0.5 rounded border border-slate-200">
+                            <span className="text-[9px] text-slate-400 font-semibold px-1 hidden sm:inline">Mover a:</span>
+                            <button
+                              type="button"
+                              onClick={() => handleMoveScopeItem('entregables', 'alcance', idx)}
+                              title="Mover texto a 3.1 Alcance sin tener que reescribirlo"
+                              className="px-1.5 py-0.5 text-[10px] font-bold text-blue-700 hover:text-blue-900 hover:bg-white rounded transition-colors"
+                            >
+                              → 3.1
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleMoveScopeItem('entregables', 'exclusiones', idx)}
+                              title="Mover texto a 3.2 Exclusiones sin tener que reescribirlo"
+                              className="px-1.5 py-0.5 text-[10px] font-bold text-slate-700 hover:text-[#0A3D62] hover:bg-white rounded transition-colors"
+                            >
+                              → 3.2
+                            </button>
+                          </div>
+
+                          <button onClick={() => handleRemoveScopeItem('entregables', idx)} title="Eliminar ítem" className="text-slate-400 hover:text-red-600 p-1">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
           {/* Section 4: Objetivo */}
           {(activeSectionFilter === 'all' || activeSectionFilter === 'objetivo') && (
-            <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 space-y-2 min-w-0 max-w-full overflow-x-hidden">
-              <div className="flex flex-wrap items-start justify-between gap-2 min-w-0">
-                <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide min-w-0 break-words">
-                  4. {titles.section4}
-                </label>
+            <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 transition-all min-w-0 max-w-full overflow-x-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-2 min-w-0 pb-1">
+                <button
+                  type="button"
+                  onClick={() => toggleSectionCollapse('objetivo')}
+                  className="flex items-center gap-2 text-left group cursor-pointer"
+                  title={collapsedSections['objetivo'] ? "Descomprimir sección" : "Comprimir sección"}
+                >
+                  <span className="p-1 rounded-md bg-white border border-slate-200 text-slate-500 group-hover:text-[#0A3D62] group-hover:border-blue-300 transition-colors">
+                    {collapsedSections['objetivo'] ? (
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    ) : (
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    )}
+                  </span>
+                  <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide min-w-0 break-words cursor-pointer">
+                    4. {titles.section4}
+                  </label>
+                  {proposal.objetivo?.trim() ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      {proposal.objetivo.trim().length} car.
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-400">
+                      Vacía
+                    </span>
+                  )}
+                </button>
+
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     onClick={() => handleAIRefine('refine_section', 'objetivo')}
@@ -1049,36 +1257,81 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                     <Sparkles className="w-3 h-3 mr-1 text-[#2ECC71]" />
                     Mejorar con IA
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleSectionCollapse('objetivo')}
+                    className="px-2 py-1 text-[11px] font-semibold text-slate-600 bg-white hover:bg-slate-100 border border-slate-200 rounded transition-colors"
+                  >
+                    {collapsedSections['objetivo'] ? 'Descomprimir' : 'Comprimir'}
+                  </button>
                 </div>
               </div>
 
-              <TextFormattingToolbar
-                textareaRef={objetivoRef}
-                value={proposal.objetivo || ''}
-                onChange={(v) => handleStringChange('objetivo', v)}
-                onInsertTable={() => handleInsertTableInField('objetivo')}
-              />
+              {collapsedSections['objetivo'] ? (
+                <div 
+                  onClick={() => toggleSectionCollapse('objetivo')}
+                  className="mt-2 p-2.5 bg-white rounded-lg border border-dashed border-slate-300 text-xs text-slate-600 cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-all flex items-center justify-between gap-2"
+                >
+                  <p className="truncate italic text-slate-500 flex-1">
+                    {proposal.objetivo?.trim() || 'Sección comprimida (sin objetivo redactado aún). Haz clic para expandir.'}
+                  </p>
+                  <span className="text-[10px] font-bold text-[#0A3D62] shrink-0">Expandir</span>
+                </div>
+              ) : (
+                <div className="space-y-2 mt-2">
+                  <TextFormattingToolbar
+                    textareaRef={objetivoRef}
+                    value={proposal.objetivo || ''}
+                    onChange={(v) => handleStringChange('objetivo', v)}
+                    onInsertTable={() => handleInsertTableInField('objetivo')}
+                  />
 
-              <textarea
-                ref={objetivoRef}
-                value={proposal.objetivo}
-                onChange={(e) => handleStringChange('objetivo', e.target.value)}
-                onKeyDown={(e) => handleAutoBulletKeyDown(e, proposal.objetivo, (v) => handleStringChange('objetivo', v))}
-                placeholder="Describa el objetivo general y específico... (usa • Viñeta o escribe '• ' o '1. ' para listas automáticas)"
-                rows={3}
-                className="w-full min-w-0 max-w-full p-3 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-800 font-sans leading-relaxed"
-              />
-              {renderInlineTables(proposal.objetivo)}
+                  <textarea
+                    ref={objetivoRef}
+                    value={proposal.objetivo}
+                    onChange={(e) => handleStringChange('objetivo', e.target.value)}
+                    onKeyDown={(e) => handleAutoBulletKeyDown(e, proposal.objetivo, (v) => handleStringChange('objetivo', v))}
+                    placeholder="Describa el objetivo general y específico... (usa • Viñeta o escribe '• ' o '1. ' para listas automáticas)"
+                    rows={3}
+                    className="w-full min-w-0 max-w-full p-3 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-800 font-sans leading-relaxed"
+                  />
+                  {renderInlineTables(proposal.objetivo)}
+                </div>
+              )}
             </div>
           )}
 
           {/* Section 5: Descripción */}
           {(activeSectionFilter === 'all' || activeSectionFilter === 'descripcion') && (
-            <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 space-y-2 min-w-0 max-w-full overflow-x-hidden">
-              <div className="flex flex-wrap items-start justify-between gap-2 min-w-0">
-                <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide min-w-0 break-words">
-                  5. {titles.section5}
-                </label>
+            <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 transition-all min-w-0 max-w-full overflow-x-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-2 min-w-0 pb-1">
+                <button
+                  type="button"
+                  onClick={() => toggleSectionCollapse('descripcion')}
+                  className="flex items-center gap-2 text-left group cursor-pointer"
+                  title={collapsedSections['descripcion'] ? "Descomprimir sección" : "Comprimir sección"}
+                >
+                  <span className="p-1 rounded-md bg-white border border-slate-200 text-slate-500 group-hover:text-[#0A3D62] group-hover:border-blue-300 transition-colors">
+                    {collapsedSections['descripcion'] ? (
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    ) : (
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    )}
+                  </span>
+                  <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide min-w-0 break-words cursor-pointer">
+                    5. {titles.section5}
+                  </label>
+                  {proposal.descripcion?.trim() ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      {proposal.descripcion.trim().length} car.
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-400">
+                      Vacía
+                    </span>
+                  )}
+                </button>
+
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     onClick={() => handleAIRefine('refine_section', 'descripcion')}
@@ -1088,41 +1341,76 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                     <Sparkles className="w-3 h-3 mr-1 text-[#2ECC71]" />
                     Mejorar con IA
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleSectionCollapse('descripcion')}
+                    className="px-2 py-1 text-[11px] font-semibold text-slate-600 bg-white hover:bg-slate-100 border border-slate-200 rounded transition-colors"
+                  >
+                    {collapsedSections['descripcion'] ? 'Descomprimir' : 'Comprimir'}
+                  </button>
                 </div>
               </div>
 
-              <TextFormattingToolbar
-                textareaRef={descripcionRef}
-                value={proposal.descripcion || ''}
-                onChange={(v) => handleStringChange('descripcion', v)}
-                onInsertTable={() => handleInsertTableInField('descripcion')}
-              />
+              {collapsedSections['descripcion'] ? (
+                <div 
+                  onClick={() => toggleSectionCollapse('descripcion')}
+                  className="mt-2 p-2.5 bg-white rounded-lg border border-dashed border-slate-300 text-xs text-slate-600 cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-all flex items-center justify-between gap-2"
+                >
+                  <p className="truncate italic text-slate-500 flex-1">
+                    {proposal.descripcion?.trim() || 'Sección comprimida (sin descripción redactada aún). Haz clic para expandir.'}
+                  </p>
+                  <span className="text-[10px] font-bold text-[#0A3D62] shrink-0">Expandir</span>
+                </div>
+              ) : (
+                <div className="space-y-2 mt-2">
+                  <TextFormattingToolbar
+                    textareaRef={descripcionRef}
+                    value={proposal.descripcion || ''}
+                    onChange={(v) => handleStringChange('descripcion', v)}
+                    onInsertTable={() => handleInsertTableInField('descripcion')}
+                  />
 
-              <textarea
-                ref={descripcionRef}
-                value={proposal.descripcion}
-                onChange={(e) => handleStringChange('descripcion', e.target.value)}
-                onKeyDown={(e) => handleAutoBulletKeyDown(e, proposal.descripcion, (v) => handleStringChange('descripcion', v))}
-                placeholder="Escriba el detalle de la solución arquitectónica propuesta... (usa • Viñeta o escribe '• ' o '1. ' para listas automáticas)"
-                rows={4}
-                className="w-full min-w-0 max-w-full p-3 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-800 font-sans leading-relaxed"
-              />
-              {renderInlineTables(proposal.descripcion)}
+                  <textarea
+                    ref={descripcionRef}
+                    value={proposal.descripcion}
+                    onChange={(e) => handleStringChange('descripcion', e.target.value)}
+                    onKeyDown={(e) => handleAutoBulletKeyDown(e, proposal.descripcion, (v) => handleStringChange('descripcion', v))}
+                    placeholder="Escriba el detalle de la solución arquitectónica propuesta... (usa • Viñeta o escribe '• ' o '1. ' para listas automáticas)"
+                    rows={4}
+                    className="w-full min-w-0 max-w-full p-3 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-800 font-sans leading-relaxed"
+                  />
+                  {renderInlineTables(proposal.descripcion)}
+                </div>
+              )}
             </div>
           )}
 
           {/* Section 6 & 7: Análisis Operativo */}
           {(activeSectionFilter === 'all' || activeSectionFilter === 'operativo') && (
-            <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 space-y-4 min-w-0 max-w-full overflow-x-hidden">
-              <div className="flex flex-col justify-between border-b border-slate-200 pb-2 gap-2 min-w-0">
-                <div>
-                  <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide min-w-0 break-words">
-                    6 & 7. {titles.section6} & {titles.section7}
-                  </label>
-                  <p className="text-xs text-slate-500">
-                    {proposal.analisisOperativo?.length || 0} Pasos registrados
-                  </p>
-                </div>
+            <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 transition-all min-w-0 max-w-full overflow-x-hidden">
+              <div className="flex flex-wrap items-center justify-between border-b border-slate-200 pb-2 gap-2 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => toggleSectionCollapse('operativo')}
+                  className="flex items-center gap-2 text-left group cursor-pointer"
+                  title={collapsedSections['operativo'] ? "Descomprimir sección" : "Comprimir sección"}
+                >
+                  <span className="p-1 rounded-md bg-white border border-slate-200 text-slate-500 group-hover:text-[#0A3D62] group-hover:border-blue-300 transition-colors">
+                    {collapsedSections['operativo'] ? (
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    ) : (
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    )}
+                  </span>
+                  <div>
+                    <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide min-w-0 break-words cursor-pointer">
+                      6 & 7. {titles.section6} & {titles.section7}
+                    </label>
+                    <span className="text-xs text-slate-500">
+                      {proposal.analisisOperativo?.length || 0} Pasos registrados
+                    </span>
+                  </div>
+                </button>
 
                 <div className="flex flex-wrap items-center gap-2 min-w-0">
                   <button
@@ -1140,101 +1428,192 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                     <Plus className="w-3.5 h-3.5 mr-1" />
                     Añadir Paso Manual
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleSectionCollapse('operativo')}
+                    className="px-2 py-1 text-xs font-semibold text-slate-600 bg-white hover:bg-slate-100 border border-slate-200 rounded transition-colors"
+                  >
+                    {collapsedSections['operativo'] ? 'Descomprimir' : 'Comprimir'}
+                  </button>
                 </div>
               </div>
 
-              <div className="space-y-3">
-                {proposal.analisisOperativo?.map((step, idx) => {
-                  const linkedImg = images[idx];
-                  return (
-                    <div key={idx} className="bg-white p-3 rounded-lg border border-slate-200 space-y-2 relative group min-w-0">
-                      <div className="flex flex-wrap items-start justify-between gap-2 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2 min-w-0 flex-1">
-                          <span className="text-xs font-bold text-[#0A3D62] bg-blue-50 px-2 py-0.5 rounded border border-blue-200 shrink-0">
-                            Paso 7.{idx + 1}
-                          </span>
-                          {linkedImg && (
-                            <span className="text-[11px] text-emerald-700 bg-emerald-50 font-semibold px-2 py-0.5 rounded border border-emerald-200 inline-flex items-center min-w-0 max-w-full">
-                              <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600 shrink-0" />
-                              <span className="truncate">[IMAGEN_{idx + 1}]: {linkedImg.title}</span>
+              {collapsedSections['operativo'] ? (
+                <div 
+                  onClick={() => toggleSectionCollapse('operativo')}
+                  className="mt-3 p-2.5 bg-white rounded-lg border border-dashed border-slate-300 text-xs text-slate-600 cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-all flex items-center justify-between gap-2"
+                >
+                  <p className="truncate italic text-slate-500 flex-1">
+                    {proposal.analisisOperativo && proposal.analisisOperativo.length > 0
+                      ? proposal.analisisOperativo.map((s, i) => `Paso ${i+1}: ${s.titulo || 'Sin título'}`).join(' | ')
+                      : 'Sección comprimida (0 pasos). Haz clic para expandir.'}
+                  </p>
+                  <span className="text-[10px] font-bold text-[#0A3D62] shrink-0">Expandir</span>
+                </div>
+              ) : (
+                <div className="space-y-3 mt-3">
+                  {(!proposal.analisisOperativo || proposal.analisisOperativo.length === 0) && (
+                    <p className="text-xs text-slate-400 italic bg-white p-3 rounded-lg border border-slate-200 text-center">
+                      No hay pasos operativos agregados. Haz clic en "Añadir Paso Manual" o "Redactar Pasos con IA".
+                    </p>
+                  )}
+                  {proposal.analisisOperativo?.map((step, idx) => {
+                    const linkedImg = images[idx];
+                    return (
+                      <div key={idx} className="bg-white p-3 rounded-lg border border-slate-200 space-y-2 relative group min-w-0">
+                        <div className="flex flex-wrap items-start justify-between gap-2 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2 min-w-0 flex-1">
+                            <span className="text-xs font-bold text-[#0A3D62] bg-blue-50 px-2 py-0.5 rounded border border-blue-200 shrink-0">
+                              Paso 7.{idx + 1}
                             </span>
-                          )}
+                            {linkedImg && (
+                              <span className="text-[11px] text-emerald-700 bg-emerald-50 font-semibold px-2 py-0.5 rounded border border-emerald-200 inline-flex items-center min-w-0 max-w-full">
+                                <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600 shrink-0" />
+                                <span className="truncate">[IMAGEN_{idx + 1}]: {linkedImg.title}</span>
+                              </span>
+                            )}
+                          </div>
+
+                          <button
+                            onClick={() => handleRemoveStep(idx)}
+                            className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                            title="Eliminar paso"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
 
-                        <button
-                          onClick={() => handleRemoveStep(idx)}
-                          className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                          title="Eliminar paso"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Título del Paso:</label>
+                          <input
+                            type="text"
+                            value={step.titulo}
+                            onChange={(e) => handleStepChange(idx, 'titulo', e.target.value)}
+                            placeholder="Título descriptivo del paso..."
+                            className="w-full min-w-0 max-w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded font-semibold text-slate-800"
+                          />
+                        </div>
 
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Título del Paso:</label>
-                        <input
-                          type="text"
-                          value={step.titulo}
-                          onChange={(e) => handleStepChange(idx, 'titulo', e.target.value)}
-                          placeholder="Título descriptivo del paso..."
-                          className="w-full min-w-0 max-w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded font-semibold text-slate-800"
-                        />
+                        <div className="space-y-1.5">
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Explicación Técnica Detallada:</label>
+                          <TextFormattingToolbar
+                            value={step.explicacion || ''}
+                            onChange={(v) => handleStepChange(idx, 'explicacion', v)}
+                            onInsertTable={() => handleInsertTableInStep(idx)}
+                          />
+                          <textarea
+                            value={step.explicacion}
+                            onChange={(e) => handleStepChange(idx, 'explicacion', e.target.value)}
+                            onKeyDown={(e) => handleAutoBulletKeyDown(e, step.explicacion, (v) => handleStepChange(idx, 'explicacion', v))}
+                            placeholder="Detalle los procedimientos, llamadas a API o reglas de negocio... (usa • Viñeta o escribe '• ' o '1. ')"
+                            rows={3}
+                            className="w-full min-w-0 max-w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded text-slate-800 font-sans leading-relaxed"
+                          />
+                          {renderInlineTables(step.explicacion)}
+                        </div>
                       </div>
-
-                      <div className="space-y-1.5">
-                        <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Explicación Técnica Detallada:</label>
-                        <TextFormattingToolbar
-                          value={step.explicacion || ''}
-                          onChange={(v) => handleStepChange(idx, 'explicacion', v)}
-                          onInsertTable={() => handleInsertTableInStep(idx)}
-                        />
-                        <textarea
-                          value={step.explicacion}
-                          onChange={(e) => handleStepChange(idx, 'explicacion', e.target.value)}
-                          onKeyDown={(e) => handleAutoBulletKeyDown(e, step.explicacion, (v) => handleStepChange(idx, 'explicacion', v))}
-                          placeholder="Detalle los procedimientos, llamadas a API o reglas de negocio... (usa • Viñeta o escribe '• ' o '1. ')"
-                          rows={3}
-                          className="w-full min-w-0 max-w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded text-slate-800 font-sans leading-relaxed"
-                        />
-                        {renderInlineTables(step.explicacion)}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
           {/* Tablas del documento */}
           {(activeSectionFilter === 'all' || activeSectionFilter === 'tablas') && (
-            <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 space-y-3 min-w-0 max-w-full overflow-x-hidden">
-              <div className="flex flex-wrap items-start justify-between gap-2 min-w-0">
-                <div>
-                  <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide">
-                    Tablas del documento
-                  </label>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Edítalas aquí. En el texto aparecen como [TABLA_1], [TABLA_2]… y salen en la previa y el Word.
-                  </p>
+            <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 transition-all min-w-0 max-w-full overflow-x-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-2 min-w-0 pb-1">
+                <button
+                  type="button"
+                  onClick={() => toggleSectionCollapse('tablas')}
+                  className="flex items-center gap-2 text-left group cursor-pointer"
+                  title={collapsedSections['tablas'] ? "Descomprimir sección" : "Comprimir sección"}
+                >
+                  <span className="p-1 rounded-md bg-white border border-slate-200 text-slate-500 group-hover:text-[#0A3D62] group-hover:border-blue-300 transition-colors">
+                    {collapsedSections['tablas'] ? (
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    ) : (
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    )}
+                  </span>
+                  <div>
+                    <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide cursor-pointer">
+                      Tablas del documento
+                    </label>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Edítalas aquí. En el texto aparecen como [TABLA_1], [TABLA_2]…
+                    </p>
+                  </div>
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-semibold text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded-full">
+                    {proposal.tables?.length || 0} tabla{(proposal.tables?.length || 0) === 1 ? '' : 's'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => toggleSectionCollapse('tablas')}
+                    className="px-2 py-1 text-[11px] font-semibold text-slate-600 bg-white hover:bg-slate-100 border border-slate-200 rounded transition-colors"
+                  >
+                    {collapsedSections['tablas'] ? 'Descomprimir' : 'Comprimir'}
+                  </button>
                 </div>
-                <span className="text-[11px] font-semibold text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded-full">
-                  {proposal.tables?.length || 0} tabla{(proposal.tables?.length || 0) === 1 ? '' : 's'}
-                </span>
               </div>
-              <DocumentTablesEditor
-                tables={proposal.tables || []}
-                onChange={(tables) => onChange({ ...proposal, tables })}
-              />
+
+              {collapsedSections['tablas'] ? (
+                <div 
+                  onClick={() => toggleSectionCollapse('tablas')}
+                  className="mt-2 p-2.5 bg-white rounded-lg border border-dashed border-slate-300 text-xs text-slate-600 cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-all flex items-center justify-between gap-2"
+                >
+                  <p className="truncate italic text-slate-500 flex-1">
+                    {proposal.tables && proposal.tables.length > 0
+                      ? proposal.tables.map((t, i) => `[TABLA_${i+1}]: ${t.caption || 'Sin título'}`).join(' | ')
+                      : 'Sección comprimida (sin tablas creadas). Haz clic para expandir.'}
+                  </p>
+                  <span className="text-[10px] font-bold text-[#0A3D62] shrink-0">Expandir</span>
+                </div>
+              ) : (
+                <div className="mt-2">
+                  <DocumentTablesEditor
+                    tables={proposal.tables || []}
+                    onChange={(tables) => onChange({ ...proposal, tables })}
+                  />
+                </div>
+              )}
             </div>
           )}
 
           {/* Section 8: Descargo */}
           {(activeSectionFilter === 'all' || activeSectionFilter === 'descargo') && (
-            <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 space-y-2 min-w-0 max-w-full overflow-x-hidden">
-              <div className="flex flex-wrap items-start justify-between gap-2 min-w-0">
-                <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide min-w-0 break-words">
-                  8. {titles.section8}
-                </label>
+            <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 transition-all min-w-0 max-w-full overflow-x-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-2 min-w-0 pb-1">
+                <button
+                  type="button"
+                  onClick={() => toggleSectionCollapse('descargo')}
+                  className="flex items-center gap-2 text-left group cursor-pointer"
+                  title={collapsedSections['descargo'] ? "Descomprimir sección" : "Comprimir sección"}
+                >
+                  <span className="p-1 rounded-md bg-white border border-slate-200 text-slate-500 group-hover:text-[#0A3D62] group-hover:border-blue-300 transition-colors">
+                    {collapsedSections['descargo'] ? (
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    ) : (
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    )}
+                  </span>
+                  <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide min-w-0 break-words cursor-pointer">
+                    8. {titles.section8}
+                  </label>
+                  {proposal.descargo?.trim() ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      {proposal.descargo.trim().length} car.
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-400">
+                      Vacía
+                    </span>
+                  )}
+                </button>
+
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     onClick={() => handleAIRefine('refine_section', 'descargo')}
@@ -1244,25 +1623,46 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                     <Sparkles className="w-3 h-3 mr-1 text-[#2ECC71]" />
                     Refinar Cláusula
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleSectionCollapse('descargo')}
+                    className="px-2 py-1 text-[11px] font-semibold text-slate-600 bg-white hover:bg-slate-100 border border-slate-200 rounded transition-colors"
+                  >
+                    {collapsedSections['descargo'] ? 'Descomprimir' : 'Comprimir'}
+                  </button>
                 </div>
               </div>
 
-              <TextFormattingToolbar
-                textareaRef={descargoRef}
-                value={proposal.descargo || ''}
-                onChange={(v) => handleStringChange('descargo', v)}
-                onInsertTable={() => handleInsertTableInField('descargo')}
-              />
+              {collapsedSections['descargo'] ? (
+                <div 
+                  onClick={() => toggleSectionCollapse('descargo')}
+                  className="mt-2 p-2.5 bg-white rounded-lg border border-dashed border-slate-300 text-xs text-slate-600 cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-all flex items-center justify-between gap-2"
+                >
+                  <p className="truncate italic text-slate-500 flex-1">
+                    {proposal.descargo?.trim() || 'Sección comprimida (sin descargo). Haz clic para expandir.'}
+                  </p>
+                  <span className="text-[10px] font-bold text-[#0A3D62] shrink-0">Expandir</span>
+                </div>
+              ) : (
+                <div className="space-y-2 mt-2">
+                  <TextFormattingToolbar
+                    textareaRef={descargoRef}
+                    value={proposal.descargo || ''}
+                    onChange={(v) => handleStringChange('descargo', v)}
+                    onInsertTable={() => handleInsertTableInField('descargo')}
+                  />
 
-              <textarea
-                ref={descargoRef}
-                value={proposal.descargo}
-                onChange={(e) => handleStringChange('descargo', e.target.value)}
-                onKeyDown={(e) => handleAutoBulletKeyDown(e, proposal.descargo, (v) => handleStringChange('descargo', v))}
-                rows={3}
-                className="w-full min-w-0 max-w-full p-3 text-xs bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-700 italic font-sans leading-relaxed"
-              />
-              {renderInlineTables(proposal.descargo)}
+                  <textarea
+                    ref={descargoRef}
+                    value={proposal.descargo}
+                    onChange={(e) => handleStringChange('descargo', e.target.value)}
+                    onKeyDown={(e) => handleAutoBulletKeyDown(e, proposal.descargo, (v) => handleStringChange('descargo', v))}
+                    rows={3}
+                    className="w-full min-w-0 max-w-full p-3 text-xs bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-700 italic font-sans leading-relaxed"
+                  />
+                  {renderInlineTables(proposal.descargo)}
+                </div>
+              )}
             </div>
           )}
 

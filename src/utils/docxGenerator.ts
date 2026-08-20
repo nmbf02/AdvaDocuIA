@@ -620,41 +620,53 @@ export async function generateAdvansysDocx(
   docElements.push(createMetadataTable(metadata));
   docElements.push(new Paragraph({ text: '', spacing: { after: 240 } }));
 
+  // Track page 2 break so first section after sections 1-3 triggers page break
+  let page2BreakEmitted = false;
+  const getPageBreakForLaterSection = () => {
+    if (!page2BreakEmitted) {
+      page2BreakEmitted = true;
+      return true;
+    }
+    return false;
+  };
+
   // 1. Resumen Ejecutivo
-  if (!titles.hideSection1) {
+  const hasSection1 = !titles.hideSection1 && Boolean(proposal.resumenEjecutivo && proposal.resumenEjecutivo.trim());
+  if (hasSection1) {
     docElements.push(createSectionHeader(titles.section1, '1'));
-    pushTextWithTables(docElements, proposal.resumenEjecutivo || 'Sin resumen provisto.', contentTables, usedTables);
+    pushTextWithTables(docElements, proposal.resumenEjecutivo.trim(), contentTables, usedTables);
   }
 
   // 2. Beneficios de la Propuesta
-  if (!titles.hideSection2) {
+  const validBeneficios = (proposal.beneficios || []).filter((b) => b && b.trim().length > 0);
+  const hasSection2 = !titles.hideSection2 && validBeneficios.length > 0;
+  if (hasSection2) {
     docElements.push(createSectionHeader(titles.section2, '2'));
-    if (proposal.beneficios && proposal.beneficios.length > 0) {
-      proposal.beneficios.forEach((b) => {
-        docElements.push(
-          new Paragraph({
-            bullet: { level: 0 },
-            spacing: { before: 60, after: 60 },
-            children: parseBoldRuns(b),
-          })
-        );
-      });
-    } else {
+    validBeneficios.forEach((b) => {
       docElements.push(
         new Paragraph({
-          text: 'No se han detallado beneficios específicos.',
+          bullet: { level: 0 },
           spacing: { before: 60, after: 60 },
+          children: parseBoldRuns(b),
         })
       );
-    }
+    });
   }
 
   // 3. Alcance, Exclusiones y Entregables
-  if (!titles.hideSection3) {
+  const validAlcance = (proposal.alcanceExclusionesEntregables?.alcance || []).filter((i) => i && i.trim().length > 0);
+  const validExclusiones = (proposal.alcanceExclusionesEntregables?.exclusiones || []).filter((i) => i && i.trim().length > 0);
+  const validEntregables = (proposal.alcanceExclusionesEntregables?.entregables || []).filter((i) => i && i.trim().length > 0);
+  const hasSection3_1 = !titles.hideSection3_1 && validAlcance.length > 0;
+  const hasSection3_2 = !titles.hideSection3_2 && validExclusiones.length > 0;
+  const hasSection3_3 = !titles.hideSection3_3 && validEntregables.length > 0;
+  const hasSection3 = !titles.hideSection3 && (hasSection3_1 || hasSection3_2 || hasSection3_3);
+
+  if (hasSection3) {
     docElements.push(createSectionHeader(titles.section3, '3'));
 
     // Alcance
-    if (!titles.hideSection3_1) {
+    if (hasSection3_1) {
       docElements.push(
         new Paragraph({
           spacing: { before: 120, after: 60 },
@@ -669,7 +681,7 @@ export async function generateAdvansysDocx(
           ],
         })
       );
-      (proposal.alcanceExclusionesEntregables?.alcance || []).forEach((item) => {
+      validAlcance.forEach((item) => {
         docElements.push(
           new Paragraph({
             bullet: { level: 0 },
@@ -681,7 +693,7 @@ export async function generateAdvansysDocx(
     }
 
     // Exclusiones
-    if (!titles.hideSection3_2) {
+    if (hasSection3_2) {
       docElements.push(
         new Paragraph({
           spacing: { before: 120, after: 60 },
@@ -696,7 +708,7 @@ export async function generateAdvansysDocx(
           ],
         })
       );
-      (proposal.alcanceExclusionesEntregables?.exclusiones || []).forEach((item) => {
+      validExclusiones.forEach((item) => {
         docElements.push(
           new Paragraph({
             bullet: { level: 0 },
@@ -708,7 +720,7 @@ export async function generateAdvansysDocx(
     }
 
     // Entregables
-    if (!titles.hideSection3_3) {
+    if (hasSection3_3) {
       docElements.push(
         new Paragraph({
           spacing: { before: 120, after: 60 },
@@ -723,7 +735,7 @@ export async function generateAdvansysDocx(
           ],
         })
       );
-      (proposal.alcanceExclusionesEntregables?.entregables || []).forEach((item) => {
+      validEntregables.forEach((item) => {
         docElements.push(
           new Paragraph({
             bullet: { level: 0 },
@@ -735,22 +747,26 @@ export async function generateAdvansysDocx(
     }
   }
 
-  // 4. Objetivo (Starts on Page 2 after Section 3)
-  if (!titles.hideSection4) {
-    docElements.push(createSectionHeader(titles.section4, '4', true));
-    pushTextWithTables(docElements, proposal.objetivo || '', contentTables, usedTables);
+  // 4. Objetivo (Starts on Page 2 after Section 3 if present)
+  const hasSection4 = !titles.hideSection4 && Boolean(proposal.objetivo && proposal.objetivo.trim());
+  if (hasSection4) {
+    docElements.push(createSectionHeader(titles.section4, '4', getPageBreakForLaterSection()));
+    pushTextWithTables(docElements, proposal.objetivo.trim(), contentTables, usedTables);
   }
 
   // 5. Descripción
-  if (!titles.hideSection5) {
-    docElements.push(createSectionHeader(titles.section5, '5'));
-    pushTextWithTables(docElements, proposal.descripcion || '', contentTables, usedTables);
+  const hasSection5 = !titles.hideSection5 && Boolean(proposal.descripcion && proposal.descripcion.trim());
+  if (hasSection5) {
+    docElements.push(createSectionHeader(titles.section5, '5', getPageBreakForLaterSection()));
+    pushTextWithTables(docElements, proposal.descripcion.trim(), contentTables, usedTables);
   }
 
   // 6. Índice Análisis Operativo
-  if (!titles.hideSection6) {
-    docElements.push(createSectionHeader(titles.section6, '6'));
-    (proposal.indiceAnalisisOperativo || []).forEach((item, idx) => {
+  const validIndice = (proposal.indiceAnalisisOperativo || []).filter((item) => item && item.trim().length > 0);
+  const hasSection6 = !titles.hideSection6 && validIndice.length > 0;
+  if (hasSection6) {
+    docElements.push(createSectionHeader(titles.section6, '6', getPageBreakForLaterSection()));
+    validIndice.forEach((item, idx) => {
       docElements.push(
         new Paragraph({
           spacing: { before: 60, after: 60 },
@@ -775,92 +791,98 @@ export async function generateAdvansysDocx(
   }
 
   // 7. Análisis Operativo con Imágenes e Ilustraciones
-  if (!titles.hideSection7) {
-    docElements.push(createSectionHeader(titles.section7, '7'));
+  const validSteps = (proposal.analisisOperativo || []).filter(
+    (step, idx) =>
+      (step.titulo && step.titulo.trim().length > 0) ||
+      (step.explicacion && step.explicacion.trim().length > 0) ||
+      processedImages[idx]
+  );
+  const hasSection7 = !titles.hideSection7 && validSteps.length > 0;
 
-    if (proposal.analisisOperativo && proposal.analisisOperativo.length > 0) {
-      proposal.analisisOperativo.forEach((step, idx) => {
-        // Step Title
-        docElements.push(
-          new Paragraph({
-            spacing: { before: 180, after: 80 },
-            children: [
-              new TextRun({
-                text: `Paso 7.${idx + 1}: ${step.titulo}`,
-                bold: true,
-                color: COLOR_PRIMARY_BLUE,
-                size: 24, // 12pt
-                font: 'Calibri',
-              }),
-            ],
-          })
-        );
+  if (hasSection7) {
+    docElements.push(createSectionHeader(titles.section7, '7', getPageBreakForLaterSection()));
 
-        // Check if image referenced or mapped to step index
-        const linkedImg = imageMapByIndex.get(idx + 1) || processedImages[idx];
+    validSteps.forEach((step, originalIdx) => {
+      const stepNumber = originalIdx + 1;
+      const stepTitle = step.titulo?.trim() || `Paso ${stepNumber}`;
 
-        if (linkedImg && linkedImg.bytes && linkedImg.bytes.length > 0) {
-          try {
-            const size = fitImageSize(linkedImg.width, linkedImg.height, 500, 320, linkedImg.widthPercent);
-            const alignment = paragraphAlignOf(linkedImg);
-            docElements.push(
-              new Paragraph({
-                alignment,
-                spacing: { before: 120, after: 60 },
-                children: [
-                  createDocumentImageRun(linkedImg.bytes, size, linkedImg),
-                ],
-              })
-            );
-
-            // Image Caption
-            docElements.push(
-              new Paragraph({
-                alignment,
-                spacing: { before: 40, after: 120 },
-                children: [
-                  new TextRun({
-                    text: `[IMAGEN_${linkedImg.index}] ${linkedImg.title}`,
-                    bold: true,
-                    italics: true,
-                    color: COLOR_MUTED_GRAY,
-                    size: 18, // 9pt
-                    font: 'Calibri',
-                  }),
-                  ...(linkedImg.description ? [
-                    new TextRun({
-                      text: ` - ${linkedImg.description}`,
-                      italics: true,
-                      color: COLOR_MUTED_GRAY,
-                      size: 18,
-                      font: 'Calibri',
-                    })
-                  ] : [])
-                ],
-              })
-            );
-          } catch (e) {
-            console.error('Failed to append image to docx:', e);
-          }
-        }
-
-        // Step Explanation Text
-        pushTextWithTables(docElements, step.explicacion || '', contentTables, usedTables);
-      });
-    } else {
+      // Step Title
       docElements.push(
         new Paragraph({
-          text: 'Se desarrollarán los flujos operativos en la fase detallada.',
-          spacing: { before: 100, after: 100 },
+          spacing: { before: 180, after: 80 },
+          children: [
+            new TextRun({
+              text: `Paso 7.${stepNumber}: ${stepTitle}`,
+              bold: true,
+              color: COLOR_PRIMARY_BLUE,
+              size: 24, // 12pt
+              font: 'Calibri',
+            }),
+          ],
         })
       );
-    }
+
+      // Check if image referenced or mapped to step index
+      const linkedImg = imageMapByIndex.get(stepNumber) || processedImages[originalIdx];
+
+      if (linkedImg && linkedImg.bytes && linkedImg.bytes.length > 0) {
+        try {
+          const size = fitImageSize(linkedImg.width, linkedImg.height, 500, 320, linkedImg.widthPercent);
+          const alignment = paragraphAlignOf(linkedImg);
+          docElements.push(
+            new Paragraph({
+              alignment,
+              spacing: { before: 120, after: 60 },
+              children: [
+                createDocumentImageRun(linkedImg.bytes, size, linkedImg),
+              ],
+            })
+          );
+
+          // Image Caption
+          docElements.push(
+            new Paragraph({
+              alignment,
+              spacing: { before: 40, after: 120 },
+              children: [
+                new TextRun({
+                  text: `[IMAGEN_${linkedImg.index}] ${linkedImg.title}`,
+                  bold: true,
+                  italics: true,
+                  color: COLOR_MUTED_GRAY,
+                  size: 18, // 9pt
+                  font: 'Calibri',
+                }),
+                ...(linkedImg.description
+                  ? [
+                      new TextRun({
+                        text: ` - ${linkedImg.description}`,
+                        italics: true,
+                        color: COLOR_MUTED_GRAY,
+                        size: 18,
+                        font: 'Calibri',
+                      }),
+                    ]
+                  : []),
+              ],
+            })
+          );
+        } catch (e) {
+          console.error('Failed to append image to docx:', e);
+        }
+      }
+
+      // Step Explanation Text
+      if (step.explicacion?.trim()) {
+        pushTextWithTables(docElements, step.explicacion.trim(), contentTables, usedTables);
+      }
+    });
   }
 
   // Tablas no referenciadas con [TABLA_n] — se agregan antes del descargo
   const unusedTables = contentTables.filter((_, idx) => !usedTables.has(idx));
   if (unusedTables.length > 0) {
-    docElements.push(createSectionHeader('Tablas de apoyo', ''));
+    docElements.push(createSectionHeader('Tablas de apoyo', '', getPageBreakForLaterSection()));
     unusedTables.forEach((table) => {
       if (table.title?.trim()) {
         docElements.push(
@@ -883,16 +905,11 @@ export async function generateAdvansysDocx(
     });
   }
 
-  // 8. Descargo / Cláusula de Responsabilidad
-  if (!titles.hideSection8) {
-    docElements.push(createSectionHeader(titles.section8, '8'));
-    pushTextWithTables(
-      docElements,
-      proposal.descargo ||
-        'La presente propuesta técnica y análisis operativo han sido elaborados exclusivamente por Advansys para uso confidencial del cliente indicado. Los requerimientos, diagramas y estimaciones contenidos están sujetos a validación formal tras la aprobación del acta de inicio de proyecto. Queda prohibida la reproducción parcial o total sin autorización expresa.',
-      contentTables,
-      usedTables
-    );
+  // 8. Descargo / Cláusula de Responsabilidad (Only rendered if user provided descargo text)
+  const hasSection8 = !titles.hideSection8 && Boolean(proposal.descargo && proposal.descargo.trim());
+  if (hasSection8) {
+    docElements.push(createSectionHeader(titles.section8, '8', getPageBreakForLaterSection()));
+    pushTextWithTables(docElements, proposal.descargo.trim(), contentTables, usedTables);
   }
 
   // Build Advansys Header Banner

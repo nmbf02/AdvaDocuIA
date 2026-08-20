@@ -13,7 +13,8 @@ import {
   FilePlus,
   HelpCircle,
   Check,
-  Palette
+  Palette,
+  Database
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -21,6 +22,7 @@ interface HeaderProps {
   onReset: () => void;
   onOpenHistory: () => void;
   onOpenSettings: () => void;
+  onOpenBackup?: () => void;
   onRevertToSaved?: () => void;
   hasSavedVersion?: boolean;
   onGoHome?: () => void;
@@ -37,6 +39,7 @@ export const Header: React.FC<HeaderProps> = ({
   onReset,
   onOpenHistory,
   onOpenSettings,
+  onOpenBackup,
   onRevertToSaved,
   hasSavedVersion = true,
   onGoHome,
@@ -239,6 +242,23 @@ export const Header: React.FC<HeaderProps> = ({
                   </button>
 
                   <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
+
+                  {onOpenBackup && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMenuOpen(false);
+                        onOpenBackup();
+                      }}
+                      className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:text-[#0A3D62] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2.5 transition-colors cursor-pointer"
+                    >
+                      <Database className="w-4 h-4 text-[#0A3D62] dark:text-blue-400" />
+                      <div>
+                        <p className="font-semibold leading-none">Copia de Seguridad</p>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Exportar o importar historial</p>
+                      </div>
+                    </button>
+                  )}
 
                   <button
                     type="button"

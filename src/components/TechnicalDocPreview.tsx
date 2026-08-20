@@ -1,5 +1,5 @@
 import React from 'react';
-import { MetadataHeader, TechnicalDoc, UploadedImage } from '../types';
+import { MetadataHeader, TechnicalDoc, UploadedImage, getEffectiveTechnicalTitles } from '../types';
 import { FileText } from 'lucide-react';
 import { getAdvansysBannerSvg } from '../data/banner';
 import { formatInlineBold, PreviewTable, PreviewImage, RichTextBlock } from './DocumentPreviewBlocks';
@@ -15,6 +15,9 @@ export const TechnicalDocPreview: React.FC<TechnicalDocPreviewProps> = ({
   technicalDoc,
   images,
 }) => {
+  const titles = getEffectiveTechnicalTitles(metadata.customTitles || technicalDoc.customTitles);
+  const mainTitle = technicalDoc.tituloDocumento?.trim() || titles.techMainTitle;
+
   const bannerSvg = getAdvansysBannerSvg(
     metadata.headerBrandTag || 'ADVANSYS',
     metadata.headerSubtitle ?? 'Documentación técnica interna',
@@ -22,10 +25,10 @@ export const TechnicalDocPreview: React.FC<TechnicalDocPreviewProps> = ({
   );
   const tables = technicalDoc.tables || [];
   const bodyText = [
-    technicalDoc.ruta,
-    technicalDoc.flujoOperativo,
-    technicalDoc.diseno,
-    technicalDoc.consideracionesTecnicas,
+    !titles.hideTechSection1 && technicalDoc.ruta?.trim() ? technicalDoc.ruta : '',
+    !titles.hideTechSection2 && technicalDoc.flujoOperativo?.trim() ? technicalDoc.flujoOperativo : '',
+    !titles.hideTechSection3 && technicalDoc.diseno?.trim() ? technicalDoc.diseno : '',
+    !titles.hideTechSection4 && technicalDoc.consideracionesTecnicas?.trim() ? technicalDoc.consideracionesTecnicas : '',
   ].join('\n');
 
   const unusedTables = tables.filter((_, idx) => {
@@ -37,18 +40,17 @@ export const TechnicalDocPreview: React.FC<TechnicalDocPreviewProps> = ({
     return !bodyText.toUpperCase().includes(tag.toUpperCase());
   });
 
-  const section = (number: string, title: string, text?: string) => (
-    <div>
-      <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
-        {number}. {title}
-      </h2>
-      {text?.trim() ? (
-        <RichTextBlock text={text} tables={tables} images={images} />
-      ) : (
-        <p className="text-xs text-slate-400 italic">Sin información especificada.</p>
-      )}
-    </div>
-  );
+  const section = (title: string, text?: string) => {
+    if (!text?.trim()) return null;
+    return (
+      <div>
+        <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
+          {title}
+        </h2>
+        <RichTextBlock text={text.trim()} tables={tables} images={images} />
+      </div>
+    );
+  };
 
   return (
     <div className="w-full overflow-x-auto py-2">
@@ -66,11 +68,14 @@ export const TechnicalDocPreview: React.FC<TechnicalDocPreviewProps> = ({
             Uso interno Dev / QA
           </span>
         </div>
-        <div className="text-center mb-6">
-          <h1 className="text-lg font-bold text-[#0A3D62] uppercase tracking-tight">
-            Documentación Técnica Interna y Especificación de Desarrollo
-          </h1>
-        </div>
+        
+        {!titles.hideTechMainTitle && (
+          <div className="text-center mb-6">
+            <h1 className="text-lg font-bold text-[#0A3D62] uppercase tracking-tight">
+              {mainTitle}
+            </h1>
+          </div>
+        )}
 
         <div className="border border-slate-300 rounded-md overflow-hidden mb-8 text-xs bg-slate-50/50">
           <div className="grid grid-cols-2 border-b border-slate-200 divide-x divide-slate-200">
@@ -104,10 +109,10 @@ export const TechnicalDocPreview: React.FC<TechnicalDocPreviewProps> = ({
         </div>
 
         <div className="space-y-6">
-          {section('1', 'Ruta de Acceso & Navegación en el Sistema', technicalDoc.ruta)}
-          {section('2', 'Flujo Operativo Interno', technicalDoc.flujoOperativo)}
-          {section('3', 'Diseño de Interfaz y Estructura de Datos', technicalDoc.diseno)}
-          {section('4', 'Consideraciones Técnicas y de Seguridad', technicalDoc.consideracionesTecnicas)}
+          {!titles.hideTechSection1 && Boolean(technicalDoc.ruta?.trim()) && section(titles.techSection1, technicalDoc.ruta)}
+          {!titles.hideTechSection2 && Boolean(technicalDoc.flujoOperativo?.trim()) && section(titles.techSection2, technicalDoc.flujoOperativo)}
+          {!titles.hideTechSection3 && Boolean(technicalDoc.diseno?.trim()) && section(titles.techSection3, technicalDoc.diseno)}
+          {!titles.hideTechSection4 && Boolean(technicalDoc.consideracionesTecnicas?.trim()) && section(titles.techSection4, technicalDoc.consideracionesTecnicas)}
 
           {unusedTables.length > 0 && (
             <div>
@@ -132,20 +137,16 @@ export const TechnicalDocPreview: React.FC<TechnicalDocPreviewProps> = ({
             </div>
           )}
 
-          <div>
-            <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
-              5. Código de Ejemplo / Scripts
-            </h2>
-            {technicalDoc.codigoEjemplo?.trim() ? (
+          {!titles.hideTechSection5 && Boolean(technicalDoc.codigoEjemplo?.trim()) && (
+            <div>
+              <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
+                {titles.techSection5}
+              </h2>
               <pre className="text-[11px] leading-relaxed font-mono text-emerald-300 bg-slate-900 p-3.5 rounded-lg border border-slate-800 overflow-x-auto whitespace-pre-wrap">
-                {technicalDoc.codigoEjemplo}
+                {technicalDoc.codigoEjemplo.trim()}
               </pre>
-            ) : (
-              <p className="text-xs text-slate-400 italic">
-                No aplica código o scripts para este requerimiento.
-              </p>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         <div className="mt-12 pt-4 border-t border-slate-200 flex items-center justify-between text-[10px] text-slate-400">

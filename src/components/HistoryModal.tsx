@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { SavedProposal, DocumentStatus } from '../types';
-import { X, Calendar, Building2, FileText, Trash2, ArrowRight, Copy, GitBranch, Search, Check, Tag, Sparkles, Filter, RotateCcw, CheckCircle2, CheckCheck, Clock, ShieldCheck, Award, Terminal, Layers, Link } from 'lucide-react';
+import { X, Calendar, Building2, FileText, Trash2, ArrowRight, Copy, GitBranch, Search, Check, Tag, Sparkles, Filter, RotateCcw, CheckCircle2, CheckCheck, Clock, ShieldCheck, Award, Terminal, Layers, Link, Database, Download } from 'lucide-react';
 
 interface HistoryModalProps {
   isOpen: boolean;
@@ -10,6 +10,7 @@ interface HistoryModalProps {
   onDeleteProposal: (id: string) => void;
   onDuplicateProposal?: (proposal: SavedProposal) => void;
   onUpdateStatus?: (id: string, status: DocumentStatus) => void;
+  onOpenBackup?: () => void;
 }
 
 const isTechnicalHistoryItem = (p: SavedProposal): boolean =>
@@ -34,7 +35,8 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   onSelectProposal,
   onDeleteProposal,
   onDuplicateProposal,
-  onUpdateStatus
+  onUpdateStatus,
+  onOpenBackup
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -292,12 +294,25 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {onOpenBackup && (
+              <button
+                type="button"
+                onClick={onOpenBackup}
+                className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 border border-white/20 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Descargar o restaurar copia de seguridad"
+              >
+                <Database className="w-3.5 h-3.5 text-[#2ECC71]" />
+                <span className="hidden sm:inline">Copia de Seguridad</span>
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Section Tabs: Todos / En Progreso / Finalizados & Culminados */}
@@ -781,12 +796,24 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
             <Sparkles className="w-3.5 h-3.5 mt-0.5 text-[#2ECC71] shrink-0" />
             <span>Los documentos marcados como <strong>Finalizado</strong> o <strong>Culminado</strong> quedan archivados formalmente en su propia sección.</span>
           </span>
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-900 bg-white border border-slate-300 rounded-lg shadow-sm"
-          >
-            Cerrar
-          </button>
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            {onOpenBackup && (
+              <button
+                type="button"
+                onClick={onOpenBackup}
+                className="px-3.5 py-2 text-xs font-bold text-[#0A3D62] hover:bg-blue-50 bg-white border border-blue-200 rounded-lg shadow-2xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <Database className="w-3.5 h-3.5 text-[#0A3D62]" />
+                <span>Exportar / Importar Backup</span>
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-900 bg-white border border-slate-300 rounded-lg shadow-sm cursor-pointer"
+            >
+              Cerrar
+            </button>
+          </div>
         </div>
 
       </div>

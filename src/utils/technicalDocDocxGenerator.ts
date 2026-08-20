@@ -15,7 +15,7 @@ import {
   PageNumber,
   Packer,
 } from 'docx';
-import { MetadataHeader, TechnicalDoc, DocumentTable, UploadedImage } from '../types';
+import { MetadataHeader, TechnicalDoc, DocumentTable, UploadedImage, getEffectiveTechnicalTitles } from '../types';
 import { dataUrlToUint8Array } from './imageExport';
 import { fitImageSize, ImageAlign } from './imageLayout';
 import { createDocumentImageRun, paragraphAlignOf } from './imageDocx';
@@ -346,24 +346,28 @@ export async function generateTechnicalDocDocx(
     )
   ).filter((img) => img.bytes.length > 0);
 
+  const titles = getEffectiveTechnicalTitles(metadata.customTitles || techDoc.customTitles);
+  const mainTitle = techDoc.tituloDocumento?.trim() || titles.techMainTitle;
   const docElements: (Paragraph | Table)[] = [];
 
   // Title
-  docElements.push(
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { before: 180, after: 200 },
-      children: [
-        new TextRun({
-          text: 'DOCUMENTACIÓN TÉCNICA INTERNA Y ESPECIFICACIÓN DE DESARROLLO',
-          bold: true,
-          color: COLOR_PRIMARY_BLUE,
-          size: 26,
-          font: 'Calibri',
-        }),
-      ],
-    })
-  );
+  if (!titles.hideTechMainTitle) {
+    docElements.push(
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { before: 180, after: 200 },
+        children: [
+          new TextRun({
+            text: mainTitle,
+            bold: true,
+            color: COLOR_PRIMARY_BLUE,
+            size: 26,
+            font: 'Calibri',
+          }),
+        ],
+      })
+    );
+  }
 
   // Metadata Table
   const metaTable = new Table({
@@ -466,20 +470,32 @@ export async function generateTechnicalDocDocx(
   const usedImageIndexes = new Set<number>();
 
   // 1. Ruta
-  docElements.push(createSectionHeading('Ruta de Acceso & Navegación en el Sistema', '1'));
-  docElements.push(...createFormattedBlockWithTables(techDoc.ruta, tables, usedTableIndexes, processedImages, usedImageIndexes));
+  const hasTechSection1 = !titles.hideTechSection1 && Boolean(techDoc.ruta && techDoc.ruta.trim());
+  if (hasTechSection1) {
+    docElements.push(createSectionHeading(titles.techSection1));
+    docElements.push(...createFormattedBlockWithTables(techDoc.ruta.trim(), tables, usedTableIndexes, processedImages, usedImageIndexes));
+  }
 
   // 2. Flujo Operativo
-  docElements.push(createSectionHeading('Flujo Operativo Interno', '2'));
-  docElements.push(...createFormattedBlockWithTables(techDoc.flujoOperativo, tables, usedTableIndexes, processedImages, usedImageIndexes));
+  const hasTechSection2 = !titles.hideTechSection2 && Boolean(techDoc.flujoOperativo && techDoc.flujoOperativo.trim());
+  if (hasTechSection2) {
+    docElements.push(createSectionHeading(titles.techSection2));
+    docElements.push(...createFormattedBlockWithTables(techDoc.flujoOperativo.trim(), tables, usedTableIndexes, processedImages, usedImageIndexes));
+  }
 
   // 3. Diseño
-  docElements.push(createSectionHeading('Diseño de Interfaz y Estructura de Datos', '3'));
-  docElements.push(...createFormattedBlockWithTables(techDoc.diseno, tables, usedTableIndexes, processedImages, usedImageIndexes));
+  const hasTechSection3 = !titles.hideTechSection3 && Boolean(techDoc.diseno && techDoc.diseno.trim());
+  if (hasTechSection3) {
+    docElements.push(createSectionHeading(titles.techSection3));
+    docElements.push(...createFormattedBlockWithTables(techDoc.diseno.trim(), tables, usedTableIndexes, processedImages, usedImageIndexes));
+  }
 
   // 4. Consideraciones Técnicas
-  docElements.push(createSectionHeading('Consideraciones Técnicas y de Seguridad', '4'));
-  docElements.push(...createFormattedBlockWithTables(techDoc.consideracionesTecnicas, tables, usedTableIndexes, processedImages, usedImageIndexes));
+  const hasTechSection4 = !titles.hideTechSection4 && Boolean(techDoc.consideracionesTecnicas && techDoc.consideracionesTecnicas.trim());
+  if (hasTechSection4) {
+    docElements.push(createSectionHeading(titles.techSection4));
+    docElements.push(...createFormattedBlockWithTables(techDoc.consideracionesTecnicas.trim(), tables, usedTableIndexes, processedImages, usedImageIndexes));
+  }
 
   const unusedTables = tables.filter((_, i) => !usedTableIndexes.has(i));
   if (unusedTables.length > 0) {
@@ -515,8 +531,11 @@ export async function generateTechnicalDocDocx(
   }
 
   // 5. Código de Ejemplo
-  docElements.push(createSectionHeading('Código de Ejemplo / Scripts', '5'));
-  docElements.push(...createCodeBlockParagraphs(techDoc.codigoEjemplo || ''));
+  const hasTechSection5 = !titles.hideTechSection5 && Boolean(techDoc.codigoEjemplo && techDoc.codigoEjemplo.trim());
+  if (hasTechSection5) {
+    docElements.push(createSectionHeading(titles.techSection5));
+    docElements.push(...createCodeBlockParagraphs(techDoc.codigoEjemplo.trim()));
+  }
 
   // Header and Footer
   const header = new Header({

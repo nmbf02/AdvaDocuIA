@@ -23,6 +23,9 @@ import {
   Terminal,
   FileText,
   Database,
+  Laptop,
+  Copy,
+  ExternalLink,
 } from 'lucide-react';
 
 interface SettingsModalProps {
@@ -41,7 +44,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onOpenBackup,
 }) => {
   const logoInputRef = useRef<HTMLInputElement>(null);
-  const [activeTab, setActiveTab] = useState<'titles' | 'techTitles' | 'branding' | 'backup'>('titles');
+  const [activeTab, setActiveTab] = useState<'titles' | 'techTitles' | 'branding' | 'backup' | 'local'>('titles');
   const [copiedNotification, setCopiedNotification] = useState<string | null>(null);
 
   if (!isOpen) return null;
@@ -274,6 +277,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <span>Copia de Seguridad</span>
             </button>
           )}
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('local')}
+            className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer ${
+              activeTab === 'local'
+                ? 'border-[#0A3D62] text-[#0A3D62] bg-white rounded-t-lg shadow-sm'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Laptop className="w-4 h-4 text-[#0A3D62]" />
+            <span>Guía de Uso Local</span>
+          </button>
         </div>
 
         {/* Content Area */}
@@ -1003,6 +1019,92 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <span>Abrir Copia de Seguridad</span>
                   </button>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 5: LOCAL EXECUTION & OFFLINE/DESKTOP GUIDE */}
+          {activeTab === 'local' && (
+            <div className="space-y-5 text-xs text-slate-700">
+              <div className="bg-slate-900 text-white rounded-xl p-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Laptop className="w-5 h-5 text-[#2ECC71]" />
+                  <h3 className="text-sm font-bold text-white">Ejecución en tu Computadora (Local)</h3>
+                </div>
+                <p className="text-slate-300 text-xs leading-relaxed">
+                  Esta aplicación ya está lista para correr como una aplicación web local en tu computadora, manteniendo todos los botones con IA de Gemini activos mediante tu propia clave de API.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                  <h4 className="font-bold text-slate-900 flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-[#0A3D62] text-white text-[11px] flex items-center justify-center font-bold">1</span>
+                    Instala las dependencias en tu terminal
+                  </h4>
+                  <div className="bg-slate-950 text-slate-100 p-2.5 rounded-lg font-mono text-[11px] flex items-center justify-between">
+                    <code>npm install</code>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText('npm install');
+                        setCopiedNotification('Comando copiado');
+                        setTimeout(() => setCopiedNotification(null), 2000);
+                      }}
+                      className="text-slate-400 hover:text-white text-[10px] px-2 py-0.5 rounded bg-white/10"
+                    >
+                      Copiar
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                  <h4 className="font-bold text-slate-900 flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-[#0A3D62] text-white text-[11px] flex items-center justify-center font-bold">2</span>
+                    Crea tu archivo .env con tu clave de Gemini
+                  </h4>
+                  <p className="text-[11px] text-slate-600">
+                    Crea un archivo llamado <code>.env</code> en la carpeta raíz con tu clave obtenida en Google AI Studio:
+                  </p>
+                  <div className="bg-slate-950 text-slate-100 p-2.5 rounded-lg font-mono text-[11px] flex items-center justify-between">
+                    <code>GEMINI_API_KEY=tu_clave_de_gemini_aqui</code>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText('GEMINI_API_KEY=tu_clave_de_gemini_aqui\nPORT=3000');
+                        setCopiedNotification('Configuración copiada');
+                        setTimeout(() => setCopiedNotification(null), 2000);
+                      }}
+                      className="text-slate-400 hover:text-white text-[10px] px-2 py-0.5 rounded bg-white/10"
+                    >
+                      Copiar
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                  <h4 className="font-bold text-slate-900 flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-[#0A3D62] text-white text-[11px] flex items-center justify-center font-bold">3</span>
+                    Inicia el servidor local y abre en tu navegador
+                  </h4>
+                  <div className="bg-slate-950 text-slate-100 p-2.5 rounded-lg font-mono text-[11px] flex items-center justify-between">
+                    <code>npm run dev</code>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText('npm run dev');
+                        setCopiedNotification('Comando copiado');
+                        setTimeout(() => setCopiedNotification(null), 2000);
+                      }}
+                      className="text-slate-400 hover:text-white text-[10px] px-2 py-0.5 rounded bg-white/10"
+                    >
+                      Copiar
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-600">
+                    Abre <strong>http://localhost:3000</strong> en tu navegador. Todos los botones de IA (generar propuesta, calibrar tecnicismo, diapositivas y doc. técnica) funcionarán al 100%.
+                  </p>
+                </div>
               </div>
             </div>
           )}

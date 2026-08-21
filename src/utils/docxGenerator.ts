@@ -882,17 +882,21 @@ export async function generateAdvansysDocx(
 
       // Check if image referenced or mapped to step index or explicit imagenId
       let linkedImg: ProcessedImage | null = null;
-      if (step.imagenId) {
-        linkedImg = processedImages.find(img => img.id === step.imagenId) || null;
-      }
-      if (!linkedImg && step.referenciaImagen) {
-        const m = step.referenciaImagen.match(/\[IMAGEN_(\d+)\]/i);
-        if (m) {
-          linkedImg = imageMapByIndex.get(parseInt(m[1], 10)) || null;
+      const isExplicitNone = step.imagenId === 'none' || step.referenciaImagen === 'none';
+
+      if (!isExplicitNone) {
+        if (step.imagenId) {
+          linkedImg = processedImages.find(img => img.id === step.imagenId) || null;
         }
-      }
-      if (!linkedImg) {
-        linkedImg = imageMapByIndex.get(stepNumber) || processedImages[originalIdx] || null;
+        if (!linkedImg && step.referenciaImagen) {
+          const m = step.referenciaImagen.match(/\[IMAGEN_(\d+)\]/i);
+          if (m) {
+            linkedImg = imageMapByIndex.get(parseInt(m[1], 10)) || null;
+          }
+        }
+        if (!linkedImg) {
+          linkedImg = imageMapByIndex.get(stepNumber) || processedImages[originalIdx] || null;
+        }
       }
 
       if (linkedImg && linkedImg.bytes && linkedImg.bytes.length > 0) {

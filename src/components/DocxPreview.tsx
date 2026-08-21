@@ -236,11 +236,14 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
               {proposal.analisisOperativo
                 ?.filter(step => (step.titulo && step.titulo.trim().length > 0) || (step.explicacion && step.explicacion.trim().length > 0))
                 .map((step, idx) => {
-                  const linkedImg = (step.imagenId ? images.find(img => img.id === step.imagenId) : null) ||
-                    (step.referenciaImagen ? (() => {
-                      const m = step.referenciaImagen.match(/\[IMAGEN_(\d+)\]/i);
-                      return m ? images[parseInt(m[1], 10) - 1] : null;
-                    })() : null) || images[idx];
+                  const isExplicitNone = step.imagenId === 'none' || step.referenciaImagen === 'none';
+                  const linkedImg = isExplicitNone
+                    ? null
+                    : (step.imagenId ? images.find(img => img.id === step.imagenId) : null) ||
+                      (step.referenciaImagen ? (() => {
+                        const m = step.referenciaImagen.match(/\[IMAGEN_(\d+)\]/i);
+                        return m ? images[parseInt(m[1], 10) - 1] : null;
+                      })() : null) || images[idx];
                   const imgIdx = linkedImg ? images.indexOf(linkedImg) + 1 : idx + 1;
                   return (
                     <div key={idx} className="border-l-2 border-[#0A3D62] pl-3 py-1 space-y-2">

@@ -106,6 +106,54 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
   const descargoRef = useRef<HTMLTextAreaElement>(null);
   const stepRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
 
+  // Helper to get textarea ref for field
+  const getTextareaRefForField = (field: ProposalTextField): React.RefObject<HTMLTextAreaElement | null> => {
+    switch (field) {
+      case 'resumenEjecutivo':
+        return resumenRef;
+      case 'objetivo':
+        return objetivoRef;
+      case 'descripcion':
+        return descripcionRef;
+      case 'descargo':
+        return descargoRef;
+      default:
+        return { current: null };
+    }
+  };
+
+  // Helper to insert text at cursor position or append
+  const insertTextAtCursor = (textarea: HTMLTextAreaElement | null, currentValue: string, textToInsert: string): string => {
+    if (!textarea) {
+      return currentValue?.trim() ? `${currentValue.trim()}\n\n${textToInsert}` : textToInsert;
+    }
+    const start = textarea.selectionStart ?? currentValue.length;
+    const end = textarea.selectionEnd ?? currentValue.length;
+    const before = currentValue.slice(0, start);
+    const after = currentValue.slice(end);
+
+    // Format with appropriate line breaks if surrounding text exists
+    let formattedInsert = textToInsert;
+    if (before.length > 0 && !before.endsWith('\n') && !before.endsWith('\n\n')) {
+      formattedInsert = `\n\n${formattedInsert}`;
+    }
+    if (after.length > 0 && !after.startsWith('\n') && !after.startsWith('\n\n')) {
+      formattedInsert = `${formattedInsert}\n\n`;
+    }
+
+    const nextVal = `${before}${formattedInsert}${after}`;
+    const newCursorPos = before.length + formattedInsert.length;
+
+    setTimeout(() => {
+      if (textarea) {
+        textarea.focus();
+        textarea.setSelectionRange(newCursorPos, newCursorPos);
+      }
+    }, 10);
+
+    return nextVal;
+  };
+
   // Refs for Image picking & upload
   const pendingImageTargetRef = useRef<{ field?: ProposalTextField; stepIndex?: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -114,12 +162,18 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
 
   const handlePickImageForField = (field: ProposalTextField) => {
     pendingImageTargetRef.current = { field };
-    fileInputRef.current?.click();
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
   };
 
   const handleStepImagePick = (stepIndex: number) => {
     pendingImageTargetRef.current = { stepIndex };
-    fileInputRef.current?.click();
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -154,8 +208,9 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
           if (target?.field && newImages.length) {
             const start = images.length + 1;
             const tags = newImages.map((_, i) => imageTag(start + i)).join('\n\n');
+            const fieldRef = getTextareaRefForField(target.field);
             const currentVal = String(proposal[target.field] || '');
-            const nextVal = currentVal.trim() ? `${currentVal.trim()}\n\n${tags}` : tags;
+            const nextVal = insertTextAtCursor(fieldRef.current, currentVal, tags);
             handleStringChange(target.field, nextVal);
           } else if (target?.stepIndex !== undefined && newImages.length) {
             const sIdx = target.stepIndex;
@@ -182,8 +237,9 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
 
   const handleInsertExistingImage = (field: ProposalTextField, imageIndex: number) => {
     const tag = imageTag(imageIndex);
+    const fieldRef = getTextareaRefForField(field);
     const currentVal = String(proposal[field] || '');
-    const nextVal = currentVal.trim() ? `${currentVal.trim()}\n\n${tag}` : tag;
+    const nextVal = insertTextAtCursor(fieldRef.current, currentVal, tag);
     handleStringChange(field, nextVal);
   };
 
@@ -194,8 +250,8 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
     if (!imageIdOrTag || imageIdOrTag === 'none') {
       steps[stepIndex] = {
         ...steps[stepIndex],
-        imagenId: undefined,
-        referenciaImagen: '',
+        imagenId: 'none',
+        referenciaImagen: 'none',
       };
     } else {
       const foundIdx = images.findIndex((img) => img.id === imageIdOrTag);
@@ -208,6 +264,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
       } else {
         steps[stepIndex] = {
           ...steps[stepIndex],
+          imagenId: imageIdOrTag,
           referenciaImagen: imageIdOrTag,
         };
       }
@@ -219,10 +276,12 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
     const steps = [...(proposal.analisisOperativo || [])];
     if (!steps[stepIndex]) return;
     const tag = imageTag(imageIndex);
+    const stepEl = stepRefs.current[stepIndex];
     const currentExp = steps[stepIndex].explicacion || '';
+    const nextExp = insertTextAtCursor(stepEl, currentExp, tag);
     steps[stepIndex] = {
       ...steps[stepIndex],
-      explicacion: currentExp.trim() ? `${currentExp.trim()}\n\n${tag}` : tag,
+      explicacion: nextExp,
     };
     onChange({ ...proposal, analisisOperativo: steps });
   };
@@ -233,19 +292,19 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
         type="button"
         onClick={() => handlePickImageForField(field)}
         disabled={!onImagesChange}
-        className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-[#0A3D62] bg-white hover:bg-blue-50 border border-slate-300 rounded transition-colors disabled:opacity-50 shadow-2xs"
-        title="Subir una imagen e insertarla en este apartado"
+        className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-[#0A3D62] bg-white hover:bg-blue-50 border border-slate-300 rounded transition-colors disabled:opacity-50 shadow-2xs cursor-pointer"
+        title="Subir una imagen desde tu equipo e insertarla en este apartado"
       >
         <ImageIcon className="w-3.5 h-3.5 text-[#2ECC71]" />
-        <span>Insertar imagen</span>
+        <span>Subir e insertar imagen</span>
       </button>
       {images.map((img, idx) => (
         <button
           key={img.id || idx}
           type="button"
           onClick={() => handleInsertExistingImage(field, idx + 1)}
-          className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded transition-colors"
-          title={`Insertar ${imageTag(idx + 1)}: ${img.title}`}
+          className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded transition-colors cursor-pointer"
+          title={`Insertar ${imageTag(idx + 1)}: ${img.title || img.fileName || 'Imagen'}`}
         >
           +{imageTag(idx + 1)}
         </button>
@@ -1661,13 +1720,19 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                     </p>
                   )}
                   {proposal.analisisOperativo?.map((step, idx) => {
-                    const stepLinkedImg = (step.imagenId ? images.find(img => img.id === step.imagenId) : null) ||
-                      (step.referenciaImagen ? (() => {
-                        const m = step.referenciaImagen.match(/\[IMAGEN_(\d+)\]/i);
-                        return m ? images[parseInt(m[1], 10) - 1] : null;
-                      })() : null) || images[idx];
+                    const isExplicitNone = step.imagenId === 'none' || step.referenciaImagen === 'none';
+                    const stepLinkedImg = isExplicitNone
+                      ? null
+                      : (step.imagenId ? images.find(img => img.id === step.imagenId) : null) ||
+                        (step.referenciaImagen ? (() => {
+                          const m = step.referenciaImagen.match(/\[IMAGEN_(\d+)\]/i);
+                          return m ? images[parseInt(m[1], 10) - 1] : null;
+                        })() : null) || images[idx];
                     
-                    const linkedImgIndex = stepLinkedImg ? images.indexOf(stepLinkedImg) + 1 : (images[idx] ? idx + 1 : null);
+                    const linkedImgIndex = stepLinkedImg ? images.indexOf(stepLinkedImg) + 1 : null;
+                    const currentValueForSelect = isExplicitNone
+                      ? 'none'
+                      : (step.imagenId || (step.referenciaImagen && step.referenciaImagen !== 'none' ? step.referenciaImagen : (images[idx] ? images[idx].id : 'none')));
 
                     return (
                       <div key={idx} className="bg-white p-3 rounded-lg border border-slate-200 space-y-3 relative group min-w-0">
@@ -1716,7 +1781,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                               type="button"
                               onClick={() => handleStepImagePick(idx)}
                               disabled={!onImagesChange}
-                              className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-[#0A3D62] bg-white hover:bg-blue-50 border border-slate-300 rounded transition-colors shadow-2xs disabled:opacity-50"
+                              className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-[#0A3D62] bg-white hover:bg-blue-50 border border-slate-300 rounded transition-colors shadow-2xs disabled:opacity-50 cursor-pointer"
                               title="Subir una captura desde tu equipo para este paso"
                             >
                               <Plus className="w-3 h-3 text-[#2ECC71]" />
@@ -1726,7 +1791,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
 
                           <div className="flex flex-wrap items-center gap-2">
                             <select
-                              value={step.imagenId || (step.referenciaImagen ? step.referenciaImagen : (images[idx] ? images[idx].id : 'none'))}
+                              value={currentValueForSelect}
                               onChange={(e) => handleStepImageSelect(idx, e.target.value)}
                               className="flex-1 min-w-[200px] text-xs bg-white border border-slate-300 rounded px-2 py-1.5 text-slate-800 font-medium focus:ring-1 focus:ring-[#0A3D62]"
                             >
@@ -1742,7 +1807,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                               <button
                                 type="button"
                                 onClick={() => handleStepImageSelect(idx, 'none')}
-                                className="px-2 py-1 text-[11px] font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded transition-colors"
+                                className="px-2 py-1 text-[11px] font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded transition-colors cursor-pointer"
                                 title="Desvincular imagen de este paso"
                               >
                                 Desvincular
@@ -1776,6 +1841,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                         <div className="space-y-1.5">
                           <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Explicación Técnica Detallada:</label>
                           <TextFormattingToolbar
+                            textareaRef={{ current: stepRefs.current[idx] }}
                             value={step.explicacion || ''}
                             onChange={(v) => handleStepChange(idx, 'explicacion', v)}
                             onInsertTable={() => handleInsertTableInStep(idx)}
@@ -1788,8 +1854,8 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                                   key={img.id || i}
                                   type="button"
                                   onClick={() => handleInsertImageTagInStep(idx, i + 1)}
-                                  className="px-1.5 py-0.5 font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded"
-                                  title={`Insertar ${imageTag(i + 1)} en la explicación`}
+                                  className="px-1.5 py-0.5 font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded cursor-pointer"
+                                  title={`Insertar ${imageTag(i + 1)} en la posición del cursor`}
                                 >
                                   +{imageTag(i + 1)}
                                 </button>
@@ -1797,6 +1863,9 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                             </div>
                           )}
                           <textarea
+                            ref={(el) => {
+                              stepRefs.current[idx] = el;
+                            }}
                             value={step.explicacion}
                             onChange={(e) => handleStepChange(idx, 'explicacion', e.target.value)}
                             onKeyDown={(e) => handleAutoBulletKeyDown(e, step.explicacion, (v) => handleStepChange(idx, 'explicacion', v))}

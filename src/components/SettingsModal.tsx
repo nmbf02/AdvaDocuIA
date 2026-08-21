@@ -4,6 +4,7 @@ import {
   DocumentTitlesConfig,
   DEFAULT_DOCUMENT_TITLES,
   DEFAULT_TECHNICAL_DOC_TITLES,
+  DEFAULT_DESCARGO_TEXT,
   getEffectiveTitles,
   getEffectiveTechnicalTitles,
 } from '../types';
@@ -90,6 +91,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       section6: undefined,
       section7: undefined,
       section8: undefined,
+      defaultDescargo: undefined,
       hideSection1: false,
       hideSection2: false,
       hideSection3: false,
@@ -668,6 +670,52 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       className="w-full bg-slate-50/50 border border-slate-200 focus:bg-white focus:border-[#0A3D62] rounded-lg px-2.5 py-1.5 text-xs text-slate-800 disabled:opacity-50"
                     />
                   </div>
+                </div>
+              </div>
+
+              {/* Cláusula de Descargo por Defecto Configurable */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1 rounded bg-[#0A3D62] text-white">
+                      <FileText className="w-3.5 h-3.5 text-[#2ECC71]" />
+                    </span>
+                    <div>
+                      <label className="block text-xs font-bold text-[#0A3D62] uppercase tracking-wide">
+                        Texto / Cláusula de Descargo por Defecto (Sección 8)
+                      </label>
+                      <p className="text-[11px] text-slate-500">
+                        Este texto aparecerá siempre automáticamente por defecto en la sección 8 de toda nueva propuesta o borrador creado.
+                      </p>
+                    </div>
+                  </div>
+
+                  {currentTitles.defaultDescargo && (
+                    <button
+                      type="button"
+                      onClick={() => handleTitleChange('defaultDescargo', '')}
+                      className="shrink-0 flex items-center gap-1 px-2 py-1 bg-white border border-slate-300 hover:border-slate-400 text-slate-600 hover:text-red-700 text-[10px] font-semibold rounded shadow-2xs transition-all cursor-pointer"
+                      title="Restablecer cláusula estándar institucional"
+                    >
+                      <RotateCcw className="w-3 h-3 text-slate-500" />
+                      <span>Restablecer</span>
+                    </button>
+                  )}
+                </div>
+
+                <textarea
+                  rows={4}
+                  value={currentTitles.defaultDescargo ?? ''}
+                  onChange={(e) => handleTitleChange('defaultDescargo', e.target.value)}
+                  placeholder={DEFAULT_DESCARGO_TEXT}
+                  className="w-full bg-white border border-slate-300 focus:border-[#0A3D62] focus:ring-1 focus:ring-[#0A3D62] rounded-lg p-3 text-xs font-sans text-slate-800 shadow-sm leading-relaxed"
+                />
+
+                <div className="flex items-center justify-between text-[10px] text-slate-500 bg-white/70 p-2 rounded border border-slate-200">
+                  <span>
+                    Estado: <strong className="text-[#0A3D62]">{currentTitles.defaultDescargo?.trim() ? 'Personalizado' : 'Texto estándar por defecto de Advansys'}</strong>
+                  </span>
+                  <span>{(currentTitles.defaultDescargo || DEFAULT_DESCARGO_TEXT).length} caracteres</span>
                 </div>
               </div>
             </div>

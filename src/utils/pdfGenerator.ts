@@ -529,7 +529,11 @@ export async function generateAdvansysPdf(
       cursorY += 5.5;
 
       // Check for associated image
-      const matchingImg = images[idx] || (step.imagenId ? images.find(img => img.id === step.imagenId) : undefined);
+      const matchingImg = (step.imagenId ? images.find(img => img.id === step.imagenId) : undefined) ||
+        (step.referenciaImagen ? (() => {
+          const m = step.referenciaImagen.match(/\[IMAGEN_(\d+)\]/i);
+          return m ? images[parseInt(m[1], 10) - 1] : undefined;
+        })() : undefined) || images[idx];
       if (matchingImg && matchingImg.dataUrl) {
         const loadedImg = await loadSvgOrImageToCanvasPng(matchingImg.dataUrl, 1200);
         if (loadedImg) {

@@ -195,7 +195,7 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
             <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
               4. {titles.section4.toUpperCase()}
             </h2>
-            <RichTextBlock text={proposal.objetivo.trim()} tables={tables} />
+            <RichTextBlock text={proposal.objetivo.trim()} tables={tables} images={images} />
           </div>
         )}
 
@@ -205,7 +205,7 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
             <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
               5. {titles.section5.toUpperCase()}
             </h2>
-            <RichTextBlock text={proposal.descripcion.trim()} tables={tables} />
+            <RichTextBlock text={proposal.descripcion.trim()} tables={tables} images={images} />
           </div>
         )}
 
@@ -236,15 +236,20 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
               {proposal.analisisOperativo
                 ?.filter(step => (step.titulo && step.titulo.trim().length > 0) || (step.explicacion && step.explicacion.trim().length > 0))
                 .map((step, idx) => {
-                  const img = images[idx];
+                  const linkedImg = (step.imagenId ? images.find(img => img.id === step.imagenId) : null) ||
+                    (step.referenciaImagen ? (() => {
+                      const m = step.referenciaImagen.match(/\[IMAGEN_(\d+)\]/i);
+                      return m ? images[parseInt(m[1], 10) - 1] : null;
+                    })() : null) || images[idx];
+                  const imgIdx = linkedImg ? images.indexOf(linkedImg) + 1 : idx + 1;
                   return (
                     <div key={idx} className="border-l-2 border-[#0A3D62] pl-3 py-1 space-y-2">
                       <h3 className="font-bold text-[#0A3D62] text-xs">
                         Paso 7.{idx + 1}: {step.titulo?.trim() || `Paso ${idx + 1}`}
                       </h3>
 
-                      {img && (
-                        <PreviewImage image={img} index={idx + 1} />
+                      {linkedImg && (
+                        <PreviewImage image={linkedImg} index={imgIdx} />
                       )}
 
                       {step.explicacion?.trim() && (
@@ -295,7 +300,7 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
               8. {titles.section8.toUpperCase()}
             </h2>
             <div className="text-slate-500 italic text-[11px] leading-relaxed bg-slate-50 p-3 rounded border border-slate-200">
-              <RichTextBlock text={proposal.descargo.trim()} tables={tables} className="text-slate-500 italic text-[11px] leading-relaxed text-justify" />
+              <RichTextBlock text={proposal.descargo.trim()} tables={tables} images={images} className="text-slate-500 italic text-[11px] leading-relaxed text-justify" />
             </div>
           </div>
         )}

@@ -25,6 +25,13 @@ import { getAdvansysBannerSvg } from '../data/banner';
 import { fitImageSize } from './imageLayout';
 import { createDocumentImageRun, paragraphAlignOf } from './imageDocx';
 
+type ProcessedImage = UploadedImage & {
+  index: number;
+  bytes: Uint8Array;
+  width: number;
+  height: number;
+};
+
 // Advansys Corporate Palette
 const COLOR_PRIMARY_BLUE = '0A3D62'; // #0A3D62 Deep Corporate Blue
 const COLOR_SECONDARY_BLUE = '1E5F8A'; // #1E5F8A Tech Blue Accent
@@ -384,16 +391,17 @@ function pushTextWithTables(
   docElements: (Paragraph | Table)[],
   text: string,
   tables: DocumentTable[],
-  used: Set<number>
+  used: Set<number>,
+  imageMapByIndex?: Map<number, ProcessedImage>
 ) {
   const source = text || '';
-  const parts = source.split(/(\[TABLA_\d+\])/gi);
+  const parts = source.split(/(\[TABLA_\d+\]|\[IMAGEN_\d+\])/gi);
   let wroteSomething = false;
 
   for (const part of parts) {
-    const match = part.match(/^\[TABLA_(\d+)\]$/i);
-    if (match) {
-      const idx = parseInt(match[1], 10) - 1;
+    const tableMatch = part.match(/^\[TABLA_(\d+)\]$/i);
+    if (tableMatch) {
+      const idx = parseInt(tableMatch[1], 10) - 1;
       const table = tables[idx];
       if (!table) continue;
       used.add(idx);
@@ -417,6 +425,56 @@ function pushTextWithTables(
       docElements.push(new Paragraph({ text: '', spacing: { after: 120 } }));
       wroteSomething = true;
       continue;
+    }
+
+    const imgMatch = part.match(/^\[IMAGEN_(\d+)\]$/i);
+    if (imgMatch && imageMapByIndex) {
+      const imgIdx = parseInt(imgMatch[1], 10);
+      const linkedImg = imageMapByIndex.get(imgIdx);
+      if (linkedImg && linkedImg.bytes && linkedImg.bytes.length > 0) {
+        try {
+          const size = fitImageSize(linkedImg.width, linkedImg.height, 500, 320, linkedImg.widthPercent);
+          const alignment = paragraphAlignOf(linkedImg);
+          docElements.push(
+            new Paragraph({
+              alignment,
+              spacing: { before: 120, after: 60 },
+              children: [createDocumentImageRun(linkedImg.bytes, size, linkedImg)],
+            })
+          );
+          docElements.push(
+            new Paragraph({
+              alignment,
+              spacing: { before: 40, after: 120 },
+              children: [
+                new TextRun({
+                  text: `[IMAGEN_${linkedImg.index}] ${linkedImg.title}`,
+                  bold: true,
+                  italics: true,
+                  color: COLOR_MUTED_GRAY,
+                  size: 18,
+                  font: 'Calibri',
+                }),
+                ...(linkedImg.description
+                  ? [
+                      new TextRun({
+                        text: ` - ${linkedImg.description}`,
+                        italics: true,
+                        color: COLOR_MUTED_GRAY,
+                        size: 18,
+                        font: 'Calibri',
+                      }),
+                    ]
+                  : []),
+              ],
+            })
+          );
+          wroteSomething = true;
+          continue;
+        } catch (err) {
+          console.warn(`Could not render inline image tag ${part}:`, err);
+        }
+      }
     }
 
     const rawBlock = part.trim();
@@ -634,7 +692,7 @@ export async function generateAdvansysDocx(
   const hasSection1 = !titles.hideSection1 && Boolean(proposal.resumenEjecutivo && proposal.resumenEjecutivo.trim());
   if (hasSection1) {
     docElements.push(createSectionHeader(titles.section1, '1'));
-    pushTextWithTables(docElements, proposal.resumenEjecutivo.trim(), contentTables, usedTables);
+    pushTextWithTables(docElements, proposal.resumenEjecutivo.trim(), contentTables, usedTables, imageMapByIndex);
   }
 
   // 2. Beneficios de la Propuesta
@@ -751,14 +809,14 @@ export async function generateAdvansysDocx(
   const hasSection4 = !titles.hideSection4 && Boolean(proposal.objetivo && proposal.objetivo.trim());
   if (hasSection4) {
     docElements.push(createSectionHeader(titles.section4, '4', getPageBreakForLaterSection()));
-    pushTextWithTables(docElements, proposal.objetivo.trim(), contentTables, usedTables);
+    pushTextWithTables(docElements, proposal.objetivo.trim(), contentTables, usedTables, imageMapByIndex);
   }
 
   // 5. Descripción
   const hasSection5 = !titles.hideSection5 && Boolean(proposal.descripcion && proposal.descripcion.trim());
   if (hasSection5) {
     docElements.push(createSectionHeader(titles.section5, '5', getPageBreakForLaterSection()));
-    pushTextWithTables(docElements, proposal.descripcion.trim(), contentTables, usedTables);
+    pushTextWithTables(docElements, proposal.descripcion.trim(), contentTables, usedTables, imageMapByIndex);
   }
 
   // 6. Índice Análisis Operativo
@@ -822,8 +880,20 @@ export async function generateAdvansysDocx(
         })
       );
 
-      // Check if image referenced or mapped to step index
-      const linkedImg = imageMapByIndex.get(stepNumber) || processedImages[originalIdx];
+      // Check if image referenced or mapped to step index or explicit imagenId
+      let linkedImg: ProcessedImage | null = null;
+      if (step.imagenId) {
+        linkedImg = processedImages.find(img => img.id === step.imagenId) || null;
+      }
+      if (!linkedImg && step.referenciaImagen) {
+        const m = step.referenciaImagen.match(/\[IMAGEN_(\d+)\]/i);
+        if (m) {
+          linkedImg = imageMapByIndex.get(parseInt(m[1], 10)) || null;
+        }
+      }
+      if (!linkedImg) {
+        linkedImg = imageMapByIndex.get(stepNumber) || processedImages[originalIdx] || null;
+      }
 
       if (linkedImg && linkedImg.bytes && linkedImg.bytes.length > 0) {
         try {
@@ -874,7 +944,7 @@ export async function generateAdvansysDocx(
 
       // Step Explanation Text
       if (step.explicacion?.trim()) {
-        pushTextWithTables(docElements, step.explicacion.trim(), contentTables, usedTables);
+        pushTextWithTables(docElements, step.explicacion.trim(), contentTables, usedTables, imageMapByIndex);
       }
     });
   }
@@ -909,7 +979,7 @@ export async function generateAdvansysDocx(
   const hasSection8 = !titles.hideSection8 && Boolean(proposal.descargo && proposal.descargo.trim());
   if (hasSection8) {
     docElements.push(createSectionHeader(titles.section8, '8', getPageBreakForLaterSection()));
-    pushTextWithTables(docElements, proposal.descargo.trim(), contentTables, usedTables);
+    pushTextWithTables(docElements, proposal.descargo.trim(), contentTables, usedTables, imageMapByIndex);
   }
 
   // Build Advansys Header Banner

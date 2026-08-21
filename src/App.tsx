@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MetadataHeader, UploadedImage, ProposalSection, SavedProposal, BrandingSettings, DocumentStatus, TechnicalDoc } from './types';
+import { MetadataHeader, UploadedImage, ProposalSection, SavedProposal, BrandingSettings, DocumentStatus, TechnicalDoc, DEFAULT_DESCARGO_TEXT } from './types';
 import { Header } from './components/Header';
 import { MetadataForm } from './components/MetadataForm';
 import { RequirementsInput } from './components/RequirementsInput';
@@ -656,7 +656,11 @@ export default function App() {
     setCurrentDocumentId(newDocId);
     setWorkspaceMode('proposal');
     setEditorTab('editor');
-    setProposal(EMPTY_MANUAL_PROPOSAL);
+    const configuredDescargo = branding.customTitles?.defaultDescargo?.trim() || DEFAULT_DESCARGO_TEXT;
+    setProposal({
+      ...EMPTY_MANUAL_PROPOSAL,
+      descargo: configuredDescargo,
+    });
     setError(null);
   };
 

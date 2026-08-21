@@ -38,9 +38,15 @@ export interface DocumentTitlesConfig {
   hideTechSection3?: boolean;
   hideTechSection4?: boolean;
   hideTechSection5?: boolean;
+
+  // Cláusula / Texto de Descargo por defecto (Sección 8)
+  defaultDescargo?: string;
 }
 
-export const DEFAULT_DOCUMENT_TITLES: Required<Omit<DocumentTitlesConfig, 'hideSection1' | 'hideSection2' | 'hideSection3' | 'hideSection3_1' | 'hideSection3_2' | 'hideSection3_3' | 'hideSection4' | 'hideSection5' | 'hideSection6' | 'hideSection7' | 'hideSection8' | 'hiddenSections' | 'techMainTitle' | 'techSection1' | 'techSection2' | 'techSection3' | 'techSection4' | 'techSection5' | 'hideTechMainTitle' | 'hideTechSection1' | 'hideTechSection2' | 'hideTechSection3' | 'hideTechSection4' | 'hideTechSection5'>> = {
+export const DEFAULT_DESCARGO_TEXT = 
+  "El contenido de este análisis refleja con precisión los resultados que serán entregados, sin adiciones ni omisiones. Cualquier observación o inquietud que el cliente pueda tener deberá ser expresada y documentada debidamente para ser considerada y, en su caso, incorporada al análisis. No se realizarán ajustes adicionales a menos que se notifiquen y documenten de acuerdo con este procedimiento.";
+
+export const DEFAULT_DOCUMENT_TITLES: Required<Omit<DocumentTitlesConfig, 'hideSection1' | 'hideSection2' | 'hideSection3' | 'hideSection3_1' | 'hideSection3_2' | 'hideSection3_3' | 'hideSection4' | 'hideSection5' | 'hideSection6' | 'hideSection7' | 'hideSection8' | 'hiddenSections' | 'techMainTitle' | 'techSection1' | 'techSection2' | 'techSection3' | 'techSection4' | 'techSection5' | 'hideTechMainTitle' | 'hideTechSection1' | 'hideTechSection2' | 'hideTechSection3' | 'hideTechSection4' | 'hideTechSection5' | 'defaultDescargo'>> = {
   mainTitle: 'ANÁLISIS DE CUMPLIMIENTO Y PROPUESTA DE DESARROLLO',
   section1: 'Resumen Ejecutivo',
   section2: 'Beneficios de la Propuesta',
@@ -94,7 +100,7 @@ export function getEffectiveTechnicalTitles(custom?: DocumentTitlesConfig): {
   };
 }
 
-export function getEffectiveTitles(custom?: DocumentTitlesConfig): Required<Omit<DocumentTitlesConfig, 'hideSection1' | 'hideSection2' | 'hideSection3' | 'hideSection3_1' | 'hideSection3_2' | 'hideSection3_3' | 'hideSection4' | 'hideSection5' | 'hideSection6' | 'hideSection7' | 'hideSection8' | 'hiddenSections' | 'techMainTitle' | 'techSection1' | 'techSection2' | 'techSection3' | 'techSection4' | 'techSection5' | 'hideTechMainTitle' | 'hideTechSection1' | 'hideTechSection2' | 'hideTechSection3' | 'hideTechSection4' | 'hideTechSection5'>> & {
+export function getEffectiveTitles(custom?: DocumentTitlesConfig): Required<Omit<DocumentTitlesConfig, 'hideSection1' | 'hideSection2' | 'hideSection3' | 'hideSection3_1' | 'hideSection3_2' | 'hideSection3_3' | 'hideSection4' | 'hideSection5' | 'hideSection6' | 'hideSection7' | 'hideSection8' | 'hiddenSections' | 'techMainTitle' | 'techSection1' | 'techSection2' | 'techSection3' | 'techSection4' | 'techSection5' | 'hideTechMainTitle' | 'hideTechSection1' | 'hideTechSection2' | 'hideTechSection3' | 'hideTechSection4' | 'hideTechSection5' | 'defaultDescargo'>> & {
   hideSection1: boolean;
   hideSection2: boolean;
   hideSection3: boolean;
@@ -106,6 +112,7 @@ export function getEffectiveTitles(custom?: DocumentTitlesConfig): Required<Omit
   hideSection6: boolean;
   hideSection7: boolean;
   hideSection8: boolean;
+  defaultDescargo: string;
 } {
   return {
     mainTitle: custom?.mainTitle?.trim() || DEFAULT_DOCUMENT_TITLES.mainTitle,
@@ -131,6 +138,7 @@ export function getEffectiveTitles(custom?: DocumentTitlesConfig): Required<Omit
     hideSection6: !!custom?.hideSection6,
     hideSection7: !!custom?.hideSection7,
     hideSection8: !!custom?.hideSection8,
+    defaultDescargo: custom?.defaultDescargo?.trim() || DEFAULT_DESCARGO_TEXT,
   };
 }
 

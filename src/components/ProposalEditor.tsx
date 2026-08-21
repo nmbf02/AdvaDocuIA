@@ -1,15 +1,18 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ProposalSection, MetadataHeader, UploadedImage, DocumentTable, getEffectiveTitles, SlideDeck, DocumentStatus, SavedProposal } from '../types';
-import { FileDown, FileText, Edit3, Eye, Plus, Trash2, Sparkles, Wand2, Loader2, Cpu, Save, Check, GitBranch, Tag, X, Layers, CheckCircle2, CheckCheck, Presentation, Bold, ArrowRight, ArrowRightLeft, RotateCcw, Terminal, ChevronDown, ChevronUp, ChevronsUpDown, ChevronsDownUp, Table2 } from 'lucide-react';
+import { ProposalSection, MetadataHeader, UploadedImage, DocumentTable, getEffectiveTitles, SlideDeck, DocumentStatus, SavedProposal, DEFAULT_DESCARGO_TEXT } from '../types';
+import { FileDown, FileText, Edit3, Eye, Plus, Trash2, Sparkles, Wand2, Loader2, Cpu, Save, Check, GitBranch, Tag, X, Layers, CheckCircle2, CheckCheck, Presentation, Bold, ArrowRight, ArrowRightLeft, RotateCcw, Terminal, ChevronDown, ChevronUp, ChevronsUpDown, ChevronsDownUp, Table2, Image as ImageIcon, Upload, Paperclip, ExternalLink } from 'lucide-react';
 import { generateAdvansysDocx } from '../utils/docxGenerator';
 import { downloadAdvansysPdf } from '../utils/pdfGenerator';
 import { DocxPreview } from './DocxPreview';
 import { DocumentTablesEditor, InsertTableButton, createEmptyDocumentTable, tableTag } from './DocumentTablesEditor';
+import { ImageUploader } from './ImageUploader';
 import { SlideDeckEditor } from './SlideDeckEditor';
 import { TechnicalDocEditor } from './TechnicalDocEditor';
 import { convertProposalToSlideDeck, createDefaultSlideDeck } from '../utils/slideDeckTemplates';
 import { createDefaultTechnicalDoc, proposalHasSubstance } from '../utils/technicalDocTemplates';
 import { TextFormattingToolbar, handleAutoBulletKeyDown, toggleBoldAtTarget } from './TextFormattingToolbar';
+
+type ProposalTextField = 'resumenEjecutivo' | 'objetivo' | 'descripcion' | 'descargo';
 
 interface ProposalEditorProps {
   proposal: ProposalSection;
@@ -76,7 +79,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
     }));
   };
 
-  const allProposalSectionKeys = ['resumen', 'beneficios', 'alcance', 'objetivo', 'descripcion', 'operativo', 'tablas', 'descargo'];
+  const allProposalSectionKeys = ['resumen', 'beneficios', 'alcance', 'objetivo', 'descripcion', 'operativo', 'tablas', 'imagenes', 'descargo'];
   const areAllSectionsCollapsed = allProposalSectionKeys.every((k) => !!collapsedSections[k]);
 
   const handleToggleAllSections = () => {
@@ -102,6 +105,198 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
   const descripcionRef = useRef<HTMLTextAreaElement>(null);
   const descargoRef = useRef<HTMLTextAreaElement>(null);
   const stepRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
+
+  // Refs for Image picking & upload
+  const pendingImageTargetRef = useRef<{ field?: ProposalTextField; stepIndex?: number } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const imageTag = (index: number) => `[IMAGEN_${index}]`;
+
+  const handlePickImageForField = (field: ProposalTextField) => {
+    pendingImageTargetRef.current = { field };
+    fileInputRef.current?.click();
+  };
+
+  const handleStepImagePick = (stepIndex: number) => {
+    pendingImageTargetRef.current = { stepIndex };
+    fileInputRef.current?.click();
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || !files.length || !onImagesChange) return;
+
+    const fileArr: File[] = Array.from(files);
+    const newImages: UploadedImage[] = [];
+    let processed = 0;
+
+    fileArr.forEach((file: File) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const result = ev.target?.result as string;
+        if (result) {
+          newImages.push({
+            id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            title: file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' '),
+            description: 'Captura de referencia para la propuesta',
+            dataUrl: result,
+            mimeType: file.type,
+            fileName: file.name,
+            fileSize: file.size,
+          });
+        }
+        processed += 1;
+        if (processed === fileArr.length) {
+          const nextImages = [...images, ...newImages];
+          onImagesChange(nextImages);
+
+          const target = pendingImageTargetRef.current;
+          if (target?.field && newImages.length) {
+            const start = images.length + 1;
+            const tags = newImages.map((_, i) => imageTag(start + i)).join('\n\n');
+            const currentVal = String(proposal[target.field] || '');
+            const nextVal = currentVal.trim() ? `${currentVal.trim()}\n\n${tags}` : tags;
+            handleStringChange(target.field, nextVal);
+          } else if (target?.stepIndex !== undefined && newImages.length) {
+            const sIdx = target.stepIndex;
+            const newImg = newImages[0];
+            const newImgIndex = images.length + 1;
+            const steps = [...(proposal.analisisOperativo || [])];
+            if (steps[sIdx]) {
+              steps[sIdx] = {
+                ...steps[sIdx],
+                imagenId: newImg.id,
+                referenciaImagen: imageTag(newImgIndex),
+              };
+              onChange({ ...proposal, analisisOperativo: steps });
+            }
+          }
+          pendingImageTargetRef.current = null;
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+
+    e.target.value = '';
+  };
+
+  const handleInsertExistingImage = (field: ProposalTextField, imageIndex: number) => {
+    const tag = imageTag(imageIndex);
+    const currentVal = String(proposal[field] || '');
+    const nextVal = currentVal.trim() ? `${currentVal.trim()}\n\n${tag}` : tag;
+    handleStringChange(field, nextVal);
+  };
+
+  const handleStepImageSelect = (stepIndex: number, imageIdOrTag: string) => {
+    const steps = [...(proposal.analisisOperativo || [])];
+    if (!steps[stepIndex]) return;
+
+    if (!imageIdOrTag || imageIdOrTag === 'none') {
+      steps[stepIndex] = {
+        ...steps[stepIndex],
+        imagenId: undefined,
+        referenciaImagen: '',
+      };
+    } else {
+      const foundIdx = images.findIndex((img) => img.id === imageIdOrTag);
+      if (foundIdx >= 0) {
+        steps[stepIndex] = {
+          ...steps[stepIndex],
+          imagenId: imageIdOrTag,
+          referenciaImagen: imageTag(foundIdx + 1),
+        };
+      } else {
+        steps[stepIndex] = {
+          ...steps[stepIndex],
+          referenciaImagen: imageIdOrTag,
+        };
+      }
+    }
+    onChange({ ...proposal, analisisOperativo: steps });
+  };
+
+  const handleInsertImageTagInStep = (stepIndex: number, imageIndex: number) => {
+    const steps = [...(proposal.analisisOperativo || [])];
+    if (!steps[stepIndex]) return;
+    const tag = imageTag(imageIndex);
+    const currentExp = steps[stepIndex].explicacion || '';
+    steps[stepIndex] = {
+      ...steps[stepIndex],
+      explicacion: currentExp.trim() ? `${currentExp.trim()}\n\n${tag}` : tag,
+    };
+    onChange({ ...proposal, analisisOperativo: steps });
+  };
+
+  const renderImageInsertBar = (field: ProposalTextField) => (
+    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+      <button
+        type="button"
+        onClick={() => handlePickImageForField(field)}
+        disabled={!onImagesChange}
+        className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-[#0A3D62] bg-white hover:bg-blue-50 border border-slate-300 rounded transition-colors disabled:opacity-50 shadow-2xs"
+        title="Subir una imagen e insertarla en este apartado"
+      >
+        <ImageIcon className="w-3.5 h-3.5 text-[#2ECC71]" />
+        <span>Insertar imagen</span>
+      </button>
+      {images.map((img, idx) => (
+        <button
+          key={img.id || idx}
+          type="button"
+          onClick={() => handleInsertExistingImage(field, idx + 1)}
+          className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded transition-colors"
+          title={`Insertar ${imageTag(idx + 1)}: ${img.title}`}
+        >
+          +{imageTag(idx + 1)}
+        </button>
+      ))}
+      {images.length > 0 && (
+        <span className="text-[10px] text-slate-400 font-mono">
+          ({images.length} disponible{images.length === 1 ? '' : 's'})
+        </span>
+      )}
+    </div>
+  );
+
+  const renderInlineImages = (text: string) => {
+    const matches = [...(text || '').matchAll(/\[IMAGEN_(\d+)\]/gi)];
+    const indexes = [...new Set(matches.map((m) => parseInt(m[1], 10) - 1))].filter((i) => images[i]);
+    if (!indexes.length) return null;
+    return (
+      <div className="space-y-2 mt-2">
+        {indexes.map((i) => {
+          const img = images[i];
+          const widthPercent = Math.min(100, Math.max(25, img.widthPercent ?? 100));
+          const align = img.align === 'left' || img.align === 'right' ? img.align : 'center';
+          const alignClass = align === 'left' ? 'mr-auto' : align === 'right' ? 'ml-auto' : 'mx-auto';
+          return (
+            <figure
+              key={img.id || i}
+              className={`rounded-xl border border-slate-200 bg-slate-50 overflow-hidden shadow-2xs ${alignClass}`}
+              style={{ width: `${widthPercent}%`, maxWidth: '100%' }}
+            >
+              <img
+                src={img.dataUrl}
+                alt={img.title}
+                className="w-full max-h-48 object-contain bg-white"
+              />
+              <figcaption className="px-2.5 py-1.5 text-[11px] text-slate-600 flex items-center justify-between gap-2 border-t border-slate-200 bg-slate-100/60">
+                <span className="truncate">
+                  <strong className="text-[#0A3D62]">{imageTag(i + 1)}</strong>
+                  {img.title ? ` · ${img.title}` : ''}
+                </span>
+                {img.description && (
+                  <span className="text-[10px] text-slate-400 italic truncate max-w-[200px]">
+                    {img.description}
+                  </span>
+                )}
+              </figcaption>
+            </figure>
+          );
+        })}
+      </div>
+    );
+  };
 
   const titles = getEffectiveTitles(metadata.customTitles);
 
@@ -627,6 +822,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
               { id: 'descripcion', label: '5. Solución' },
               { id: 'operativo', label: '6-7. Pasos' },
               { id: 'tablas', label: 'Tablas' },
+              { id: 'imagenes', label: `Imágenes (${images.length})` },
               { id: 'descargo', label: '8. Descargo' }
             ].map((sec) => (
               <button
@@ -640,6 +836,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                 }`}
               >
                 {sec.id === 'all' && <Layers className="w-3.5 h-3.5" />}
+                {sec.id === 'imagenes' && <ImageIcon className="w-3.5 h-3.5 text-[#2ECC71]" />}
                 {sec.label}
               </button>
             ))}
@@ -784,6 +981,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                     onChange={(v) => handleStringChange('resumenEjecutivo', v)}
                     onInsertTable={() => handleInsertTableInField('resumenEjecutivo')}
                   />
+                  {renderImageInsertBar('resumenEjecutivo')}
 
                   <textarea
                     ref={resumenRef}
@@ -795,6 +993,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                     className="w-full min-w-0 max-w-full p-3 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-800 font-sans leading-relaxed"
                   />
                   {renderInlineTables(proposal.resumenEjecutivo)}
+                  {renderInlineImages(proposal.resumenEjecutivo)}
                 </div>
               )}
             </div>
@@ -1285,6 +1484,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                     onChange={(v) => handleStringChange('objetivo', v)}
                     onInsertTable={() => handleInsertTableInField('objetivo')}
                   />
+                  {renderImageInsertBar('objetivo')}
 
                   <textarea
                     ref={objetivoRef}
@@ -1296,6 +1496,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                     className="w-full min-w-0 max-w-full p-3 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-800 font-sans leading-relaxed"
                   />
                   {renderInlineTables(proposal.objetivo)}
+                  {renderInlineImages(proposal.objetivo)}
                 </div>
               )}
             </div>
@@ -1369,6 +1570,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                     onChange={(v) => handleStringChange('descripcion', v)}
                     onInsertTable={() => handleInsertTableInField('descripcion')}
                   />
+                  {renderImageInsertBar('descripcion')}
 
                   <textarea
                     ref={descripcionRef}
@@ -1380,6 +1582,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                     className="w-full min-w-0 max-w-full p-3 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-800 font-sans leading-relaxed"
                   />
                   {renderInlineTables(proposal.descripcion)}
+                  {renderInlineImages(proposal.descripcion)}
                 </div>
               )}
             </div>
@@ -1458,18 +1661,25 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                     </p>
                   )}
                   {proposal.analisisOperativo?.map((step, idx) => {
-                    const linkedImg = images[idx];
+                    const stepLinkedImg = (step.imagenId ? images.find(img => img.id === step.imagenId) : null) ||
+                      (step.referenciaImagen ? (() => {
+                        const m = step.referenciaImagen.match(/\[IMAGEN_(\d+)\]/i);
+                        return m ? images[parseInt(m[1], 10) - 1] : null;
+                      })() : null) || images[idx];
+                    
+                    const linkedImgIndex = stepLinkedImg ? images.indexOf(stepLinkedImg) + 1 : (images[idx] ? idx + 1 : null);
+
                     return (
-                      <div key={idx} className="bg-white p-3 rounded-lg border border-slate-200 space-y-2 relative group min-w-0">
+                      <div key={idx} className="bg-white p-3 rounded-lg border border-slate-200 space-y-3 relative group min-w-0">
                         <div className="flex flex-wrap items-start justify-between gap-2 min-w-0">
                           <div className="flex flex-wrap items-center gap-2 min-w-0 flex-1">
                             <span className="text-xs font-bold text-[#0A3D62] bg-blue-50 px-2 py-0.5 rounded border border-blue-200 shrink-0">
                               Paso 7.{idx + 1}
                             </span>
-                            {linkedImg && (
+                            {stepLinkedImg && linkedImgIndex && (
                               <span className="text-[11px] text-emerald-700 bg-emerald-50 font-semibold px-2 py-0.5 rounded border border-emerald-200 inline-flex items-center min-w-0 max-w-full">
                                 <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600 shrink-0" />
-                                <span className="truncate">[IMAGEN_{idx + 1}]: {linkedImg.title}</span>
+                                <span className="truncate">{imageTag(linkedImgIndex)}: {stepLinkedImg.title}</span>
                               </span>
                             )}
                           </div>
@@ -1494,6 +1704,75 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                           />
                         </div>
 
+                        {/* Image selection and direct upload for this step */}
+                        <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200/90 space-y-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700">
+                              <ImageIcon className="w-3.5 h-3.5 text-[#2ECC71]" />
+                              <span>Captura / Imagen Vinculada a este Paso</span>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleStepImagePick(idx)}
+                              disabled={!onImagesChange}
+                              className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-[#0A3D62] bg-white hover:bg-blue-50 border border-slate-300 rounded transition-colors shadow-2xs disabled:opacity-50"
+                              title="Subir una captura desde tu equipo para este paso"
+                            >
+                              <Plus className="w-3 h-3 text-[#2ECC71]" />
+                              <span>Subir captura para este paso</span>
+                            </button>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2">
+                            <select
+                              value={step.imagenId || (step.referenciaImagen ? step.referenciaImagen : (images[idx] ? images[idx].id : 'none'))}
+                              onChange={(e) => handleStepImageSelect(idx, e.target.value)}
+                              className="flex-1 min-w-[200px] text-xs bg-white border border-slate-300 rounded px-2 py-1.5 text-slate-800 font-medium focus:ring-1 focus:ring-[#0A3D62]"
+                            >
+                              <option value="none">Sin imagen vinculada</option>
+                              {images.map((img, i) => (
+                                <option key={img.id || i} value={img.id}>
+                                  {imageTag(i + 1)} — {img.title || `Captura ${i + 1}`} ({img.fileName || 'Imagen'})
+                                </option>
+                              ))}
+                            </select>
+
+                            {stepLinkedImg && (
+                              <button
+                                type="button"
+                                onClick={() => handleStepImageSelect(idx, 'none')}
+                                className="px-2 py-1 text-[11px] font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded transition-colors"
+                                title="Desvincular imagen de este paso"
+                              >
+                                Desvincular
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Thumbnail preview if image is attached */}
+                          {stepLinkedImg && (
+                            <div className="flex items-center gap-3 p-2 bg-white rounded border border-emerald-200/80 shadow-2xs">
+                              <img
+                                src={stepLinkedImg.dataUrl}
+                                alt={stepLinkedImg.title}
+                                className="w-16 h-12 object-contain bg-slate-100 rounded border border-slate-200 shrink-0"
+                              />
+                              <div className="min-w-0 flex-1 text-xs">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-bold text-[#0A3D62] text-[11px]">
+                                    {linkedImgIndex ? imageTag(linkedImgIndex) : '[IMAGEN]'}
+                                  </span>
+                                  <span className="font-semibold text-slate-800 truncate">{stepLinkedImg.title}</span>
+                                </div>
+                                {stepLinkedImg.description && (
+                                  <p className="text-[10px] text-slate-500 italic truncate mt-0.5">{stepLinkedImg.description}</p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
                         <div className="space-y-1.5">
                           <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Explicación Técnica Detallada:</label>
                           <TextFormattingToolbar
@@ -1501,6 +1780,22 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                             onChange={(v) => handleStepChange(idx, 'explicacion', v)}
                             onInsertTable={() => handleInsertTableInStep(idx)}
                           />
+                          {images.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-1 text-[10px]">
+                              <span className="text-slate-400 font-semibold">Insertar tag en texto:</span>
+                              {images.map((img, i) => (
+                                <button
+                                  key={img.id || i}
+                                  type="button"
+                                  onClick={() => handleInsertImageTagInStep(idx, i + 1)}
+                                  className="px-1.5 py-0.5 font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded"
+                                  title={`Insertar ${imageTag(i + 1)} en la explicación`}
+                                >
+                                  +{imageTag(i + 1)}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                           <textarea
                             value={step.explicacion}
                             onChange={(e) => handleStepChange(idx, 'explicacion', e.target.value)}
@@ -1510,6 +1805,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                             className="w-full min-w-0 max-w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded text-slate-800 font-sans leading-relaxed"
                           />
                           {renderInlineTables(step.explicacion)}
+                          {renderInlineImages(step.explicacion)}
                         </div>
                       </div>
                     );
@@ -1583,6 +1879,71 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
             </div>
           )}
 
+          {/* Imágenes y Capturas de la Propuesta */}
+          {(activeSectionFilter === 'all' || activeSectionFilter === 'imagenes') && (
+            <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 transition-all min-w-0 max-w-full overflow-x-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-2 min-w-0 pb-1">
+                <button
+                  type="button"
+                  onClick={() => toggleSectionCollapse('imagenes')}
+                  className="flex items-center gap-2 text-left group cursor-pointer"
+                  title={collapsedSections['imagenes'] ? "Descomprimir sección" : "Comprimir sección"}
+                >
+                  <span className="p-1 rounded-md bg-white border border-slate-200 text-slate-500 group-hover:text-[#0A3D62] group-hover:border-blue-300 transition-colors">
+                    {collapsedSections['imagenes'] ? (
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    ) : (
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    )}
+                  </span>
+                  <div>
+                    <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide cursor-pointer flex items-center gap-1.5">
+                      <ImageIcon className="w-4 h-4 text-[#2ECC71]" />
+                      <span>Galería e Imágenes de la Propuesta</span>
+                    </label>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Sube, pega o gestiona capturas de pantalla y diagramas. Úsalas en los pasos o con [IMAGEN_1], [IMAGEN_2]…
+                    </p>
+                  </div>
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-semibold text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded-full">
+                    {images.length} imágen{images.length === 1 ? '' : 'es'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => toggleSectionCollapse('imagenes')}
+                    className="px-2 py-1 text-[11px] font-semibold text-slate-600 bg-white hover:bg-slate-100 border border-slate-200 rounded transition-colors"
+                  >
+                    {collapsedSections['imagenes'] ? 'Descomprimir' : 'Comprimir'}
+                  </button>
+                </div>
+              </div>
+
+              {collapsedSections['imagenes'] ? (
+                <div 
+                  onClick={() => toggleSectionCollapse('imagenes')}
+                  className="mt-2 p-2.5 bg-white rounded-lg border border-dashed border-slate-300 text-xs text-slate-600 cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-all flex items-center justify-between gap-2"
+                >
+                  <p className="truncate italic text-slate-500 flex-1">
+                    {images.length > 0
+                      ? images.map((img, i) => `[IMAGEN_${i+1}]: ${img.title}`).join(' | ')
+                      : 'Sin imágenes agregadas aún. Haz clic para expandir y subir.'}
+                  </p>
+                  <span className="text-[10px] font-bold text-[#0A3D62] shrink-0">Expandir</span>
+                </div>
+              ) : (
+                <div className="mt-3">
+                  <ImageUploader
+                    images={images}
+                    onChange={onImagesChange || (() => {})}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Section 8: Descargo */}
           {(activeSectionFilter === 'all' || activeSectionFilter === 'descargo') && (
             <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 transition-all min-w-0 max-w-full overflow-x-hidden">
@@ -1615,6 +1976,18 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                 </button>
 
                 <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const defaultVal = metadata.customTitles?.defaultDescargo?.trim() || DEFAULT_DESCARGO_TEXT;
+                      handleStringChange('descargo', defaultVal);
+                    }}
+                    className="inline-flex items-center px-2 py-1 text-[11px] font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded transition-colors cursor-pointer"
+                    title="Restaurar al texto/cláusula de descargo configurada por defecto"
+                  >
+                    <RotateCcw className="w-3 h-3 mr-1 text-slate-500" />
+                    Texto por Defecto
+                  </button>
                   <button
                     onClick={() => handleAIRefine('refine_section', 'descargo')}
                     disabled={isRefining}
@@ -1651,6 +2024,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                     onChange={(v) => handleStringChange('descargo', v)}
                     onInsertTable={() => handleInsertTableInField('descargo')}
                   />
+                  {renderImageInsertBar('descargo')}
 
                   <textarea
                     ref={descargoRef}
@@ -1661,6 +2035,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                     className="w-full min-w-0 max-w-full p-3 text-xs bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-700 italic font-sans leading-relaxed"
                   />
                   {renderInlineTables(proposal.descargo)}
+                  {renderInlineImages(proposal.descargo)}
                 </div>
               )}
             </div>
@@ -1668,6 +2043,16 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
 
         </div>
       )}
+
+      {/* Hidden File Input for Image Pickers */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        onChange={handleFileInputChange}
+        className="hidden"
+      />
 
       {/* Modal to Save as New Version */}
       {isNewVersionModalOpen && (

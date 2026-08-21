@@ -1,4 +1,4 @@
-import { MetadataHeader, UploadedImage } from '../types';
+import { MetadataHeader, UploadedImage, DEFAULT_DESCARGO_TEXT } from '../types';
 
 export const ADVANSYS_SAMPLE_METADATA: MetadataHeader = {
   cliente: "Banco Metropolitano S.A.",
@@ -74,7 +74,7 @@ export const EMPTY_MANUAL_PROPOSAL = {
   descripcion: "",
   indiceAnalisisOperativo: [],
   analisisOperativo: [],
-  descargo: "La presente propuesta técnica y análisis operativo han sido elaborados exclusivamente por Advansys para uso confidencial del cliente indicado. Los requerimientos, diagramas y estimaciones contenidos están sujetos a validación formal tras la aprobación del acta de inicio de proyecto.",
+  descargo: DEFAULT_DESCARGO_TEXT,
   tables: []
 };
 

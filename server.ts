@@ -376,6 +376,11 @@ ${rawRequirements}
       });
     }
 
+    const customDescargo = metadata?.customTitles?.defaultDescargo?.trim();
+    const descargoInstruction = customDescargo
+      ? `8. Descargo (Usa exactamente la siguiente cláusula corporativa configurada: "${customDescargo}")`
+      : `8. Descargo (Usa la cláusula oficial: "El contenido de este análisis refleja con precisión los resultados que serán entregados, sin adiciones ni omisiones. Cualquier observación o inquietud que el cliente pueda tener deberá ser expresada y documentada debidamente para ser considerada y, en su caso, incorporada al análisis. No se realizarán ajustes adicionales a menos que se notifiquen y documenten de acuerdo con este procedimiento.")`;
+
     const systemInstruction = `Eres un Arquitecto de Software Senior y Líder del Departamento de Análisis & Riesgo de Advansys.
 Tu trabajo es redactar análisis técnicos formales, guías operativas y propuestas de desarrollo profesionales siguiendo el formato y estilo corporativo de Advansys (referencia Guía Ticket 0000039443).
 
@@ -408,7 +413,7 @@ ESTRUCTURA DEL DOCUMENTO:
 5. Descripción
 6. Índice Análisis Operativo
 7. Análisis Operativo (Paso a paso. Ajusta cantidad de pasos y profundidad de cada explicación al nivel de detalle. Para cada imagen adjunta, genera una explicación acorde al detalle solicitado y referencia explícitamente a [IMAGEN_1], [IMAGEN_2], etc.)
-8. Descargo (Usa la cláusula oficial: "El contenido de este análisis refleja con precisión los resultados que serán entregados, sin adiciones ni omisiones. Cualquier observación o inquietud que el cliente pueda tener deberá ser expresada y documentada debidamente para ser considerada y, en su caso, incorporada al análisis. No se realizarán ajustes adicionales a menos que se notifiquen y documenten de acuerdo con este procedimiento.")
+${descargoInstruction}
 
 Retorna la información estrictamente en formato JSON según el schema especificado.`;
 

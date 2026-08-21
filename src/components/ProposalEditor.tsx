@@ -1726,13 +1726,23 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                       : (step.imagenId ? images.find(img => img.id === step.imagenId) : null) ||
                         (step.referenciaImagen ? (() => {
                           const m = step.referenciaImagen.match(/\[IMAGEN_(\d+)\]/i);
-                          return m ? images[parseInt(m[1], 10) - 1] : null;
-                        })() : null) || images[idx];
+                          if (m) {
+                            const targetIndex = parseInt(m[1], 10) - 1;
+                            return images[targetIndex] || null;
+                          }
+                          return images.find(img => img.id === step.referenciaImagen) || null;
+                        })() : null) ||
+                        (step.explicacion ? (() => {
+                          const m = step.explicacion.match(/\[IMAGEN_(\d+)\]/i);
+                          if (m) {
+                            const targetIndex = parseInt(m[1], 10) - 1;
+                            return images[targetIndex] || null;
+                          }
+                          return null;
+                        })() : null);
                     
                     const linkedImgIndex = stepLinkedImg ? images.indexOf(stepLinkedImg) + 1 : null;
-                    const currentValueForSelect = isExplicitNone
-                      ? 'none'
-                      : (step.imagenId || (step.referenciaImagen && step.referenciaImagen !== 'none' ? step.referenciaImagen : (images[idx] ? images[idx].id : 'none')));
+                    const currentValueForSelect = isExplicitNone ? 'none' : (stepLinkedImg ? stepLinkedImg.id : 'none');
 
                     return (
                       <div key={idx} className="bg-white p-3 rounded-lg border border-slate-200 space-y-3 relative group min-w-0">

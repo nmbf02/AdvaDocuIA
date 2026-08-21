@@ -242,16 +242,32 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
                     : (step.imagenId ? images.find(img => img.id === step.imagenId) : null) ||
                       (step.referenciaImagen ? (() => {
                         const m = step.referenciaImagen.match(/\[IMAGEN_(\d+)\]/i);
-                        return m ? images[parseInt(m[1], 10) - 1] : null;
-                      })() : null) || images[idx];
-                  const imgIdx = linkedImg ? images.indexOf(linkedImg) + 1 : idx + 1;
+                        if (m) {
+                          const targetIndex = parseInt(m[1], 10) - 1;
+                          return images[targetIndex] || null;
+                        }
+                        return images.find(img => img.id === step.referenciaImagen) || null;
+                      })() : null) ||
+                      (step.explicacion ? (() => {
+                        const m = step.explicacion.match(/\[IMAGEN_(\d+)\]/i);
+                        if (m) {
+                          const targetIndex = parseInt(m[1], 10) - 1;
+                          return images[targetIndex] || null;
+                        }
+                        return null;
+                      })() : null);
+                  const imgIdx = linkedImg ? images.indexOf(linkedImg) + 1 : null;
+                  const explicacionHasSameImageTag = Boolean(
+                    linkedImg && imgIdx && step.explicacion && new RegExp(`\\[IMAGEN_${imgIdx}\\]`, 'i').test(step.explicacion)
+                  );
+
                   return (
                     <div key={idx} className="border-l-2 border-[#0A3D62] pl-3 py-1 space-y-2">
                       <h3 className="font-bold text-[#0A3D62] text-xs">
                         Paso 7.{idx + 1}: {step.titulo?.trim() || `Paso ${idx + 1}`}
                       </h3>
 
-                      {linkedImg && (
+                      {linkedImg && imgIdx && !explicacionHasSameImageTag && (
                         <PreviewImage image={linkedImg} index={imgIdx} />
                       )}
 

@@ -528,15 +528,27 @@ export async function generateAdvansysPdf(
       doc.text(stepTitle, margin, cursorY + 2);
       cursorY += 5.5;
 
-      // Check for associated image
+      // Check for associated image strictly
       const isExplicitNone = step.imagenId === 'none' || step.referenciaImagen === 'none';
       const matchingImg = isExplicitNone
         ? undefined
-        : (step.imagenId ? images.find(img => img.id === step.imagenId) : undefined) ||
-          (step.referenciaImagen ? (() => {
+        : (step.imagenId && step.imagenId !== 'none' ? images.find(img => img.id === step.imagenId) : undefined) ||
+          (step.referenciaImagen && step.referenciaImagen !== 'none' ? (() => {
             const m = step.referenciaImagen.match(/\[IMAGEN_(\d+)\]/i);
-            return m ? images[parseInt(m[1], 10) - 1] : undefined;
-          })() : undefined) || images[idx];
+            if (m) {
+              const targetIndex = parseInt(m[1], 10) - 1;
+              return images[targetIndex];
+            }
+            return images.find(img => img.id === step.referenciaImagen);
+          })() : undefined) ||
+          (step.explicacion ? (() => {
+            const m = step.explicacion.match(/\[IMAGEN_(\d+)\]/i);
+            if (m) {
+              const targetIndex = parseInt(m[1], 10) - 1;
+              return images[targetIndex];
+            }
+            return undefined;
+          })() : undefined);
       if (matchingImg && matchingImg.dataUrl) {
         const loadedImg = await loadSvgOrImageToCanvasPng(matchingImg.dataUrl, 1200);
         if (loadedImg) {

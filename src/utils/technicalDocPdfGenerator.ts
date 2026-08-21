@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { MetadataHeader, TechnicalDoc, DocumentTable, UploadedImage, getEffectiveTechnicalTitles } from '../types';
+import { getAdvansysBannerSvg } from '../data/banner';
 import { loadSvgOrImageToCanvasPng } from './imageExport';
 import { fitImageSize, getImageAlign, pdfImageX } from './imageLayout';
 
@@ -29,7 +30,7 @@ export async function generateTechnicalDocPdf(
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 14;
   const contentWidth = pageWidth - margin * 2;
-  let cursorY = 16;
+  let cursorY = 0;
 
   const checkPageBreak = (neededHeight: number): void => {
     if (cursorY + neededHeight > pageHeight - 16) {
@@ -38,47 +39,167 @@ export async function generateTechnicalDocPdf(
     }
   };
 
-  // Top header title
+  // 1. Cover Header Banner
+  try {
+    const bannerSvg = getAdvansysBannerSvg(
+      metadata.headerBrandTag || 'ADVANSYS',
+      metadata.headerSubtitle ?? 'Especificación técnica interna de desarrollo',
+      metadata.logoDataUrl
+    );
+    const loadedBanner = await loadSvgOrImageToCanvasPng(bannerSvg, 1800);
+    if (loadedBanner) {
+      const bannerH = (pageWidth / loadedBanner.width) * loadedBanner.height;
+      doc.addImage(loadedBanner.dataUrl, 'PNG', 0, 0, pageWidth, bannerH);
+      cursorY = bannerH + 4;
+    } else {
+      cursorY = 16;
+    }
+  } catch (e) {
+    console.error('Error drawing PDF technical doc banner:', e);
+    cursorY = 16;
+  }
+
+  // 2. Main Title
   if (!titles.hideTechMainTitle) {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
     doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
     const titleLines = doc.splitTextToSize(mainTitle.toUpperCase(), contentWidth);
-    doc.text(titleLines, pageWidth / 2, cursorY, {
-      align: 'center',
-    });
-    cursorY += titleLines.length * 4.5 + 2;
+    doc.text(titleLines, pageWidth / 2, cursorY, { align: 'center' });
+    cursorY += titleLines.length * 4.5 + 3;
   }
 
-  // Metadata Table
+  // 3. Metadata Table (6-column modular grid)
+  const colW6 = contentWidth / 6;
   const metaRows = [
+    // Row 1: CLIENTE (50%) | FECHA (50%)
     [
-      { content: 'CLIENTE', styles: { fontStyle: 'bold', fillColor: COLOR_BG_LIGHT, textColor: COLOR_PRIMARY } },
-      { content: metadata.cliente || 'N/A' },
-      { content: 'FECHA', styles: { fontStyle: 'bold', fillColor: COLOR_BG_LIGHT, textColor: COLOR_PRIMARY } },
-      { content: metadata.fecha || new Date().toISOString().split('T')[0] },
+      { content: `CLIENTE:  ${metadata.cliente || 'N/A'}`, colSpan: 3 },
+      { content: `FECHA:  ${metadata.fecha || new Date().toISOString().split('T')[0]}`, colSpan: 3 },
     ],
+    // Row 2: TICKET NO. (33.3%) | GUÍA NO. (33.3%) | MÓDULO (33.3%)
     [
-      { content: 'TICKET NO', styles: { fontStyle: 'bold', fillColor: COLOR_BG_LIGHT, textColor: COLOR_PRIMARY } },
-      { content: metadata.ticketNo || 'N/A' },
-      { content: 'MÓDULO', styles: { fontStyle: 'bold', fillColor: COLOR_BG_LIGHT, textColor: COLOR_PRIMARY } },
-      { content: metadata.moduloAplicacion || 'N/A' },
+      { content: `TICKET NO.:  ${metadata.ticketNo || 'N/A'}`, colSpan: 2 },
+      { content: `GUÍA NO.:  ${metadata.guiaNo || 'N/A'}`, colSpan: 2 },
+      { content: `MÓDULO:  ${metadata.moduloAplicacion || 'N/A'}`, colSpan: 2 },
     ],
+    // Row 3: PROYECTO (100%)
     [
-      { content: 'PROYECTO', styles: { fontStyle: 'bold', fillColor: COLOR_BG_LIGHT, textColor: COLOR_PRIMARY } },
-      { content: metadata.nombreProyecto || 'N/A', colSpan: 3, styles: { fontStyle: 'bold' } },
+      { content: `PROYECTO:  ${metadata.nombreProyecto || 'N/A'}`, colSpan: 6, styles: { fontStyle: 'bold' } },
     ],
   ];
 
   autoTable(doc, {
     startY: cursorY,
+    tableWidth: contentWidth,
     margin: { left: margin, right: margin },
-    theme: 'grid',
-    styles: { fontSize: 8, cellPadding: 2, textColor: COLOR_TEXT_DARK, lineColor: COLOR_BORDER, lineWidth: 0.15 },
     body: metaRows as any,
+    theme: 'grid',
+    styles: {
+      fontSize: 8,
+      cellPadding: 2.2,
+      textColor: COLOR_TEXT_DARK,
+      lineColor: COLOR_BORDER,
+      lineWidth: 0.2,
+      font: 'helvetica',
+      fillColor: COLOR_BG_LIGHT,
+      overflow: 'linebreak',
+    },
+    columnStyles: {
+      0: { cellWidth: colW6 },
+      1: { cellWidth: colW6 },
+      2: { cellWidth: colW6 },
+      3: { cellWidth: colW6 },
+      4: { cellWidth: colW6 },
+      5: { cellWidth: colW6 },
+    },
   });
 
   cursorY = (doc as any).lastAutoTable.finalY + 6;
+
+  // Helpers
+  const renderSectionHeader = (title: string, sectionNumber: string, pageBreak = false): void => {
+    if (pageBreak) {
+      doc.addPage();
+      cursorY = 20;
+    } else {
+      checkPageBreak(16);
+      cursorY += 2;
+    }
+
+    const fullTitle = `${sectionNumber}. ${title.toUpperCase()}`;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+    doc.text(fullTitle, margin, cursorY + 3.5);
+
+    // Accent line under title
+    doc.setFillColor(COLOR_ACCENT[0], COLOR_ACCENT[1], COLOR_ACCENT[2]);
+    doc.rect(margin, cursorY + 5.5, contentWidth, 0.7, 'F');
+    cursorY += 8.5;
+  };
+
+  const renderParagraph = (text?: string): void => {
+    if (!text || !text.trim()) return;
+    const cleanText = text.trim();
+    const rawLines = cleanText.split('\n');
+
+    for (const rawLine of rawLines) {
+      const trimmedLine = rawLine.trim();
+      if (!trimmedLine) continue;
+
+      const bulletMatch = rawLine.match(/^(\s*)([•\-\*])\s+(.*)$/);
+      const numberMatch = rawLine.match(/^(\s*)(\d+)[\.\)]\s+(.*)$/);
+
+      if (bulletMatch) {
+        const indentExtra = bulletMatch[1].length >= 4 ? 4.0 : 0;
+        const bulletIndent = 4.5 + indentExtra;
+        const contentStr = bulletMatch[3].replace(/\*\*/g, '');
+        const textWidth = contentWidth - bulletIndent;
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.setTextColor(COLOR_TEXT_DARK[0], COLOR_TEXT_DARK[1], COLOR_TEXT_DARK[2]);
+        const lines = doc.splitTextToSize(contentStr, textWidth);
+        const needed = lines.length * 3.8 + 1.2;
+        checkPageBreak(needed);
+
+        doc.setFillColor(COLOR_ACCENT[0], COLOR_ACCENT[1], COLOR_ACCENT[2]);
+        doc.circle(margin + indentExtra + 1.6, cursorY - 1, 0.7, 'F');
+        doc.text(lines, margin + bulletIndent, cursorY);
+        cursorY += needed;
+      } else if (numberMatch) {
+        const indentExtra = numberMatch[1].length >= 4 ? 4.0 : 0;
+        const numIndent = 5.5 + indentExtra;
+        const numStr = `${numberMatch[2]}. `;
+        const contentStr = numberMatch[3].replace(/\*\*/g, '');
+        const textWidth = contentWidth - numIndent;
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+        doc.text(numStr, margin + indentExtra, cursorY);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(COLOR_TEXT_DARK[0], COLOR_TEXT_DARK[1], COLOR_TEXT_DARK[2]);
+        const lines = doc.splitTextToSize(contentStr, textWidth);
+        const needed = lines.length * 3.8 + 1.2;
+        checkPageBreak(needed);
+        doc.text(lines, margin + numIndent, cursorY);
+        cursorY += needed;
+      } else {
+        const contentStr = trimmedLine.replace(/\*\*/g, '');
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.setTextColor(COLOR_TEXT_DARK[0], COLOR_TEXT_DARK[1], COLOR_TEXT_DARK[2]);
+        const lines = doc.splitTextToSize(contentStr, contentWidth);
+        const needed = lines.length * 3.8 + 2.0;
+        checkPageBreak(needed);
+        doc.text(lines, margin, cursorY);
+        cursorY += needed;
+      }
+    }
+  };
 
   const renderCustomTable = (table: DocumentTable): void => {
     if (!table || !table.headers || table.headers.length === 0) return;
@@ -166,26 +287,11 @@ export async function generateTechnicalDocPdf(
   };
 
   const renderSection = async (title: string, sectionNumber: string, content: string, isCode = false) => {
-    checkPageBreak(16);
-
-    // Section title
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10.5);
-    doc.setTextColor(COLOR_ACCENT[0], COLOR_ACCENT[1], COLOR_ACCENT[2]);
-    doc.text(`${sectionNumber}. `, margin, cursorY);
-    const numWidth = doc.getTextWidth(`${sectionNumber}. `);
-    doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-    doc.text(title.toUpperCase(), margin + numWidth, cursorY);
-
-    // Bottom accent line
-    doc.setDrawColor(COLOR_ACCENT[0], COLOR_ACCENT[1], COLOR_ACCENT[2]);
-    doc.setLineWidth(0.4);
-    doc.line(margin, cursorY + 1.5, pageWidth - margin, cursorY + 1.5);
-    cursorY += 5.5;
+    renderSectionHeader(title, sectionNumber);
 
     if (isCode) {
       const codeLines = doc.splitTextToSize(content || 'No aplica código.', contentWidth - 6);
-      const codeHeight = codeLines.length * 3.4 + 4;
+      const codeHeight = codeLines.length * 3.4 + 6;
       checkPageBreak(codeHeight);
 
       doc.setFillColor(30, 41, 59); // Dark background for code
@@ -193,7 +299,7 @@ export async function generateTechnicalDocPdf(
 
       doc.setFont('courier', 'normal');
       doc.setFontSize(7.5);
-      doc.setTextColor(248, 250, 252);
+      doc.setTextColor(226, 232, 240);
       doc.text(codeLines, margin + 3, cursorY + 4);
       cursorY += codeHeight + 5;
     } else {
@@ -214,13 +320,7 @@ export async function generateTechnicalDocPdf(
           continue;
         }
         if (part.trim()) {
-          doc.setFont('helvetica', 'normal');
-          doc.setFontSize(8.5);
-          doc.setTextColor(COLOR_TEXT_DARK[0], COLOR_TEXT_DARK[1], COLOR_TEXT_DARK[2]);
-          const lines = doc.splitTextToSize(part.trim(), contentWidth);
-          checkPageBreak(lines.length * 4);
-          doc.text(lines, margin, cursorY);
-          cursorY += lines.length * 4 + 4;
+          renderParagraph(part.trim());
         }
       }
     }
@@ -255,13 +355,12 @@ export async function generateTechnicalDocPdf(
   if (unusedTables.length > 0) {
     checkPageBreak(16);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10.5);
+    doc.setFontSize(10);
     doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-    doc.text('TABLAS ADICIONALES', margin, cursorY);
-    doc.setDrawColor(COLOR_ACCENT[0], COLOR_ACCENT[1], COLOR_ACCENT[2]);
-    doc.setLineWidth(0.4);
-    doc.line(margin, cursorY + 1.5, pageWidth - margin, cursorY + 1.5);
-    cursorY += 6;
+    doc.text('TABLAS ADICIONALES', margin, cursorY + 3.5);
+    doc.setFillColor(COLOR_ACCENT[0], COLOR_ACCENT[1], COLOR_ACCENT[2]);
+    doc.rect(margin, cursorY + 5.5, contentWidth, 0.7, 'F');
+    cursorY += 8.5;
     unusedTables.forEach((table) => renderCustomTable(table));
   }
 
@@ -281,13 +380,12 @@ export async function generateTechnicalDocPdf(
   if (unusedImages.length > 0) {
     checkPageBreak(16);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10.5);
+    doc.setFontSize(10);
     doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-    doc.text('IMÁGENES ADICIONALES', margin, cursorY);
-    doc.setDrawColor(COLOR_ACCENT[0], COLOR_ACCENT[1], COLOR_ACCENT[2]);
-    doc.setLineWidth(0.4);
-    doc.line(margin, cursorY + 1.5, pageWidth - margin, cursorY + 1.5);
-    cursorY += 6;
+    doc.text('IMÁGENES ADICIONALES', margin, cursorY + 3.5);
+    doc.setFillColor(COLOR_ACCENT[0], COLOR_ACCENT[1], COLOR_ACCENT[2]);
+    doc.rect(margin, cursorY + 5.5, contentWidth, 0.7, 'F');
+    cursorY += 8.5;
     for (let i = 0; i < images.length; i++) {
       if (!usedImageIndexes.has(i)) {
         await renderEmbeddedImage(images[i], i + 1);

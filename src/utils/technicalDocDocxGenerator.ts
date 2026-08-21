@@ -2,31 +2,284 @@ import {
   Document,
   Paragraph,
   TextRun,
-  HeadingLevel,
-  AlignmentType,
-  BorderStyle,
   Table,
   TableRow,
   TableCell,
+  HeadingLevel,
+  AlignmentType,
+  BorderStyle,
+  ImageRun,
   WidthType,
   ShadingType,
   Header,
   Footer,
-  PageNumber,
   Packer,
+  PageNumber,
+  HorizontalPositionRelativeFrom,
+  VerticalPositionRelativeFrom,
+  TextWrappingType,
 } from 'docx';
-import { MetadataHeader, TechnicalDoc, DocumentTable, UploadedImage, getEffectiveTechnicalTitles } from '../types';
-import { dataUrlToUint8Array } from './imageExport';
-import { fitImageSize, ImageAlign } from './imageLayout';
+import {
+  MetadataHeader,
+  TechnicalDoc,
+  DocumentTable,
+  UploadedImage,
+  getEffectiveTechnicalTitles,
+} from '../types';
+import { getAdvansysBannerSvg } from '../data/banner';
+import { fitImageSize } from './imageLayout';
 import { createDocumentImageRun, paragraphAlignOf } from './imageDocx';
 
-const COLOR_PRIMARY_BLUE = '0A3D62';
-const COLOR_ACCENT_GREEN = '2ECC71';
-const COLOR_MUTED_GRAY = '64748B';
-const COLOR_BG_LIGHT = 'F8FAFC';
-const COLOR_BORDER = 'CBD5E1';
-const COLOR_CODE_BG = '1E293B';
-const COLOR_TEXT_DARK = '1E293B';
+type ProcessedImage = UploadedImage & {
+  index: number;
+  bytes: Uint8Array;
+  width: number;
+  height: number;
+};
+
+// Advansys Corporate Palette
+const COLOR_PRIMARY_BLUE = '0A3D62'; // #0A3D62 Deep Corporate Blue
+const COLOR_SECONDARY_BLUE = '1E5F8A'; // #1E5F8A Tech Blue Accent
+const COLOR_ACCENT_GREEN = '2ECC71'; // #2ECC71 Advansys Emerald Green
+const COLOR_TEXT_DARK = '1E293B'; // #1E293B Slate Dark
+const COLOR_MUTED_GRAY = '64748B'; // #64748B Slate Muted
+const COLOR_BORDER = 'CBD5E1'; // #CBD5E1 Slate Border
+const COLOR_CODE_BG = '1E293B'; // #1E293B Slate 900 for code box
+
+/**
+ * Converts a Base64 or SVG Data URL to Uint8Array for docx ImageRun
+ */
+async function dataUrlToUint8Array(dataUrl: string): Promise<{ data: Uint8Array; width: number; height: number }> {
+  return new Promise((resolve) => {
+    if (!dataUrl) {
+      resolve({ data: new Uint8Array(0), width: 100, height: 100 });
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      resolve({ data: new Uint8Array(0), width: 100, height: 100 });
+    }, 2000);
+
+    const safeResolve = (result: { data: Uint8Array; width: number; height: number }) => {
+      clearTimeout(timer);
+      resolve(result);
+    };
+
+    if (dataUrl.startsWith('data:image/svg+xml')) {
+      if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            const width = img.width || 600;
+            const height = img.height || 350;
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.fillStyle = '#FFFFFF';
+              ctx.fillRect(0, 0, width, height);
+              ctx.drawImage(img, 0, 0);
+              const pngDataUrl = canvas.toDataURL('image/png');
+              const base64 = pngDataUrl.split(',')[1];
+              const binary = atob(base64.trim());
+              const bytes = new Uint8Array(binary.length);
+              for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+              }
+              const targetWidth = 520;
+              const targetHeight = Math.round((height / width) * 520) || 300;
+              safeResolve({ data: bytes, width: targetWidth, height: targetHeight });
+              return;
+            }
+          } catch (e) {
+            console.error('Error drawing SVG on canvas for Technical Doc:', e);
+          }
+          safeResolve({ data: new Uint8Array(0), width: 100, height: 100 });
+        };
+        img.onerror = (e) => {
+          console.error('Failed to load SVG into Image element for Technical Doc:', e);
+          safeResolve({ data: new Uint8Array(0), width: 100, height: 100 });
+        };
+        img.src = dataUrl;
+        return;
+      }
+    }
+
+    try {
+      const parts = dataUrl.split(',');
+      const base64 = parts.length > 1 ? parts[1] : parts[0];
+      const cleanBase64 = base64.replace(/\s/g, '');
+      const binary = atob(cleanBase64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      safeResolve({ data: bytes, width: 520, height: 300 });
+    } catch (e) {
+      console.error('Error parsing base64 data URL in Technical Doc:', e);
+      safeResolve({ data: new Uint8Array(0), width: 100, height: 100 });
+    }
+  });
+}
+
+/**
+ * Builds a styled section heading paragraph for Advansys document
+ */
+function createSectionHeader(title: string, sectionNumber?: string, pageBreakBefore = false): Paragraph {
+  return new Paragraph({
+    text: '',
+    heading: HeadingLevel.HEADING_2,
+    pageBreakBefore,
+    spacing: { before: 360, after: 180 },
+    border: {
+      bottom: {
+        color: COLOR_ACCENT_GREEN,
+        space: 6,
+        style: BorderStyle.SINGLE,
+        size: 16,
+      },
+    },
+    children: [
+      ...(sectionNumber
+        ? [
+            new TextRun({
+              text: `${sectionNumber}. `,
+              bold: true,
+              color: COLOR_ACCENT_GREEN,
+              size: 28, // 14pt
+              font: 'Calibri',
+            }),
+          ]
+        : []),
+      new TextRun({
+        text: title.toUpperCase(),
+        bold: true,
+        color: COLOR_PRIMARY_BLUE,
+        size: 28, // 14pt
+        font: 'Calibri',
+      }),
+    ],
+  });
+}
+
+// Helper cell generator for metadata table
+function CellWrapper({
+  label,
+  value,
+  widthDxa,
+  colSpan = 1,
+}: {
+  label: string;
+  value: string;
+  widthDxa: number;
+  colSpan?: number;
+}): TableCell {
+  return new TableCell({
+    width: { size: widthDxa, type: WidthType.DXA },
+    columnSpan: colSpan,
+    shading: { fill: 'F8FAFC', type: ShadingType.CLEAR },
+    margins: { top: 100, bottom: 100, left: 140, right: 140 },
+    children: [
+      new Paragraph({
+        spacing: { before: 0, after: 0, line: 240 },
+        children: [
+          new TextRun({
+            text: label + ': ',
+            bold: true,
+            color: COLOR_PRIMARY_BLUE,
+            size: 18, // 9pt
+            font: 'Calibri',
+          }),
+          new TextRun({
+            text: value || 'N/A',
+            color: COLOR_TEXT_DARK,
+            size: 19, // 9.5pt
+            font: 'Calibri',
+          }),
+        ],
+      }),
+    ],
+  });
+}
+
+/**
+ * Creates the metadata table block matching the exact 6-column modular grid
+ */
+function createMetadataTable(metadata: MetadataHeader): Table {
+  const TOTAL_TABLE_DXA = 9520;
+  const UNIT_6 = Math.floor(TOTAL_TABLE_DXA / 6);
+  const COL_HALF = UNIT_6 * 3;
+  const COL_THIRD = Math.floor(TOTAL_TABLE_DXA / 3);
+  const COL_THIRD_LAST = TOTAL_TABLE_DXA - COL_THIRD * 2;
+
+  return new Table({
+    width: { size: TOTAL_TABLE_DXA, type: WidthType.DXA },
+    columnWidths: [UNIT_6, UNIT_6, UNIT_6, UNIT_6, UNIT_6, TOTAL_TABLE_DXA - UNIT_6 * 5],
+    borders: {
+      top: { style: BorderStyle.SINGLE, size: 4, color: COLOR_BORDER },
+      bottom: { style: BorderStyle.SINGLE, size: 4, color: COLOR_BORDER },
+      left: { style: BorderStyle.SINGLE, size: 4, color: COLOR_BORDER },
+      right: { style: BorderStyle.SINGLE, size: 4, color: COLOR_BORDER },
+      insideHorizontal: { style: BorderStyle.SINGLE, size: 4, color: COLOR_BORDER },
+      insideVertical: { style: BorderStyle.SINGLE, size: 4, color: COLOR_BORDER },
+    },
+    rows: [
+      // Fila 1: CLIENTE (50%) | FECHA (50%)
+      new TableRow({
+        children: [
+          CellWrapper({
+            label: 'CLIENTE',
+            value: metadata.cliente || 'N/A',
+            widthDxa: COL_HALF,
+            colSpan: 3,
+          }),
+          CellWrapper({
+            label: 'FECHA',
+            value: metadata.fecha || new Date().toISOString().split('T')[0],
+            widthDxa: TOTAL_TABLE_DXA - COL_HALF,
+            colSpan: 3,
+          }),
+        ],
+      }),
+      // Fila 2: TICKET NO. (33.3%) | GUÍA NO. (33.3%) | MÓDULO (33.3%)
+      new TableRow({
+        children: [
+          CellWrapper({
+            label: 'TICKET NO.',
+            value: metadata.ticketNo || 'N/A',
+            widthDxa: COL_THIRD,
+            colSpan: 2,
+          }),
+          CellWrapper({
+            label: 'GUÍA NO.',
+            value: metadata.guiaNo || 'N/A',
+            widthDxa: COL_THIRD,
+            colSpan: 2,
+          }),
+          CellWrapper({
+            label: 'MÓDULO',
+            value: metadata.moduloAplicacion || 'N/A',
+            widthDxa: COL_THIRD_LAST,
+            colSpan: 2,
+          }),
+        ],
+      }),
+      // Fila 3: PROYECTO (100%)
+      new TableRow({
+        children: [
+          CellWrapper({
+            label: 'PROYECTO',
+            value: metadata.nombreProyecto || 'N/A',
+            widthDxa: TOTAL_TABLE_DXA,
+            colSpan: 6,
+          }),
+        ],
+      }),
+    ],
+  });
+}
 
 function createContentTable(table: DocumentTable): Table {
   const colCount = Math.max(table.headers.length, 1, ...table.rows.map((r) => r.length));
@@ -94,21 +347,34 @@ function createContentTable(table: DocumentTable): Table {
   });
 }
 
-type ProcessedImage = {
-  index: number;
-  bytes: Uint8Array;
-  width: number;
-  height: number;
-  title: string;
-  description?: string;
-  widthPercent?: number;
-  align?: ImageAlign;
-  wrap?: UploadedImage['wrap'];
-  verticalAlign?: UploadedImage['verticalAlign'];
-  rotation?: number;
-  flipHorizontal?: boolean;
-  flipVertical?: boolean;
-};
+function parseBoldRuns(text: string): TextRun[] {
+  const runs: TextRun[] = [];
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  for (const part of parts) {
+    if (!part) continue;
+    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+      runs.push(
+        new TextRun({
+          text: part.slice(2, -2),
+          bold: true,
+          color: COLOR_TEXT_DARK,
+          size: 22,
+          font: 'Calibri',
+        })
+      );
+    } else {
+      runs.push(
+        new TextRun({
+          text: part,
+          color: COLOR_TEXT_DARK,
+          size: 22,
+          font: 'Calibri',
+        })
+      );
+    }
+  }
+  return runs.length > 0 ? runs : [new TextRun({ text, color: COLOR_TEXT_DARK, size: 22, font: 'Calibri' })];
+}
 
 function createImageBlock(img: ProcessedImage): (Paragraph | Table)[] {
   if (!img.bytes || img.bytes.length === 0) return [];
@@ -149,17 +415,17 @@ function createImageBlock(img: ProcessedImage): (Paragraph | Table)[] {
   ];
 }
 
-function createFormattedBlockWithTables(
+function pushTextWithTablesAndImages(
+  docElements: (Paragraph | Table)[],
   text: string,
   tables: DocumentTable[],
-  used: Set<number>,
-  images: ProcessedImage[] = [],
-  usedImages: Set<number> = new Set()
-): (Paragraph | Table)[] {
+  usedTables: Set<number>,
+  imageMapByIndex: Map<number, ProcessedImage>,
+  usedImages: Set<number>
+) {
   const source = text || '';
   const parts = source.split(/(\[TABLA_\d+\]|\[IMAGEN_\d+\])/gi);
-  const out: (Paragraph | Table)[] = [];
-  let wrote = false;
+  let wroteSomething = false;
 
   for (const part of parts) {
     const tableMatch = part.match(/^\[TABLA_(\d+)\]$/i);
@@ -167,9 +433,9 @@ function createFormattedBlockWithTables(
       const idx = parseInt(tableMatch[1], 10) - 1;
       const table = tables[idx];
       if (!table) continue;
-      used.add(idx);
+      usedTables.add(idx);
       if (table.title?.trim()) {
-        out.push(
+        docElements.push(
           new Paragraph({
             spacing: { before: 140, after: 80 },
             children: [
@@ -184,173 +450,239 @@ function createFormattedBlockWithTables(
           })
         );
       }
-      out.push(createContentTable(table));
-      out.push(new Paragraph({ text: '', spacing: { after: 80 } }));
-      wrote = true;
+      docElements.push(createContentTable(table));
+      docElements.push(new Paragraph({ text: '', spacing: { after: 120 } }));
+      wroteSomething = true;
       continue;
     }
 
-    const imageMatch = part.match(/^\[IMAGEN_(\d+)\]$/i);
-    if (imageMatch) {
-      const idx = parseInt(imageMatch[1], 10) - 1;
-      const img = images[idx];
-      if (!img) continue;
-      usedImages.add(idx);
-      out.push(...createImageBlock(img));
-      wrote = true;
-      continue;
+    const imgMatch = part.match(/^\[IMAGEN_(\d+)\]$/i);
+    if (imgMatch) {
+      const imgIdx = parseInt(imgMatch[1], 10);
+      const linkedImg = imageMapByIndex.get(imgIdx);
+      if (linkedImg && linkedImg.bytes && linkedImg.bytes.length > 0) {
+        usedImages.add(imgIdx - 1);
+        docElements.push(...createImageBlock(linkedImg));
+        wroteSomething = true;
+        continue;
+      }
     }
 
-    if (part.trim()) {
-      out.push(...createFormattedBlock(part));
-      wrote = true;
+    const rawBlock = part.trim();
+    if (!rawBlock) continue;
+
+    const lines = rawBlock.split('\n');
+    let currentParagraphLines: string[] = [];
+
+    const flushCurrentParagraph = () => {
+      if (currentParagraphLines.length === 0) return;
+      const pText = currentParagraphLines.join(' ').trim();
+      if (pText) {
+        docElements.push(
+          new Paragraph({
+            spacing: { before: 60, after: 100 },
+            alignment: AlignmentType.BOTH,
+            children: parseBoldRuns(pText),
+          })
+        );
+        wroteSomething = true;
+      }
+      currentParagraphLines = [];
+    };
+
+    for (const rawLine of lines) {
+      const trimmedLine = rawLine.trim();
+      if (!trimmedLine) {
+        flushCurrentParagraph();
+        continue;
+      }
+
+      // Detect bullet: •, -, *
+      const bulletMatch = rawLine.match(/^(\s*)([•\-\*])\s+(.*)$/);
+      // Detect numbered item: 1. or 2.
+      const numberMatch = rawLine.match(/^(\s*)(\d+)[\.\)]\s+(.*)$/);
+
+      if (bulletMatch) {
+        flushCurrentParagraph();
+        const indentLevel = bulletMatch[1].length >= 4 ? 1 : 0;
+        docElements.push(
+          new Paragraph({
+            bullet: { level: indentLevel },
+            spacing: { before: 40, after: 40 },
+            children: parseBoldRuns(bulletMatch[3]),
+          })
+        );
+        wroteSomething = true;
+      } else if (numberMatch) {
+        flushCurrentParagraph();
+        const num = numberMatch[2];
+        docElements.push(
+          new Paragraph({
+            spacing: { before: 40, after: 40 },
+            children: [
+              new TextRun({
+                text: `${num}. `,
+                bold: true,
+                color: COLOR_PRIMARY_BLUE,
+                size: 22,
+                font: 'Calibri',
+              }),
+              ...parseBoldRuns(numberMatch[3]),
+            ],
+          })
+        );
+        wroteSomething = true;
+      } else {
+        currentParagraphLines.push(trimmedLine);
+      }
     }
+
+    flushCurrentParagraph();
   }
 
-  if (!wrote) out.push(...createFormattedBlock(''));
-  return out;
-}
-
-function createSectionHeading(title: string, sectionNumber?: string): Paragraph {
-  return new Paragraph({
-    text: '',
-    heading: HeadingLevel.HEADING_2,
-    spacing: { before: 280, after: 140 },
-    border: {
-      bottom: {
-        color: COLOR_ACCENT_GREEN,
-        space: 4,
-        style: BorderStyle.SINGLE,
-        size: 12,
-      },
-    },
-    children: [
-      ...(sectionNumber
-        ? [
-            new TextRun({
-              text: `${sectionNumber}. `,
-              bold: true,
-              color: COLOR_ACCENT_GREEN,
-              size: 24, // 12pt
-              font: 'Calibri',
-            }),
-          ]
-        : []),
-      new TextRun({
-        text: title.toUpperCase(),
-        bold: true,
-        color: COLOR_PRIMARY_BLUE,
-        size: 24, // 12pt
-        font: 'Calibri',
-      }),
-    ],
-  });
-}
-
-function createFormattedBlock(text: string): Paragraph[] {
-  if (!text || !text.trim()) {
-    return [
+  if (!wroteSomething && (!source || !source.trim())) {
+    docElements.push(
       new Paragraph({
+        spacing: { before: 60, after: 60 },
         children: [
           new TextRun({
-            text: 'Sin información especificada.',
+            text: 'Sin información especificada para esta sección.',
             italics: true,
             color: COLOR_MUTED_GRAY,
             size: 20,
             font: 'Calibri',
           }),
         ],
-      }),
-    ];
+      })
+    );
   }
-
-  const lines = text.split('\n');
-  return lines.map((line) => {
-    const isBullet = line.trim().startsWith('•') || line.trim().startsWith('-');
-    const cleanLine = isBullet ? line.trim().replace(/^[•\-]\s*/, '') : line;
-
-    return new Paragraph({
-      spacing: { before: 60, after: 60 },
-      bullet: isBullet ? { level: 0 } : undefined,
-      children: [
-        new TextRun({
-          text: cleanLine,
-          size: 21,
-          font: 'Calibri',
-          color: '1E293B',
-        }),
-      ],
-    });
-  });
 }
 
-function createCodeBlockParagraphs(code: string): Paragraph[] {
-  if (!code || !code.trim()) {
-    return [
-      new Paragraph({
-        children: [
-          new TextRun({
-            text: 'No aplica código o scripts para este requerimiento.',
-            italics: true,
-            color: COLOR_MUTED_GRAY,
-            size: 20,
-            font: 'Calibri',
-          }),
-        ],
-      }),
-    ];
-  }
-
-  const lines = code.split('\n');
-  return lines.map(
+/**
+ * Creates a code block styled inside a shaded container table for DOCX
+ */
+function createCodeBlockTable(code: string): Table {
+  const lines = (code || '').split('\n');
+  const paragraphs = lines.map(
     (line) =>
       new Paragraph({
-        spacing: { before: 20, after: 20 },
+        spacing: { before: 20, after: 20, line: 240 },
         children: [
           new TextRun({
             text: line || ' ',
             font: 'Consolas',
             size: 18, // 9pt
-            color: '0F172A',
+            color: 'E2E8F0', // light slate text on dark background
           }),
         ],
       })
   );
+
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: {
+      top: { style: BorderStyle.SINGLE, size: 6, color: '334155' },
+      bottom: { style: BorderStyle.SINGLE, size: 6, color: '334155' },
+      left: { style: BorderStyle.SINGLE, size: 12, color: COLOR_ACCENT_GREEN },
+      right: { style: BorderStyle.SINGLE, size: 6, color: '334155' },
+      insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+      insideVertical: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+    },
+    rows: [
+      new TableRow({
+        children: [
+          new TableCell({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            shading: { fill: COLOR_CODE_BG, type: ShadingType.CLEAR },
+            margins: { top: 120, bottom: 120, left: 160, right: 160 },
+            children: paragraphs.length > 0 ? paragraphs : [new Paragraph({ text: '' })],
+          }),
+        ],
+      }),
+    ],
+  });
 }
 
+/**
+ * Generates the complete Word Document (.docx) for Technical Documentation
+ */
 export async function generateTechnicalDocDocx(
   metadata: MetadataHeader,
   techDoc: TechnicalDoc,
   images: UploadedImage[] = []
 ): Promise<Blob> {
+  // Process images asynchronously
   const processedImages: ProcessedImage[] = (
     await Promise.all(
       images.map(async (img, idx) => {
         const imgData = await dataUrlToUint8Array(img.dataUrl);
         return {
+          ...img,
           index: idx + 1,
           bytes: imgData.data,
           width: imgData.width,
           height: imgData.height,
-          title: img.title,
-          description: img.description,
-          widthPercent: img.widthPercent,
-          align: img.align,
-          wrap: img.wrap,
-          verticalAlign: img.verticalAlign,
-          rotation: img.rotation,
-          flipHorizontal: img.flipHorizontal,
-          flipVertical: img.flipVertical,
         };
       })
     )
   ).filter((img) => img.bytes.length > 0);
 
+  const imageMapByIndex = new Map<number, ProcessedImage>();
+  processedImages.forEach((img) => {
+    imageMapByIndex.set(img.index, img);
+  });
+
   const titles = getEffectiveTechnicalTitles(metadata.customTitles || techDoc.customTitles);
   const mainTitle = techDoc.tituloDocumento?.trim() || titles.techMainTitle;
   const docElements: (Paragraph | Table)[] = [];
 
-  // Title
+  // 1. Full-bleed Header Banner
+  let firstPageHeader: Header | undefined = undefined;
+  try {
+    const bannerSvg = getAdvansysBannerSvg(
+      metadata.headerBrandTag || 'ADVANSYS',
+      metadata.headerSubtitle ?? 'Especificación técnica interna de desarrollo',
+      metadata.logoDataUrl
+    );
+    const bannerImgData = await dataUrlToUint8Array(bannerSvg);
+    if (bannerImgData && bannerImgData.data && bannerImgData.data.length > 0) {
+      firstPageHeader = new Header({
+        children: [
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { before: 0, after: 0 },
+            children: [
+              new ImageRun({
+                data: bannerImgData.data,
+                type: 'png',
+                transformation: {
+                  width: 816, // 8.5 inches at 96 DPI
+                  height: 204, // 4:1 aspect ratio
+                },
+                floating: {
+                  horizontalPosition: {
+                    relative: HorizontalPositionRelativeFrom.PAGE,
+                    offset: 0,
+                  },
+                  verticalPosition: {
+                    relative: VerticalPositionRelativeFrom.PAGE,
+                    offset: 0,
+                  },
+                  wrap: {
+                    type: TextWrappingType.TOP_AND_BOTTOM,
+                  },
+                },
+              }),
+            ],
+          }),
+        ],
+      });
+    }
+  } catch (err) {
+    console.error('Error rendering Technical Doc cover banner:', err);
+  }
+
+  // 2. Main Title
   if (!titles.hideTechMainTitle) {
     docElements.push(
       new Paragraph({
@@ -358,10 +690,10 @@ export async function generateTechnicalDocDocx(
         spacing: { before: 180, after: 200 },
         children: [
           new TextRun({
-            text: mainTitle,
+            text: mainTitle.toUpperCase(),
             bold: true,
             color: COLOR_PRIMARY_BLUE,
-            size: 26,
+            size: 30, // 15pt
             font: 'Calibri',
           }),
         ],
@@ -369,137 +701,46 @@ export async function generateTechnicalDocDocx(
     );
   }
 
-  // Metadata Table
-  const metaTable = new Table({
-    width: { size: 100, type: WidthType.PERCENTAGE },
-    borders: {
-      top: { style: BorderStyle.SINGLE, size: 4, color: COLOR_BORDER },
-      bottom: { style: BorderStyle.SINGLE, size: 4, color: COLOR_BORDER },
-      left: { style: BorderStyle.SINGLE, size: 4, color: COLOR_BORDER },
-      right: { style: BorderStyle.SINGLE, size: 4, color: COLOR_BORDER },
-      insideHorizontal: { style: BorderStyle.SINGLE, size: 4, color: COLOR_BORDER },
-      insideVertical: { style: BorderStyle.SINGLE, size: 4, color: COLOR_BORDER },
-    },
-    rows: [
-      new TableRow({
-        children: [
-          new TableCell({
-            width: { size: 50, type: WidthType.PERCENTAGE },
-            shading: { fill: COLOR_BG_LIGHT, type: ShadingType.CLEAR },
-            margins: { top: 80, bottom: 80, left: 120, right: 120 },
-            children: [
-              new Paragraph({
-                children: [
-                  new TextRun({ text: 'CLIENTE: ', bold: true, size: 18, color: COLOR_PRIMARY_BLUE, font: 'Calibri' }),
-                  new TextRun({ text: metadata.cliente || 'N/A', size: 18, font: 'Calibri' }),
-                ],
-              }),
-            ],
-          }),
-          new TableCell({
-            width: { size: 50, type: WidthType.PERCENTAGE },
-            shading: { fill: COLOR_BG_LIGHT, type: ShadingType.CLEAR },
-            margins: { top: 80, bottom: 80, left: 120, right: 120 },
-            children: [
-              new Paragraph({
-                children: [
-                  new TextRun({ text: 'FECHA: ', bold: true, size: 18, color: COLOR_PRIMARY_BLUE, font: 'Calibri' }),
-                  new TextRun({ text: metadata.fecha || new Date().toISOString().split('T')[0], size: 18, font: 'Calibri' }),
-                ],
-              }),
-            ],
-          }),
-        ],
-      }),
-      new TableRow({
-        children: [
-          new TableCell({
-            width: { size: 50, type: WidthType.PERCENTAGE },
-            shading: { fill: COLOR_BG_LIGHT, type: ShadingType.CLEAR },
-            margins: { top: 80, bottom: 80, left: 120, right: 120 },
-            children: [
-              new Paragraph({
-                children: [
-                  new TextRun({ text: 'TICKET NO: ', bold: true, size: 18, color: COLOR_PRIMARY_BLUE, font: 'Calibri' }),
-                  new TextRun({ text: metadata.ticketNo || 'N/A', size: 18, font: 'Calibri' }),
-                ],
-              }),
-            ],
-          }),
-          new TableCell({
-            width: { size: 50, type: WidthType.PERCENTAGE },
-            shading: { fill: COLOR_BG_LIGHT, type: ShadingType.CLEAR },
-            margins: { top: 80, bottom: 80, left: 120, right: 120 },
-            children: [
-              new Paragraph({
-                children: [
-                  new TextRun({ text: 'MÓDULO: ', bold: true, size: 18, color: COLOR_PRIMARY_BLUE, font: 'Calibri' }),
-                  new TextRun({ text: metadata.moduloAplicacion || 'N/A', size: 18, font: 'Calibri' }),
-                ],
-              }),
-            ],
-          }),
-        ],
-      }),
-      new TableRow({
-        children: [
-          new TableCell({
-            columnSpan: 2,
-            width: { size: 100, type: WidthType.PERCENTAGE },
-            shading: { fill: 'FFFFFF', type: ShadingType.CLEAR },
-            margins: { top: 80, bottom: 80, left: 120, right: 120 },
-            children: [
-              new Paragraph({
-                children: [
-                  new TextRun({ text: 'PROYECTO: ', bold: true, size: 18, color: COLOR_PRIMARY_BLUE, font: 'Calibri' }),
-                  new TextRun({ text: metadata.nombreProyecto || 'N/A', size: 18, bold: true, font: 'Calibri' }),
-                ],
-              }),
-            ],
-          }),
-        ],
-      }),
-    ],
-  });
-
-  docElements.push(metaTable);
-  docElements.push(new Paragraph({ text: '', spacing: { after: 120 } }));
+  // 3. Metadata Table
+  docElements.push(createMetadataTable(metadata));
+  docElements.push(new Paragraph({ text: '', spacing: { after: 200 } }));
 
   const tables = techDoc.tables || [];
-  const usedTableIndexes = new Set<number>();
-  const usedImageIndexes = new Set<number>();
+  const usedTables = new Set<number>();
+  const usedImages = new Set<number>();
 
-  // 1. Ruta
-  const hasTechSection1 = !titles.hideTechSection1 && Boolean(techDoc.ruta && techDoc.ruta.trim());
-  if (hasTechSection1) {
-    docElements.push(createSectionHeading(titles.techSection1));
-    docElements.push(...createFormattedBlockWithTables(techDoc.ruta.trim(), tables, usedTableIndexes, processedImages, usedImageIndexes));
+  // Section 1: Ruta
+  const hasSection1 = !titles.hideTechSection1 && Boolean(techDoc.ruta && techDoc.ruta.trim());
+  if (hasSection1) {
+    docElements.push(createSectionHeader(titles.techSection1, '1'));
+    pushTextWithTablesAndImages(docElements, techDoc.ruta.trim(), tables, usedTables, imageMapByIndex, usedImages);
   }
 
-  // 2. Flujo Operativo
-  const hasTechSection2 = !titles.hideTechSection2 && Boolean(techDoc.flujoOperativo && techDoc.flujoOperativo.trim());
-  if (hasTechSection2) {
-    docElements.push(createSectionHeading(titles.techSection2));
-    docElements.push(...createFormattedBlockWithTables(techDoc.flujoOperativo.trim(), tables, usedTableIndexes, processedImages, usedImageIndexes));
+  // Section 2: Flujo Operativo
+  const hasSection2 = !titles.hideTechSection2 && Boolean(techDoc.flujoOperativo && techDoc.flujoOperativo.trim());
+  if (hasSection2) {
+    docElements.push(createSectionHeader(titles.techSection2, '2'));
+    pushTextWithTablesAndImages(docElements, techDoc.flujoOperativo.trim(), tables, usedTables, imageMapByIndex, usedImages);
   }
 
-  // 3. Diseño
-  const hasTechSection3 = !titles.hideTechSection3 && Boolean(techDoc.diseno && techDoc.diseno.trim());
-  if (hasTechSection3) {
-    docElements.push(createSectionHeading(titles.techSection3));
-    docElements.push(...createFormattedBlockWithTables(techDoc.diseno.trim(), tables, usedTableIndexes, processedImages, usedImageIndexes));
+  // Section 3: Diseño
+  const hasSection3 = !titles.hideTechSection3 && Boolean(techDoc.diseno && techDoc.diseno.trim());
+  if (hasSection3) {
+    docElements.push(createSectionHeader(titles.techSection3, '3'));
+    pushTextWithTablesAndImages(docElements, techDoc.diseno.trim(), tables, usedTables, imageMapByIndex, usedImages);
   }
 
-  // 4. Consideraciones Técnicas
-  const hasTechSection4 = !titles.hideTechSection4 && Boolean(techDoc.consideracionesTecnicas && techDoc.consideracionesTecnicas.trim());
-  if (hasTechSection4) {
-    docElements.push(createSectionHeading(titles.techSection4));
-    docElements.push(...createFormattedBlockWithTables(techDoc.consideracionesTecnicas.trim(), tables, usedTableIndexes, processedImages, usedImageIndexes));
+  // Section 4: Consideraciones Técnicas
+  const hasSection4 = !titles.hideTechSection4 && Boolean(techDoc.consideracionesTecnicas && techDoc.consideracionesTecnicas.trim());
+  if (hasSection4) {
+    docElements.push(createSectionHeader(titles.techSection4, '4'));
+    pushTextWithTablesAndImages(docElements, techDoc.consideracionesTecnicas.trim(), tables, usedTables, imageMapByIndex, usedImages);
   }
 
-  const unusedTables = tables.filter((_, i) => !usedTableIndexes.has(i));
+  // Additional Tables if not placed inline
+  const unusedTables = tables.filter((_, i) => !usedTables.has(i));
   if (unusedTables.length > 0) {
-    docElements.push(createSectionHeading('Tablas adicionales'));
+    docElements.push(createSectionHeader('Tablas adicionales'));
     unusedTables.forEach((table) => {
       if (table.title?.trim()) {
         docElements.push(
@@ -518,42 +759,54 @@ export async function generateTechnicalDocDocx(
         );
       }
       docElements.push(createContentTable(table));
-      docElements.push(new Paragraph({ text: '', spacing: { after: 80 } }));
+      docElements.push(new Paragraph({ text: '', spacing: { after: 120 } }));
     });
   }
 
-  const unusedImages = processedImages.filter((_, i) => !usedImageIndexes.has(i));
+  // Additional Images if not placed inline
+  const unusedImages = processedImages.filter((_, i) => !usedImages.has(i));
   if (unusedImages.length > 0) {
-    docElements.push(createSectionHeading('Imágenes adicionales'));
+    docElements.push(createSectionHeader('Imágenes adicionales'));
     unusedImages.forEach((img) => {
       docElements.push(...createImageBlock(img));
     });
   }
 
-  // 5. Código de Ejemplo
-  const hasTechSection5 = !titles.hideTechSection5 && Boolean(techDoc.codigoEjemplo && techDoc.codigoEjemplo.trim());
-  if (hasTechSection5) {
-    docElements.push(createSectionHeading(titles.techSection5));
-    docElements.push(...createCodeBlockParagraphs(techDoc.codigoEjemplo.trim()));
+  // Section 5: Código de Ejemplo / Scripts
+  const hasSection5 = !titles.hideTechSection5 && Boolean(techDoc.codigoEjemplo && techDoc.codigoEjemplo.trim());
+  if (hasSection5) {
+    docElements.push(createSectionHeader(titles.techSection5, '5'));
+    docElements.push(createCodeBlockTable(techDoc.codigoEjemplo.trim()));
+    docElements.push(new Paragraph({ text: '', spacing: { after: 120 } }));
   }
 
-  // Header and Footer
-  const header = new Header({
+  // Subsequent Pages Header
+  const subsequentHeader = new Header({
     children: [
       new Paragraph({
+        alignment: AlignmentType.RIGHT,
+        spacing: { before: 0, after: 100 },
+        border: {
+          bottom: {
+            color: COLOR_BORDER,
+            space: 4,
+            style: BorderStyle.SINGLE,
+            size: 4,
+          },
+        },
         children: [
           new TextRun({
             text: 'ADVANSYS  |  ',
             bold: true,
             color: COLOR_PRIMARY_BLUE,
-            size: 18,
+            size: 16, // 8pt
             font: 'Calibri',
           }),
           new TextRun({
             text: 'ESPECIFICACIÓN TÉCNICA INTERNA DE DESARROLLO',
             bold: true,
             color: COLOR_ACCENT_GREEN,
-            size: 16,
+            size: 16, // 8pt
             font: 'Calibri',
           }),
         ],
@@ -561,10 +814,20 @@ export async function generateTechnicalDocDocx(
     ],
   });
 
+  // Footer for all pages
   const footer = new Footer({
     children: [
       new Paragraph({
         alignment: AlignmentType.RIGHT,
+        border: {
+          top: {
+            color: COLOR_BORDER,
+            space: 4,
+            style: BorderStyle.SINGLE,
+            size: 4,
+          },
+        },
+        spacing: { before: 80, after: 0 },
         children: [
           new TextRun({
             text: 'USO INTERNO EXCLUSIVO ADVANSYS  |  Página ',
@@ -603,15 +866,21 @@ export async function generateTechnicalDocDocx(
         properties: {
           page: {
             margin: {
-              top: 1000,
-              bottom: 1000,
+              top: 1200,
+              bottom: 1200,
               left: 1200,
               right: 1200,
             },
           },
+          titlePage: true,
         },
-        headers: { default: header },
-        footers: { default: footer },
+        headers: {
+          first: firstPageHeader || subsequentHeader,
+          default: subsequentHeader,
+        },
+        footers: {
+          default: footer,
+        },
         children: docElements,
       },
     ],

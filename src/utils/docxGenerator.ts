@@ -23,13 +23,15 @@ import {
 import { MetadataHeader, ProposalSection, UploadedImage, DocumentTable, getEffectiveTitles } from '../types';
 import { getAdvansysBannerSvg } from '../data/banner';
 import { fitImageSize } from './imageLayout';
-import { createDocumentImageRun, paragraphAlignOf } from './imageDocx';
+import { createDocxImageBlock } from './imageDocx';
+import { prepareImageForDocx, DocxRasterType } from './imageExport';
 
 type ProcessedImage = UploadedImage & {
   index: number;
   bytes: Uint8Array;
   width: number;
   height: number;
+  docxType: DocxRasterType;
 };
 
 // Advansys Corporate Palette
@@ -47,87 +49,6 @@ function fitLogoSize(srcW: number | undefined, srcH: number | undefined, maxW: n
     width: Math.max(16, Math.round(w * scale)),
     height: Math.max(12, Math.round(h * scale)),
   };
-}
-
-/**
- * Converts a Base64 or SVG Data URL to Uint8Array for docx ImageRun
- */
-async function dataUrlToUint8Array(dataUrl: string): Promise<{ data: Uint8Array; width: number; height: number }> {
-  return new Promise((resolve) => {
-    if (!dataUrl) {
-      resolve({ data: new Uint8Array(0), width: 100, height: 100 });
-      return;
-    }
-
-    // Safety timeout so docx generation never hangs
-    const timer = setTimeout(() => {
-      resolve({ data: new Uint8Array(0), width: 100, height: 100 });
-    }, 2000);
-
-    const safeResolve = (result: { data: Uint8Array; width: number; height: number }) => {
-      clearTimeout(timer);
-      resolve(result);
-    };
-
-    // If SVG
-    if (dataUrl.startsWith('data:image/svg+xml')) {
-      if (typeof window !== 'undefined' && typeof document !== 'undefined') {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => {
-          try {
-            const canvas = document.createElement('canvas');
-            const width = img.width || 600;
-            const height = img.height || 350;
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              ctx.fillStyle = '#FFFFFF';
-              ctx.fillRect(0, 0, width, height);
-              ctx.drawImage(img, 0, 0);
-              const pngDataUrl = canvas.toDataURL('image/png');
-              const base64 = pngDataUrl.split(',')[1];
-              const binary = atob(base64.trim());
-              const bytes = new Uint8Array(binary.length);
-              for (let i = 0; i < binary.length; i++) {
-                bytes[i] = binary.charCodeAt(i);
-              }
-              const targetWidth = 520;
-              const targetHeight = Math.round((height / width) * 520) || 300;
-              safeResolve({ data: bytes, width: targetWidth, height: targetHeight });
-              return;
-            }
-          } catch (e) {
-            console.error('Error drawing SVG on canvas:', e);
-          }
-          safeResolve({ data: new Uint8Array(0), width: 100, height: 100 });
-        };
-        img.onerror = (e) => {
-          console.error('Failed to load SVG into Image element:', e);
-          safeResolve({ data: new Uint8Array(0), width: 100, height: 100 });
-        };
-        img.src = dataUrl;
-        return;
-      }
-    }
-
-    // Default base64 handler (PNG / JPEG)
-    try {
-      const parts = dataUrl.split(',');
-      const base64 = parts.length > 1 ? parts[1] : parts[0];
-      const cleanBase64 = base64.replace(/\s/g, '');
-      const binary = atob(cleanBase64);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) {
-        bytes[i] = binary.charCodeAt(i);
-      }
-      safeResolve({ data: bytes, width: 520, height: 300 });
-    } catch (e) {
-      console.error('Error parsing base64 data URL:', e);
-      safeResolve({ data: new Uint8Array(0), width: 100, height: 100 });
-    }
-  });
 }
 
 /**
@@ -434,41 +355,7 @@ function pushTextWithTables(
       if (linkedImg && linkedImg.bytes && linkedImg.bytes.length > 0) {
         try {
           const size = fitImageSize(linkedImg.width, linkedImg.height, 500, 320, linkedImg.widthPercent);
-          const alignment = paragraphAlignOf(linkedImg);
-          docElements.push(
-            new Paragraph({
-              alignment,
-              spacing: { before: 120, after: 60 },
-              children: [createDocumentImageRun(linkedImg.bytes, size, linkedImg)],
-            })
-          );
-          docElements.push(
-            new Paragraph({
-              alignment,
-              spacing: { before: 40, after: 120 },
-              children: [
-                new TextRun({
-                  text: `[IMAGEN_${linkedImg.index}] ${linkedImg.title}`,
-                  bold: true,
-                  italics: true,
-                  color: COLOR_MUTED_GRAY,
-                  size: 18,
-                  font: 'Calibri',
-                }),
-                ...(linkedImg.description
-                  ? [
-                      new TextRun({
-                        text: ` - ${linkedImg.description}`,
-                        italics: true,
-                        color: COLOR_MUTED_GRAY,
-                        size: 18,
-                        font: 'Calibri',
-                      }),
-                    ]
-                  : []),
-              ],
-            })
-          );
+          docElements.push(...createDocxImageBlock(linkedImg.bytes, size, linkedImg, linkedImg.docxType));
           wroteSomething = true;
           continue;
         } catch (err) {
@@ -573,13 +460,14 @@ export async function generateAdvansysDocx(
   // Process image bytes asynchronously
   const processedImages = await Promise.all(
     images.map(async (img, idx) => {
-      const imgData = await dataUrlToUint8Array(img.dataUrl);
+      const imgData = await prepareImageForDocx(img.dataUrl, img.mimeType);
       return {
         ...img,
         index: idx + 1,
         bytes: imgData.data,
         width: imgData.width,
         height: imgData.height,
+        docxType: imgData.type,
       };
     })
   );
@@ -598,11 +486,13 @@ export async function generateAdvansysDocx(
   // Process banner SVG image and construct full-bleed Page 1 Header
   let firstPageHeader: Header | undefined = undefined;
   let logoBytes: Uint8Array | null = null;
+  let logoType: DocxRasterType = 'png';
   if (metadata.logoDataUrl) {
     try {
-      const processedLogo = await dataUrlToUint8Array(metadata.logoDataUrl);
+      const processedLogo = await prepareImageForDocx(metadata.logoDataUrl, metadata.logoMimeType);
       if (processedLogo.data && processedLogo.data.length > 0) {
         logoBytes = processedLogo.data;
+        logoType = processedLogo.type;
       }
     } catch (err) {
       console.error('Error processing corporate logo:', err);
@@ -615,7 +505,7 @@ export async function generateAdvansysDocx(
       metadata.headerSubtitle ?? '',
       metadata.logoDataUrl
     );
-    const bannerImgData = await dataUrlToUint8Array(bannerSvg);
+    const bannerImgData = await prepareImageForDocx(bannerSvg, 'image/svg+xml');
     if (bannerImgData && bannerImgData.data && bannerImgData.data.length > 0) {
       const firstPageChildren = [
         new Paragraph({
@@ -624,7 +514,7 @@ export async function generateAdvansysDocx(
           children: [
             new ImageRun({
               data: bannerImgData.data,
-              type: 'png',
+              type: bannerImgData.type,
               transformation: {
                 width: 816, // 8.5 inches at 96 DPI (Full page width)
                 height: 204, // Aspect ratio 4:1
@@ -849,12 +739,16 @@ export async function generateAdvansysDocx(
   }
 
   // 7. Análisis Operativo con Imágenes e Ilustraciones
-  const validSteps = (proposal.analisisOperativo || []).filter(
-    (step, idx) =>
+  const validSteps = (proposal.analisisOperativo || []).filter((step, idx) => {
+    const hasText =
       (step.titulo && step.titulo.trim().length > 0) ||
-      (step.explicacion && step.explicacion.trim().length > 0) ||
-      processedImages[idx]
-  );
+      (step.explicacion && step.explicacion.trim().length > 0);
+    const hasLinkedImage =
+      Boolean(processedImages[idx]?.bytes?.length) ||
+      Boolean(step.imagenId && step.imagenId !== 'none' && processedImages.some((img) => img.id === step.imagenId)) ||
+      Boolean(step.referenciaImagen && step.referenciaImagen !== 'none');
+    return hasText || hasLinkedImage;
+  });
   const hasSection7 = !titles.hideSection7 && validSteps.length > 0;
 
   if (hasSection7) {
@@ -911,45 +805,7 @@ export async function generateAdvansysDocx(
       if (linkedImg && linkedImg.bytes && linkedImg.bytes.length > 0 && !explicacionHasSameImage) {
         try {
           const size = fitImageSize(linkedImg.width, linkedImg.height, 500, 320, linkedImg.widthPercent);
-          const alignment = paragraphAlignOf(linkedImg);
-          docElements.push(
-            new Paragraph({
-              alignment,
-              spacing: { before: 120, after: 60 },
-              children: [
-                createDocumentImageRun(linkedImg.bytes, size, linkedImg),
-              ],
-            })
-          );
-
-          // Image Caption
-          docElements.push(
-            new Paragraph({
-              alignment,
-              spacing: { before: 40, after: 120 },
-              children: [
-                new TextRun({
-                  text: `[IMAGEN_${linkedImg.index}] ${linkedImg.title}`,
-                  bold: true,
-                  italics: true,
-                  color: COLOR_MUTED_GRAY,
-                  size: 18, // 9pt
-                  font: 'Calibri',
-                }),
-                ...(linkedImg.description
-                  ? [
-                      new TextRun({
-                        text: ` - ${linkedImg.description}`,
-                        italics: true,
-                        color: COLOR_MUTED_GRAY,
-                        size: 18,
-                        font: 'Calibri',
-                      }),
-                    ]
-                  : []),
-              ],
-            })
-          );
+          docElements.push(...createDocxImageBlock(linkedImg.bytes, size, linkedImg, linkedImg.docxType));
         } catch (e) {
           console.error('Failed to append image to docx:', e);
         }
@@ -995,6 +851,14 @@ export async function generateAdvansysDocx(
     pushTextWithTables(docElements, proposal.descargo.trim(), contentTables, usedTables, imageMapByIndex);
   }
 
+  // Word drops the last drawing in the body if nothing follows it.
+  docElements.push(
+    new Paragraph({
+      spacing: { after: 0 },
+      children: [new TextRun({ text: '\u200B' })],
+    })
+  );
+
   // Build Advansys Header Banner
   const headerLogo = logoBytes
     ? fitLogoSize(metadata.logoWidth, metadata.logoHeight, 78, 28)
@@ -1027,7 +891,7 @@ export async function generateAdvansysDocx(
                           children: [
                             new ImageRun({
                               data: logoBytes,
-                              type: 'png',
+                              type: logoType,
                               transformation: {
                                 width: headerLogo.width,
                                 height: headerLogo.height,

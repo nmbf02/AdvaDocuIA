@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { MetadataHeader, TechnicalDoc, DocumentTable, UploadedImage, getEffectiveTechnicalTitles } from '../types';
+import { MetadataHeader, TechnicalDoc, DocumentTable, UploadedImage, getEffectiveTechnicalTitles, getEffectiveTechnicalHeaderFooter } from '../types';
 import { getAdvansysBannerSvg } from '../data/banner';
 import { loadSvgOrImageToCanvasPng } from './imageExport';
 import { fitImageSize, getImageAlign, pdfImageX } from './imageLayout';
@@ -17,6 +17,7 @@ export async function generateTechnicalDocPdf(
   techDoc: TechnicalDoc,
   images: UploadedImage[] = []
 ): Promise<Blob> {
+  const headerFooter = getEffectiveTechnicalHeaderFooter(techDoc, metadata);
   const titles = getEffectiveTechnicalTitles(metadata.customTitles || techDoc.customTitles);
   const mainTitle = techDoc.tituloDocumento?.trim() || titles.techMainTitle;
 
@@ -39,24 +40,35 @@ export async function generateTechnicalDocPdf(
     }
   };
 
-  // 1. Cover Header Banner
-  try {
+  // 1. PAGE 1 INSTITUTIONAL FULL-BLEED BANNER (If enabled)
+  if (headerFooter.includeFirstPageHeaderImage) {
     const bannerSvg = getAdvansysBannerSvg(
-      metadata.headerBrandTag || 'ADVANSYS',
-      metadata.headerSubtitle ?? 'Especificación técnica interna de desarrollo',
+      headerFooter.techHeaderBrandTag || 'ADVANSYS',
+      headerFooter.techHeaderSubtitle || 'ESPECIFICACIÓN TÉCNICA INTERNA DE DESARROLLO',
       metadata.logoDataUrl
     );
-    const loadedBanner = await loadSvgOrImageToCanvasPng(bannerSvg, 1800);
-    if (loadedBanner) {
-      const bannerH = (pageWidth / loadedBanner.width) * loadedBanner.height;
-      doc.addImage(loadedBanner.dataUrl, 'PNG', 0, 0, pageWidth, bannerH);
-      cursorY = bannerH + 4;
+    const bannerPng = await loadSvgOrImageToCanvasPng(bannerSvg, 2400);
+    let bannerHeight = 36;
+    if (bannerPng) {
+      bannerHeight = (pageWidth * bannerPng.height) / bannerPng.width;
+      doc.addImage(bannerPng.dataUrl, 'PNG', 0, 0, pageWidth, bannerHeight);
+      doc.setFillColor(COLOR_ACCENT[0], COLOR_ACCENT[1], COLOR_ACCENT[2]);
+      doc.rect(0, bannerHeight - 1.6, pageWidth, 1.6, 'F');
     } else {
-      cursorY = 16;
+      bannerHeight = 32;
+      doc.setFillColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+      doc.rect(0, 0, pageWidth, bannerHeight, 'F');
+      doc.setFillColor(COLOR_ACCENT[0], COLOR_ACCENT[1], COLOR_ACCENT[2]);
+      doc.rect(0, bannerHeight - 1.6, pageWidth, 1.6, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.text(headerFooter.techHeaderBrandTag || 'ADVANSYS', 12, 14);
     }
-  } catch (e) {
-    console.error('Error drawing PDF technical doc banner:', e);
-    cursorY = 16;
+    cursorY = bannerHeight + 7;
+  } else {
+    // Margen superior inicial sin header gráfico en primera página
+    cursorY = 20;
   }
 
   // 2. Main Title
@@ -397,17 +409,37 @@ export async function generateTechnicalDocPdf(
     await renderSection(titles.techSection5, '5', techDoc.codigoEjemplo.trim(), true);
   }
 
-  // Footers and Page Numbers
+  // Footers and Page Numbers with dynamic technical header and footer configuration
   const totalPages = doc.getNumberOfPages();
   for (let p = 1; p <= totalPages; p++) {
     doc.setPage(p);
 
-    // Header line on subsequent pages
-    if (p > 1) {
-      doc.setFont('helvetica', 'normal');
+    // Header line on pages (skip on page 1 if full banner image is displayed)
+    if (p > 1 || !headerFooter.includeFirstPageHeaderImage) {
+      doc.setFont('helvetica', 'bold');
       doc.setFontSize(7.5);
+      doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+      const brandTag = headerFooter.techHeaderBrandTag || 'ADVANSYS';
+      doc.text(brandTag, margin, 10);
+
+      const brandWidth = doc.getTextWidth(brandTag);
+      doc.setFont('helvetica', 'normal');
       doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-      doc.text(`ADVANSYS • ESPECIFICACIÓN TÉCNICA INTERNA • ${metadata.ticketNo || ''}`, margin, 10);
+      doc.text('  |  ', margin + brandWidth + 1, 10);
+
+      const sepWidth = doc.getTextWidth('  |  ');
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(COLOR_ACCENT[0], COLOR_ACCENT[1], COLOR_ACCENT[2]);
+      const subTitle = headerFooter.techHeaderSubtitle || 'ESPECIFICACIÓN TÉCNICA INTERNA DE DESARROLLO';
+      doc.text(subTitle, margin + brandWidth + sepWidth + 1, 10);
+
+      const rightText = headerFooter.techHeaderRightText || metadata.ticketNo;
+      if (rightText) {
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+        doc.text(rightText, pageWidth - margin, 10, { align: 'right' });
+      }
+
       doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
       doc.setLineWidth(0.2);
       doc.line(margin, 12, pageWidth - margin, 12);
@@ -422,7 +454,7 @@ export async function generateTechnicalDocPdf(
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-    doc.text('DOCUMENTO CONFIDENCIAL DE USO INTERNO ADVANSYS', margin, footerY);
+    doc.text(headerFooter.techFooterText || 'DOCUMENTO CONFIDENCIAL DE USO INTERNO ADVANSYS', margin, footerY);
 
     const pageStr = `Página ${p} de ${totalPages}`;
     doc.text(pageStr, pageWidth - margin, footerY, { align: 'right' });

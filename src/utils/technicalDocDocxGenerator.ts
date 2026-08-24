@@ -25,6 +25,7 @@ import {
   DocumentTable,
   UploadedImage,
   getEffectiveTechnicalTitles,
+  getEffectiveTechnicalHeaderFooter,
 } from '../types';
 import { getAdvansysBannerSvg } from '../data/banner';
 import { fitImageSize } from './imageLayout';
@@ -525,53 +526,56 @@ export async function generateTechnicalDocDocx(
   });
 
   const titles = getEffectiveTechnicalTitles(metadata.customTitles || techDoc.customTitles);
+  const headerFooter = getEffectiveTechnicalHeaderFooter(techDoc, metadata);
   const mainTitle = techDoc.tituloDocumento?.trim() || titles.techMainTitle;
   const docElements: (Paragraph | Table)[] = [];
 
-  // 1. Full-bleed Header Banner
+  // 1. Full-bleed Header Banner (If enabled)
   let firstPageHeader: Header | undefined = undefined;
-  try {
-    const bannerSvg = getAdvansysBannerSvg(
-      metadata.headerBrandTag || 'ADVANSYS',
-      metadata.headerSubtitle ?? 'Especificación técnica interna de desarrollo',
-      metadata.logoDataUrl
-    );
-    const bannerImgData = await prepareImageForDocx(bannerSvg, 'image/svg+xml');
-    if (bannerImgData && bannerImgData.data && bannerImgData.data.length > 0) {
-      firstPageHeader = new Header({
-        children: [
-          new Paragraph({
-            alignment: AlignmentType.CENTER,
-            spacing: { before: 0, after: 0 },
-            children: [
-              new ImageRun({
-                data: bannerImgData.data,
-                type: bannerImgData.type,
-                transformation: {
-                  width: 816, // 8.5 inches at 96 DPI
-                  height: 204, // 4:1 aspect ratio
-                },
-                floating: {
-                  horizontalPosition: {
-                    relative: HorizontalPositionRelativeFrom.PAGE,
-                    offset: 0,
+  if (headerFooter.includeFirstPageHeaderImage) {
+    try {
+      const bannerSvg = getAdvansysBannerSvg(
+        headerFooter.techHeaderBrandTag || 'ADVANSYS',
+        headerFooter.techHeaderSubtitle || 'Especificación técnica interna de desarrollo',
+        metadata.logoDataUrl
+      );
+      const bannerImgData = await prepareImageForDocx(bannerSvg, 'image/svg+xml');
+      if (bannerImgData && bannerImgData.data && bannerImgData.data.length > 0) {
+        firstPageHeader = new Header({
+          children: [
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              spacing: { before: 0, after: 0 },
+              children: [
+                new ImageRun({
+                  data: bannerImgData.data,
+                  type: bannerImgData.type,
+                  transformation: {
+                    width: 816, // 8.5 inches at 96 DPI
+                    height: 204, // 4:1 aspect ratio
                   },
-                  verticalPosition: {
-                    relative: VerticalPositionRelativeFrom.PAGE,
-                    offset: 0,
+                  floating: {
+                    horizontalPosition: {
+                      relative: HorizontalPositionRelativeFrom.PAGE,
+                      offset: 0,
+                    },
+                    verticalPosition: {
+                      relative: VerticalPositionRelativeFrom.PAGE,
+                      offset: 0,
+                    },
+                    wrap: {
+                      type: TextWrappingType.TOP_AND_BOTTOM,
+                    },
                   },
-                  wrap: {
-                    type: TextWrappingType.TOP_AND_BOTTOM,
-                  },
-                },
-              }),
-            ],
-          }),
-        ],
-      });
+                }),
+              ],
+            }),
+          ],
+        });
+      }
+    } catch (err) {
+      console.error('Error rendering Technical Doc cover banner:', err);
     }
-  } catch (err) {
-    console.error('Error rendering Technical Doc cover banner:', err);
   }
 
   // 2. Main Title
@@ -579,7 +583,7 @@ export async function generateTechnicalDocDocx(
     docElements.push(
       new Paragraph({
         alignment: AlignmentType.CENTER,
-        spacing: { before: 180, after: 200 },
+        spacing: { before: headerFooter.includeFirstPageHeaderImage ? 180 : 60, after: 180 },
         children: [
           new TextRun({
             text: mainTitle.toUpperCase(),
@@ -695,19 +699,29 @@ export async function generateTechnicalDocDocx(
         },
         children: [
           new TextRun({
-            text: 'ADVANSYS  |  ',
+            text: `${(headerFooter.techHeaderBrandTag || 'ADVANSYS').trim()}  |  `,
             bold: true,
             color: COLOR_PRIMARY_BLUE,
             size: 16, // 8pt
             font: 'Calibri',
           }),
           new TextRun({
-            text: 'ESPECIFICACIÓN TÉCNICA INTERNA DE DESARROLLO',
+            text: (headerFooter.techHeaderSubtitle || 'ESPECIFICACIÓN TÉCNICA INTERNA DE DESARROLLO').trim(),
             bold: true,
             color: COLOR_ACCENT_GREEN,
             size: 16, // 8pt
             font: 'Calibri',
           }),
+          ...(headerFooter.techHeaderRightText
+            ? [
+                new TextRun({
+                  text: `  (${headerFooter.techHeaderRightText.trim()})`,
+                  color: COLOR_MUTED_GRAY,
+                  size: 14,
+                  font: 'Calibri',
+                }),
+              ]
+            : []),
         ],
       }),
     ],
@@ -729,7 +743,7 @@ export async function generateTechnicalDocDocx(
         spacing: { before: 80, after: 0 },
         children: [
           new TextRun({
-            text: 'USO INTERNO EXCLUSIVO ADVANSYS  |  Página ',
+            text: `${(headerFooter.techFooterText || 'DOCUMENTO CONFIDENCIAL DE USO INTERNO ADVANSYS').trim()}  |  Página `,
             color: COLOR_MUTED_GRAY,
             size: 16,
             font: 'Calibri',
@@ -774,7 +788,7 @@ export async function generateTechnicalDocDocx(
           titlePage: true,
         },
         headers: {
-          first: firstPageHeader || subsequentHeader,
+          first: firstPageHeader || new Header({ children: [] }),
           default: subsequentHeader,
         },
         footers: {

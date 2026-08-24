@@ -5,8 +5,12 @@ import {
   DEFAULT_DOCUMENT_TITLES,
   DEFAULT_TECHNICAL_DOC_TITLES,
   DEFAULT_DESCARGO_TEXT,
+  DEFAULT_PROPOSAL_HEADER_FOOTER,
+  DEFAULT_TECHNICAL_HEADER_FOOTER,
   getEffectiveTitles,
   getEffectiveTechnicalTitles,
+  getEffectiveProposalHeaderFooter,
+  getEffectiveTechnicalHeaderFooter,
 } from '../types';
 import {
   Settings,
@@ -27,6 +31,10 @@ import {
   Laptop,
   Copy,
   ExternalLink,
+  AlignJustify,
+  FileSpreadsheet,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 
 interface SettingsModalProps {
@@ -45,14 +53,41 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onOpenBackup,
 }) => {
   const logoInputRef = useRef<HTMLInputElement>(null);
-  const [activeTab, setActiveTab] = useState<'titles' | 'techTitles' | 'branding' | 'backup' | 'local'>('titles');
+  const tabsContainerRef = useRef<HTMLDivElement>(null);
+  const [activeTab, setActiveTab] = useState<'titles' | 'techTitles' | 'headersFooters' | 'branding' | 'backup' | 'local'>('titles');
+  const [headerFooterSubTab, setHeaderFooterSubTab] = useState<'proposal' | 'technical'>('proposal');
   const [copiedNotification, setCopiedNotification] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
+  const scrollTabs = (direction: 'left' | 'right') => {
+    if (tabsContainerRef.current) {
+      const scrollAmount = 220;
+      tabsContainerRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth',
+      });
+    }
+  };
+
+  const handleTabsWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (tabsContainerRef.current && e.deltaY !== 0) {
+      tabsContainerRef.current.scrollLeft += e.deltaY;
+    }
+  };
+
+  const handleTabClick = (tabKey: 'titles' | 'techTitles' | 'headersFooters' | 'branding' | 'backup' | 'local', e?: React.MouseEvent<HTMLButtonElement>) => {
+    setActiveTab(tabKey);
+    if (e?.currentTarget) {
+      e.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+  };
+
   const currentTitles = branding.customTitles || {};
   const effectiveTitles = getEffectiveTitles(branding.customTitles);
   const effectiveTechTitles = getEffectiveTechnicalTitles(branding.customTitles);
+  const effectiveProposalHF = getEffectiveProposalHeaderFooter(null, branding);
+  const effectiveTechHF = getEffectiveTechnicalHeaderFooter(null, null, branding);
 
   const handleTitleChange = (field: keyof DocumentTitlesConfig, value: string) => {
     const updatedTitles: DocumentTitlesConfig = {
@@ -136,6 +171,50 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setTimeout(() => setCopiedNotification(null), 2500);
   };
 
+  const handleProposalHeaderFooterChange = (
+    field: 'proposalHeaderBrandTag' | 'proposalHeaderSubtitle' | 'proposalFooterText',
+    value: string
+  ) => {
+    onChange({
+      ...branding,
+      [field]: value,
+    });
+  };
+
+  const handleTechHeaderFooterChange = (
+    field: 'techHeaderBrandTag' | 'techHeaderSubtitle' | 'techHeaderRightText' | 'techFooterText' | 'techIncludeHeaderBanner',
+    value: string | boolean | undefined
+  ) => {
+    onChange({
+      ...branding,
+      [field]: value,
+    });
+  };
+
+  const handleResetProposalHeaderFooter = () => {
+    onChange({
+      ...branding,
+      proposalHeaderBrandTag: undefined,
+      proposalHeaderSubtitle: undefined,
+      proposalFooterText: undefined,
+    });
+    setCopiedNotification('Encabezados y pie de página de la Propuesta restablecidos.');
+    setTimeout(() => setCopiedNotification(null), 2500);
+  };
+
+  const handleResetTechHeaderFooter = () => {
+    onChange({
+      ...branding,
+      techHeaderBrandTag: undefined,
+      techHeaderSubtitle: undefined,
+      techHeaderRightText: undefined,
+      techFooterText: undefined,
+      techIncludeHeaderBanner: false,
+    });
+    setCopiedNotification('Encabezados y pie de página de la Doc. Técnica restablecidos.');
+    setTimeout(() => setCopiedNotification(null), 2500);
+  };
+
   const applyLogoFromFile = (file: File) => {
     if (!file.type.startsWith('image/')) return;
 
@@ -196,7 +275,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
-      <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
         {/* Modal Header */}
         <div className="bg-[#0A3D62] text-white p-4 px-6 flex items-center justify-between border-b border-[#1E5F8A]">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -218,79 +297,121 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="flex border-b border-slate-200 bg-slate-50 px-6 gap-2 pt-2 overflow-x-auto no-scrollbar">
+        {/* Tab Navigation with Left/Right Scroll Chevrons & Wheel Support */}
+        <div className="relative flex items-center border-b border-slate-200 bg-slate-100/90 px-2 sm:px-3">
           <button
             type="button"
-            onClick={() => setActiveTab('titles')}
-            className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'titles'
-                ? 'border-[#0A3D62] text-[#0A3D62] bg-white rounded-t-lg shadow-sm'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
+            onClick={() => scrollTabs('left')}
+            aria-label="Desplazar a la izquierda"
+            title="Desplazar opciones a la izquierda"
+            className="flex items-center justify-center p-1.5 rounded-lg text-slate-600 hover:text-[#0A3D62] hover:bg-white/80 active:bg-white shadow-2xs border border-transparent hover:border-slate-200 transition-all mr-1 shrink-0 cursor-pointer"
           >
-            <FileText className="w-4 h-4 text-[#0A3D62]" />
-            <span>Propuesta Técnica (8 Secc.)</span>
+            <ChevronLeft className="w-4 h-4" />
           </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('techTitles')}
-            className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'techTitles'
-                ? 'border-[#0A3D62] text-[#0A3D62] bg-white rounded-t-lg shadow-sm'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
+          <div
+            ref={tabsContainerRef}
+            onWheel={handleTabsWheel}
+            className="flex items-center gap-1.5 pt-2 pb-1.5 overflow-x-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent scroll-smooth flex-1 select-none"
           >
-            <Terminal className="w-4 h-4 text-[#2ECC71]" />
-            <span>Doc. Técnica (5 Secc.)</span>
-            {(currentTitles.techMainTitle || currentTitles.techSection1 || currentTitles.techSection2 || currentTitles.techSection3 || currentTitles.techSection4 || currentTitles.techSection5 || currentTitles.hideTechMainTitle || currentTitles.hideTechSection1 || currentTitles.hideTechSection2 || currentTitles.hideTechSection3 || currentTitles.hideTechSection4 || currentTitles.hideTechSection5) && (
-              <span className="w-2 h-2 rounded-full bg-[#2ECC71]" title="Personalizado" />
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('branding')}
-            className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'branding'
-                ? 'border-[#0A3D62] text-[#0A3D62] bg-white rounded-t-lg shadow-sm'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <ImageIcon className="w-4 h-4 text-[#0A3D62]" />
-            <span>Logo Corporativo</span>
-            {branding.logoDataUrl && (
-              <span className="w-2 h-2 rounded-full bg-[#2ECC71]" title="Logo configurado" />
-            )}
-          </button>
-
-          {onOpenBackup && (
             <button
               type="button"
-              onClick={() => setActiveTab('backup')}
-              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer ${
-                activeTab === 'backup'
+              onClick={(e) => handleTabClick('titles', e)}
+              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+                activeTab === 'titles'
                   ? 'border-[#0A3D62] text-[#0A3D62] bg-white rounded-t-lg shadow-sm'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
+                  : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-t-lg'
               }`}
             >
-              <Database className="w-4 h-4 text-[#0A3D62]" />
-              <span>Copia de Seguridad</span>
+              <FileText className="w-4 h-4 text-[#0A3D62]" />
+              <span>Propuesta Técnica (8 Secc.)</span>
             </button>
-          )}
+
+            <button
+              type="button"
+              onClick={(e) => handleTabClick('techTitles', e)}
+              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+                activeTab === 'techTitles'
+                  ? 'border-[#0A3D62] text-[#0A3D62] bg-white rounded-t-lg shadow-sm'
+                  : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-t-lg'
+              }`}
+            >
+              <Terminal className="w-4 h-4 text-[#2ECC71]" />
+              <span>Doc. Técnica (5 Secc.)</span>
+              {(currentTitles.techMainTitle || currentTitles.techSection1 || currentTitles.techSection2 || currentTitles.techSection3 || currentTitles.techSection4 || currentTitles.techSection5 || currentTitles.hideTechMainTitle || currentTitles.hideTechSection1 || currentTitles.hideTechSection2 || currentTitles.hideTechSection3 || currentTitles.hideTechSection4 || currentTitles.hideTechSection5) && (
+                <span className="w-2 h-2 rounded-full bg-[#2ECC71]" title="Personalizado" />
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={(e) => handleTabClick('headersFooters', e)}
+              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+                activeTab === 'headersFooters'
+                  ? 'border-[#0A3D62] text-[#0A3D62] bg-white rounded-t-lg shadow-sm'
+                  : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-t-lg'
+              }`}
+            >
+              <Sliders className="w-4 h-4 text-[#0A3D62]" />
+              <span>Encabezados y Pies</span>
+              {(branding.proposalHeaderBrandTag || branding.proposalHeaderSubtitle || branding.proposalFooterText || branding.techHeaderBrandTag || branding.techHeaderSubtitle || branding.techHeaderRightText || branding.techFooterText || branding.techIncludeHeaderBanner) && (
+                <span className="w-2 h-2 rounded-full bg-[#2ECC71]" title="Personalizado" />
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={(e) => handleTabClick('branding', e)}
+              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+                activeTab === 'branding'
+                  ? 'border-[#0A3D62] text-[#0A3D62] bg-white rounded-t-lg shadow-sm'
+                  : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-t-lg'
+              }`}
+            >
+              <ImageIcon className="w-4 h-4 text-[#0A3D62]" />
+              <span>Logo Corporativo</span>
+              {branding.logoDataUrl && (
+                <span className="w-2 h-2 rounded-full bg-[#2ECC71]" title="Logo configurado" />
+              )}
+            </button>
+
+            {onOpenBackup && (
+              <button
+                type="button"
+                onClick={(e) => handleTabClick('backup', e)}
+                className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+                  activeTab === 'backup'
+                    ? 'border-[#0A3D62] text-[#0A3D62] bg-white rounded-t-lg shadow-sm'
+                    : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-t-lg'
+                }`}
+              >
+                <Database className="w-4 h-4 text-[#0A3D62]" />
+                <span>Copia de Seguridad</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={(e) => handleTabClick('local', e)}
+              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+                activeTab === 'local'
+                  ? 'border-[#0A3D62] text-[#0A3D62] bg-white rounded-t-lg shadow-sm'
+                : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-t-lg'
+              }`}
+            >
+              <Laptop className="w-4 h-4 text-[#0A3D62]" />
+              <span>Guía de Uso Local</span>
+            </button>
+          </div>
 
           <button
             type="button"
-            onClick={() => setActiveTab('local')}
-            className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'local'
-                ? 'border-[#0A3D62] text-[#0A3D62] bg-white rounded-t-lg shadow-sm'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
+            onClick={() => scrollTabs('right')}
+            aria-label="Desplazar a la derecha"
+            title="Desplazar opciones a la derecha"
+            className="flex items-center justify-center p-1.5 rounded-lg text-slate-600 hover:text-[#0A3D62] hover:bg-white/80 active:bg-white shadow-2xs border border-transparent hover:border-slate-200 transition-all ml-1 shrink-0 cursor-pointer"
           >
-            <Laptop className="w-4 h-4 text-[#0A3D62]" />
-            <span>Guía de Uso Local</span>
+            <ChevronRight className="w-4 h-4" />
           </button>
         </div>
 
@@ -955,6 +1076,319 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* TAB: ENCABEZADOS Y PIES DE PÁGINA (INDEPENDIENTES) */}
+          {activeTab === 'headersFooters' && (
+            <div className="space-y-5">
+              {/* Header explanation */}
+              <div className="bg-gradient-to-r from-blue-50/80 via-slate-50 to-emerald-50/80 border border-slate-200 rounded-xl p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sliders className="w-4 h-4 text-[#0A3D62]" />
+                    <span className="font-bold text-xs text-[#0A3D62] uppercase tracking-wide">
+                      Gestión Independiente de Encabezados y Pies de Página
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    Ajuste Global / Predeterminado
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Configura por separado los textos del <strong>encabezado superior (Header)</strong> y del <strong>pie de página (Footer)</strong> para la <em>Propuesta Técnica/Comercial</em> y para la <em>Documentación Técnica Interna</em>. Cada tipo de documento mantiene su propia identidad visual en Word y PDF.
+                </p>
+              </div>
+
+              {copiedNotification && (
+                <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs px-3 py-2 rounded-lg flex items-center gap-2 animate-in fade-in">
+                  <Check className="w-4 h-4 text-emerald-600" />
+                  <span>{copiedNotification}</span>
+                </div>
+              )}
+
+              {/* Sub-navigation selector for Document Type */}
+              <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setHeaderFooterSubTab('proposal')}
+                  className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    headerFooterSubTab === 'proposal'
+                      ? 'bg-white text-[#0A3D62] shadow-sm border border-slate-200'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <FileText className="w-4 h-4 text-[#0A3D62]" />
+                  <span>📘 Propuesta Técnica (8 Secc.)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHeaderFooterSubTab('technical')}
+                  className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    headerFooterSubTab === 'technical'
+                      ? 'bg-white text-[#0A3D62] shadow-sm border border-slate-200'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Terminal className="w-4 h-4 text-[#2ECC71]" />
+                  <span>📗 Doc. Técnica (5 Secc.)</span>
+                </button>
+              </div>
+
+              {/* PANEL 1: PROPUESTA TÉCNICA / COMERCIAL */}
+              {headerFooterSubTab === 'proposal' && (
+                <div className="space-y-4 animate-in fade-in duration-150">
+                  <div className="flex items-center justify-between bg-blue-50/70 border border-blue-200 rounded-xl p-3">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-[#0A3D62]" />
+                      <span className="text-xs font-bold text-[#0A3D62]">
+                        Encabezados & Pies: Propuesta Técnica / Comercial
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleResetProposalHeaderFooter}
+                      className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-slate-300 hover:border-slate-400 text-slate-700 hover:text-red-700 text-[11px] font-semibold rounded-lg shadow-xs transition-all cursor-pointer"
+                      title="Restablecer encabezados y pie de propuesta a valores por defecto"
+                    >
+                      <RotateCcw className="w-3 h-3 text-slate-500" />
+                      <span>Restablecer</span>
+                    </button>
+                  </div>
+
+                  {/* Input 1: Marca Header */}
+                  <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-1.5 shadow-xs">
+                    <label className="block text-xs font-bold text-slate-800">
+                      Marca o Etiqueta del Encabezado (Header Brand Tag)
+                    </label>
+                    <input
+                      type="text"
+                      value={branding.proposalHeaderBrandTag ?? ''}
+                      onChange={(e) => handleProposalHeaderFooterChange('proposalHeaderBrandTag', e.target.value)}
+                      placeholder={DEFAULT_PROPOSAL_HEADER_FOOTER.headerBrandTag}
+                      className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-900 bg-slate-50/50 focus:bg-white"
+                    />
+                    <p className="text-[10px] text-slate-500">
+                      Se muestra en el banner superior de la carátula y en el encabezado izquierdo de las páginas 2 en adelante. Por defecto: <span className="font-semibold text-slate-700">{DEFAULT_PROPOSAL_HEADER_FOOTER.headerBrandTag}</span>
+                    </p>
+                  </div>
+
+                  {/* Input 2: Subtítulo Header */}
+                  <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-1.5 shadow-xs">
+                    <label className="block text-xs font-bold text-slate-800">
+                      Subtítulo del Encabezado Superior (Header Páginas 2+)
+                    </label>
+                    <input
+                      type="text"
+                      value={branding.proposalHeaderSubtitle ?? ''}
+                      onChange={(e) => handleProposalHeaderFooterChange('proposalHeaderSubtitle', e.target.value)}
+                      placeholder={DEFAULT_PROPOSAL_HEADER_FOOTER.headerSubtitle}
+                      className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-900 bg-slate-50/50 focus:bg-white"
+                    />
+                    <p className="text-[10px] text-slate-500">
+                      Texto que acompaña a la marca en el encabezado de las páginas siguientes. Por defecto: <span className="font-semibold text-slate-700">{DEFAULT_PROPOSAL_HEADER_FOOTER.headerSubtitle}</span>
+                    </p>
+                  </div>
+
+                  {/* Input 3: Pie de Página */}
+                  <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-1.5 shadow-xs">
+                    <label className="block text-xs font-bold text-slate-800">
+                      Texto del Pie de Página (Footer de todas las páginas)
+                    </label>
+                    <input
+                      type="text"
+                      value={branding.proposalFooterText ?? ''}
+                      onChange={(e) => handleProposalHeaderFooterChange('proposalFooterText', e.target.value)}
+                      placeholder={DEFAULT_PROPOSAL_HEADER_FOOTER.footerText}
+                      className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-900 bg-slate-50/50 focus:bg-white"
+                    />
+                    <p className="text-[10px] text-slate-500">
+                      Aparece en la parte inferior izquierda de todas las páginas junto a la numeración <em>(Página X de Y)</em>. Por defecto: <span className="font-semibold text-slate-700">{DEFAULT_PROPOSAL_HEADER_FOOTER.footerText}</span>
+                    </p>
+                  </div>
+
+                  {/* Live Mini Preview for Proposal */}
+                  <div className="bg-slate-900 text-white rounded-xl p-4 space-y-3">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">
+                      Simulación Visual en Documento (Propuesta)
+                    </span>
+                    
+                    {/* Simulated Header */}
+                    <div className="bg-white text-slate-900 p-2.5 rounded-lg border border-slate-300 text-[11px] shadow-sm">
+                      <div className="flex items-center justify-between border-b border-slate-200 pb-1.5 text-[10px] text-slate-500">
+                        <span>
+                          <strong className="text-[#0A3D62]">{effectiveProposalHF.headerBrandTag || 'ADVANSYS'}</strong> • {effectiveProposalHF.headerSubtitle || 'DOCUMENTACIÓN TÉCNICA Y ANÁLISIS DE CUMPLIMIENTO'}
+                        </span>
+                        <span className="text-slate-400">Pág. 2</span>
+                      </div>
+                      <div className="py-2 text-slate-400 text-[9px] italic text-center">
+                        — Contenido de la sección de la propuesta —
+                      </div>
+                      <div className="flex items-center justify-between border-t border-slate-200 pt-1.5 text-[10px] text-slate-500">
+                        <span>{effectiveProposalHF.footerText || 'Advansys SRL'}</span>
+                        <span>Página 2 de 4</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* PANEL 2: DOCUMENTACIÓN TÉCNICA INTERNA */}
+              {headerFooterSubTab === 'technical' && (
+                <div className="space-y-4 animate-in fade-in duration-150">
+                  <div className="flex items-center justify-between bg-emerald-50/70 border border-emerald-200 rounded-xl p-3">
+                    <div className="flex items-center gap-2">
+                      <Terminal className="w-4 h-4 text-[#2ECC71]" />
+                      <span className="text-xs font-bold text-[#0A3D62]">
+                        Encabezados & Pies: Documentación Técnica Interna
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleResetTechHeaderFooter}
+                      className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-slate-300 hover:border-slate-400 text-slate-700 hover:text-red-700 text-[11px] font-semibold rounded-lg shadow-xs transition-all cursor-pointer"
+                      title="Restablecer encabezados y pie técnico a valores por defecto"
+                    >
+                      <RotateCcw className="w-3 h-3 text-slate-500" />
+                      <span>Restablecer</span>
+                    </button>
+                  </div>
+
+                  {/* Toggle Banner Portada Primera Página */}
+                  <div className="p-3.5 bg-gradient-to-r from-blue-50/70 to-emerald-50/70 border border-slate-200 rounded-xl flex items-center justify-between gap-3 shadow-xs">
+                    <div className="space-y-0.5 min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <ImageIcon className="w-4 h-4 text-[#0A3D62]" />
+                        <span className="text-xs font-bold text-slate-800">
+                          Imagen / Banner de Encabezado en Primera Página
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-600">
+                        Determina si se incluye la portada gráfica institucional superior en la primera página de las exportaciones técnicas (Word y PDF).
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleTechHeaderFooterChange('techIncludeHeaderBanner', !branding.techIncludeHeaderBanner)}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition-all shrink-0 cursor-pointer ${
+                        branding.techIncludeHeaderBanner
+                          ? 'bg-emerald-600 text-white border-emerald-700 hover:bg-emerald-700 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      {branding.techIncludeHeaderBanner ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-white" />
+                          <span>Incluir Banner</span>
+                        </>
+                      ) : (
+                        <>
+                          <EyeOff className="w-3.5 h-3.5 text-slate-400" />
+                          <span>Sin Banner</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Input 1: Marca Header Técnico */}
+                  <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-1.5 shadow-xs">
+                    <label className="block text-xs font-bold text-slate-800">
+                      Marca o Etiqueta del Encabezado Técnico
+                    </label>
+                    <input
+                      type="text"
+                      value={branding.techHeaderBrandTag ?? ''}
+                      onChange={(e) => handleTechHeaderFooterChange('techHeaderBrandTag', e.target.value)}
+                      placeholder={DEFAULT_TECHNICAL_HEADER_FOOTER.techHeaderBrandTag}
+                      className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-900 bg-slate-50/50 focus:bg-white"
+                    />
+                    <p className="text-[10px] text-slate-500">
+                      Etiqueta izquierda en la barra superior de la especificación técnica. Por defecto: <span className="font-semibold text-slate-700">{DEFAULT_TECHNICAL_HEADER_FOOTER.techHeaderBrandTag}</span>
+                    </p>
+                  </div>
+
+                  {/* Input 2: Subtítulo Header Técnico */}
+                  <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-1.5 shadow-xs">
+                    <label className="block text-xs font-bold text-slate-800">
+                      Subtítulo del Encabezado Técnico
+                    </label>
+                    <input
+                      type="text"
+                      value={branding.techHeaderSubtitle ?? ''}
+                      onChange={(e) => handleTechHeaderFooterChange('techHeaderSubtitle', e.target.value)}
+                      placeholder={DEFAULT_TECHNICAL_HEADER_FOOTER.techHeaderSubtitle}
+                      className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-900 bg-slate-50/50 focus:bg-white"
+                    />
+                    <p className="text-[10px] text-slate-500">
+                      Subtítulo distintivo en verde esmeralda. Por defecto: <span className="font-semibold text-slate-700">{DEFAULT_TECHNICAL_HEADER_FOOTER.techHeaderSubtitle}</span>
+                    </p>
+                  </div>
+
+                  {/* Input 3: Texto Derecho Header Técnico */}
+                  <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-1.5 shadow-xs">
+                    <label className="block text-xs font-bold text-slate-800">
+                      Texto Derecho del Encabezado (Opcional - Reemplazo de Ticket)
+                    </label>
+                    <input
+                      type="text"
+                      value={branding.techHeaderRightText ?? ''}
+                      onChange={(e) => handleTechHeaderFooterChange('techHeaderRightText', e.target.value)}
+                      placeholder="ej. CONFIDENCIAL / USO DEV & QA (si está vacío, usa el Ticket No)"
+                      className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-900 bg-slate-50/50 focus:bg-white"
+                    />
+                    <p className="text-[10px] text-slate-500">
+                      Si se deja en blanco, tomará automáticamente el <em>Ticket No.</em> del documento actual.
+                    </p>
+                  </div>
+
+                  {/* Input 4: Pie de Página Técnico */}
+                  <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-1.5 shadow-xs">
+                    <label className="block text-xs font-bold text-slate-800">
+                      Texto del Pie de Página Técnico (Footer)
+                    </label>
+                    <input
+                      type="text"
+                      value={branding.techFooterText ?? ''}
+                      onChange={(e) => handleTechHeaderFooterChange('techFooterText', e.target.value)}
+                      placeholder={DEFAULT_TECHNICAL_HEADER_FOOTER.techFooterText}
+                      className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-900 bg-slate-50/50 focus:bg-white"
+                    />
+                    <p className="text-[10px] text-slate-500">
+                      Texto de confidencialidad o autor en la parte inferior de la documentación técnica. Por defecto: <span className="font-semibold text-slate-700">{DEFAULT_TECHNICAL_HEADER_FOOTER.techFooterText}</span>
+                    </p>
+                  </div>
+
+                  {/* Live Mini Preview for Technical Doc */}
+                  <div className="bg-slate-900 text-white rounded-xl p-4 space-y-3">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">
+                      Simulación Visual en Documento (Doc. Técnica)
+                    </span>
+                    
+                    {/* Simulated Header */}
+                    <div className="bg-white text-slate-900 p-2.5 rounded-lg border border-slate-300 text-[11px] shadow-sm">
+                      <div className="flex items-center justify-between border-b border-slate-200 pb-1.5 text-[10px]">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-[#0A3D62]">{effectiveTechHF.techHeaderBrandTag || 'ADVANSYS'}</span>
+                          <span className="text-slate-300">|</span>
+                          <span className="font-bold text-[#2ECC71]">{effectiveTechHF.techHeaderSubtitle || 'ESPECIFICACIÓN TÉCNICA INTERNA DE DESARROLLO'}</span>
+                        </div>
+                        <span className="font-mono text-slate-400 text-[9px] font-bold uppercase">
+                          {effectiveTechHF.techHeaderRightText || 'TK-2026-089'}
+                        </span>
+                      </div>
+                      <div className="py-2 text-slate-400 text-[9px] italic text-center">
+                        — Secciones técnicas: Ruta, Flujo, Diseño, Consideraciones y Código —
+                      </div>
+                      <div className="flex items-center justify-between border-t border-slate-200 pt-1.5 text-[10px] text-slate-500">
+                        <span className="uppercase text-[9px] font-semibold text-slate-600">
+                          {effectiveTechHF.techFooterText || 'DOCUMENTO CONFIDENCIAL DE USO INTERNO ADVANSYS'}
+                        </span>
+                        <span>Página 1 de 2</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

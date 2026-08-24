@@ -1,5 +1,5 @@
 import React from 'react';
-import { ProposalSection, MetadataHeader, UploadedImage, getEffectiveTitles } from '../types';
+import { ProposalSection, MetadataHeader, UploadedImage, getEffectiveTitles, getEffectiveProposalHeaderFooter } from '../types';
 import { FileText } from 'lucide-react';
 import { getAdvansysBannerSvg } from '../data/banner';
 import { formatInlineBold, PreviewTable, PreviewImage, RichTextBlock } from './DocumentPreviewBlocks';
@@ -12,9 +12,10 @@ interface DocxPreviewProps {
 
 export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, images }) => {
   const titles = getEffectiveTitles(metadata.customTitles);
+  const headerFooter = getEffectiveProposalHeaderFooter(metadata);
   const bannerSvg = getAdvansysBannerSvg(
-    metadata.headerBrandTag || 'ADVANSYS',
-    metadata.headerSubtitle ?? '',
+    headerFooter.headerBrandTag || 'ADVANSYS',
+    headerFooter.headerSubtitle ?? '',
     metadata.logoDataUrl
   );
   const tables = proposal.tables || [];
@@ -327,7 +328,7 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
 
       {/* Footer Page Bar Simulation */}
       <div className="mt-12 pt-4 border-t border-slate-200 flex items-center justify-between text-[10px] text-slate-400">
-        <span>{metadata.footerText || 'Advansys SRL'}</span>
+        <span>{headerFooter.footerText || 'Advansys SRL'}</span>
         <span>Página 1 de 1</span>
       </div>
 

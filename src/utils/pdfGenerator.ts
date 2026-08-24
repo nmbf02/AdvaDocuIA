@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { MetadataHeader, ProposalSection, UploadedImage, DocumentTable, getEffectiveTitles } from '../types';
+import { MetadataHeader, ProposalSection, UploadedImage, DocumentTable, getEffectiveTitles, getEffectiveProposalHeaderFooter } from '../types';
 import { getAdvansysBannerSvg } from '../data/banner';
 import { fitImageSize, getImageAlign, pdfImageX } from './imageLayout';
 
@@ -101,12 +101,15 @@ export async function generateAdvansysPdf(
     }
   };
 
+  const titles = getEffectiveTitles(metadata.customTitles);
+  const effectiveHF = getEffectiveProposalHeaderFooter(metadata);
+
   // =========================================================================
   // 1. PAGE 1 INSTITUTIONAL FULL-BLEED BANNER (Full width 0 to pageWidth, top: 0)
   // =========================================================================
   const bannerSvg = getAdvansysBannerSvg(
-    metadata.headerBrandTag || 'ADVANSYS',
-    metadata.headerSubtitle ?? '',
+    effectiveHF.headerBrandTag,
+    effectiveHF.headerSubtitle,
     metadata.logoDataUrl
   );
 
@@ -137,8 +140,6 @@ export async function generateAdvansysPdf(
 
   // Start content right below the full-width banner with comfortable padding
   cursorY = bannerHeight + 7;
-
-  const titles = getEffectiveTitles(metadata.customTitles);
 
   // ==========================================
   // 2. MAIN DOCUMENT TITLE
@@ -683,9 +684,9 @@ export async function generateAdvansysPdf(
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7.5);
       doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-      const headerSubtitleText = metadata.headerSubtitle?.trim() || metadata.nombreProyecto?.trim() || 'Propuesta de Desarrollo';
+      const headerSubtitleText = effectiveHF.headerSubtitle || metadata.nombreProyecto?.trim() || 'Propuesta de Desarrollo';
       doc.text(
-        `${(metadata.headerBrandTag || 'ADVANSYS').trim()} • ${headerSubtitleText}`,
+        `${effectiveHF.headerBrandTag} • ${headerSubtitleText}`,
         margin,
         10
       );
@@ -705,7 +706,7 @@ export async function generateAdvansysPdf(
     doc.setFontSize(7.5);
     doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
     doc.text(
-      (metadata.footerText || 'Advansys SRL').trim(),
+      effectiveHF.footerText,
       margin,
       footerY
     );

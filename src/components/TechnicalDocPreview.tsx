@@ -1,5 +1,5 @@
 import React from 'react';
-import { MetadataHeader, TechnicalDoc, UploadedImage, getEffectiveTechnicalTitles } from '../types';
+import { MetadataHeader, TechnicalDoc, UploadedImage, getEffectiveTechnicalTitles, getEffectiveTechnicalHeaderFooter } from '../types';
 import { FileText } from 'lucide-react';
 import { getAdvansysBannerSvg } from '../data/banner';
 import { formatInlineBold, PreviewTable, PreviewImage, RichTextBlock } from './DocumentPreviewBlocks';
@@ -16,11 +16,12 @@ export const TechnicalDocPreview: React.FC<TechnicalDocPreviewProps> = ({
   images,
 }) => {
   const titles = getEffectiveTechnicalTitles(metadata.customTitles || technicalDoc.customTitles);
+  const headerFooter = getEffectiveTechnicalHeaderFooter(technicalDoc, metadata);
   const mainTitle = technicalDoc.tituloDocumento?.trim() || titles.techMainTitle;
 
   const bannerSvg = getAdvansysBannerSvg(
-    metadata.headerBrandTag || 'ADVANSYS',
-    metadata.headerSubtitle ?? 'Documentación técnica interna',
+    headerFooter.techHeaderBrandTag || 'ADVANSYS',
+    headerFooter.techHeaderSubtitle || 'Documentación técnica interna',
     metadata.logoDataUrl
   );
   const tables = technicalDoc.tables || [];
@@ -55,13 +56,33 @@ export const TechnicalDocPreview: React.FC<TechnicalDocPreviewProps> = ({
   return (
     <div className="w-full overflow-x-auto py-2">
       <div className="advansys-document-sheet max-w-4xl min-w-0 w-full mx-auto bg-white shadow-2xl rounded-sm border border-slate-300 p-4 sm:p-8 md:p-10 text-slate-900 font-sans leading-relaxed text-sm relative overflow-x-hidden">
-        <div className="-mx-4 sm:-mx-8 md:-mx-10 -mt-4 sm:-mt-8 md:-mt-10 mb-6 border-b-4 border-[#2ECC71] shadow-md overflow-hidden rounded-t-sm relative bg-[#021024]">
-          <img
-            src={bannerSvg}
-            alt="Advansys Header Cover Banner"
-            className="w-full h-auto object-cover object-center"
-          />
-        </div>
+        {/* Banner o Encabezado Corporativo según la opción configurada */}
+        {headerFooter.includeFirstPageHeaderImage ? (
+          <div className="relative -mx-4 -mt-4 sm:-mx-8 sm:-mt-8 md:-mx-10 md:-mt-10 mb-6 w-[calc(100%+2rem)] sm:w-[calc(100%+4rem)] md:w-[calc(100%+5rem)] overflow-hidden rounded-t-sm shadow-md bg-[#0A3D62]">
+            <img 
+              src={bannerSvg} 
+              alt="Advansys Technical Cover Banner" 
+              className="w-full h-auto object-cover object-center"
+            />
+          </div>
+        ) : (
+          <div className="flex items-center justify-between border-b border-slate-300 pb-2.5 mb-6 text-xs text-slate-500">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-[#0A3D62] tracking-wider text-[11px] uppercase">
+                {headerFooter.techHeaderBrandTag || 'ADVANSYS'}
+              </span>
+              <span className="text-slate-300">|</span>
+              <span className="font-semibold text-[#2ECC71] text-[11px] tracking-wide uppercase">
+                {headerFooter.techHeaderSubtitle || 'ESPECIFICACIÓN TÉCNICA INTERNA DE DESARROLLO'}
+              </span>
+            </div>
+            {(headerFooter.techHeaderRightText || metadata.ticketNo) && (
+              <span className="font-mono text-slate-400 text-[10px] uppercase font-semibold">
+                {headerFooter.techHeaderRightText || metadata.ticketNo}
+              </span>
+            )}
+          </div>
+        )}
 
         <div className="text-center mb-2">
           <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold bg-[#2ECC71] text-slate-950 uppercase tracking-wider">
@@ -150,10 +171,10 @@ export const TechnicalDocPreview: React.FC<TechnicalDocPreviewProps> = ({
         </div>
 
         <div className="mt-12 pt-4 border-t border-slate-200 flex items-center justify-between text-[10px] text-slate-400">
-          <span>USO INTERNO EXCLUSIVO ADVANSYS</span>
-          <span className="inline-flex items-center gap-1">
+          <span className="font-medium text-slate-500 uppercase">{headerFooter.techFooterText || 'DOCUMENTO CONFIDENCIAL DE USO INTERNO ADVANSYS'}</span>
+          <span className="inline-flex items-center gap-1 text-slate-400">
             <FileText className="w-3 h-3" />
-            {metadata.footerText || 'Advansys SRL'}
+            <span>Página 1 de 1</span>
           </span>
         </div>
       </div>

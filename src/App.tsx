@@ -10,12 +10,24 @@ import { HistoryModal } from './components/HistoryModal';
 import { ConfirmModal } from './components/ConfirmModal';
 import { SettingsModal } from './components/SettingsModal';
 import { BackupModal } from './components/BackupModal';
+import { NewDocumentModal, NewDocumentType } from './components/NewDocumentModal';
 import { WelcomeIntro } from './components/WelcomeIntro';
 import { ADVANSYS_SAMPLE_METADATA, ADVANSYS_SAMPLE_REQUIREMENTS, ADVANSYS_SAMPLE_IMAGES, EMPTY_MANUAL_PROPOSAL } from './data/presets';
 import { createDefaultSlideDeck, convertProposalToSlideDeck } from './utils/slideDeckTemplates';
 import { createDefaultTechnicalDoc, proposalHasSubstance, copyLinkedProposalMetadata } from './utils/technicalDocTemplates';
-import { AppBackupData } from './utils/backupManager';
-import { Sparkles, Loader2, FileText, AlertCircle, Cpu, Columns2, ClipboardList, Maximize2, Image as ImageIcon, PenLine, NotebookPen, Layers, X, Check } from 'lucide-react';
+import { 
+  AppBackupData, 
+  loadBackupConfig, 
+  saveBackupConfig, 
+  createAndSaveSnapshot, 
+  frequencyToMilliseconds,
+  shouldRunDailyBackup,
+  getTodayDateString,
+  exportAppBackup,
+  saveBackupToDiskFolderOrDownload
+} from './utils/backupManager';
+import { AutoBackupConfig, DEFAULT_BACKUP_CONFIG, BackupSnapshot } from './types';
+import { Sparkles, Loader2, FileText, AlertCircle, Cpu, Columns2, ClipboardList, Maximize2, Image as ImageIcon, PenLine, NotebookPen, Layers, X, Check, Database } from 'lucide-react';
 
 const STORAGE_KEY_HISTORY = 'advansys_docgen_history_v1';
 const STORAGE_KEY_DRAFT = 'advansys_docgen_current_draft_v1';
@@ -107,6 +119,10 @@ export default function App() {
 
   // Backup & Restore State
   const [isBackupOpen, setIsBackupOpen] = useState<boolean>(false);
+  const [backupConfig, setBackupConfig] = useState<AutoBackupConfig>(() => loadBackupConfig());
+  const [lastAutoBackupTime, setLastAutoBackupTime] = useState<string | null>(null);
+  const [showBackupToast, setShowBackupToast] = useState<boolean>(false);
+  const [backupToastMessage, setBackupToastMessage] = useState<string>('');
 
   // Branding / Settings (logo global para todos los documentos)
   const [branding, setBranding] = useState<BrandingSettings>({});
@@ -116,6 +132,8 @@ export default function App() {
   const [isConfirmResetOpen, setIsConfirmResetOpen] = useState<boolean>(false);
   // Confirm Revert Modal State
   const [isConfirmRevertOpen, setIsConfirmRevertOpen] = useState<boolean>(false);
+  // New Document Modal State
+  const [isNewDocModalOpen, setIsNewDocModalOpen] = useState<boolean>(false);
 
   // Layout Mode & Tab State
   const [layoutMode, setLayoutMode] = useState<'split' | 'inputs' | 'editor'>('split');
@@ -219,6 +237,164 @@ export default function App() {
     }
   };
 
+  const handleUpdateBackupConfig = (newConfig: AutoBackupConfig) => {
+    setBackupConfig(newConfig);
+    saveBackupConfig(newConfig);
+  };
+
+  // Helper to compile current AppBackupData
+  const getFullBackupPayload = (): AppBackupData => ({
+    version: '1.0',
+    exportDate: new Date().toISOString(),
+    appName: 'ADVANSYS Document Generator',
+    stats: {
+      totalHistoryItems: history.length,
+      hasDraft: Boolean(proposal),
+      hasBranding: Boolean(branding && (branding.logoDataUrl || branding.customTitles)),
+    },
+    history,
+    draft: proposal
+      ? {
+          currentDocumentId,
+          metadata,
+          rawRequirements,
+          images,
+          proposal,
+          version: currentVersion,
+          versionNote: currentVersionNote,
+          status: currentStatus,
+          workspaceMode,
+          editorTab,
+          timestamp: new Date().toISOString(),
+        }
+      : null,
+    settings: branding || null,
+    theme: theme || 'light',
+  });
+
+  // Automated Periodic Backup Scheduler
+  useEffect(() => {
+    if (!backupConfig.enabled || backupConfig.frequency === 'off') return;
+
+    const intervalMs = frequencyToMilliseconds(backupConfig.frequency);
+    if (intervalMs <= 0) return;
+
+    const intervalTimer = setInterval(() => {
+      // Only take auto-backup if there are documents or active draft
+      if (history.length === 0 && !proposal && !rawRequirements.trim()) return;
+
+      const payload = getFullBackupPayload();
+      const snap = createAndSaveSnapshot(
+        payload,
+        'interval',
+        `Automático (${backupConfig.frequency})`,
+        backupConfig.maxSnapshots
+      );
+
+      if (snap) {
+        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        setLastAutoBackupTime(timeStr);
+        if (backupConfig.showNotificationToast) {
+          setBackupToastMessage(`Copia de seguridad automática (${timeStr})`);
+          setShowBackupToast(true);
+          setTimeout(() => setShowBackupToast(false), 2500);
+        }
+      }
+    }, intervalMs);
+
+    return () => clearInterval(intervalTimer);
+  }, [
+    backupConfig,
+    history,
+    proposal,
+    rawRequirements,
+    metadata,
+    images,
+    branding,
+    currentDocumentId,
+    currentVersion,
+    currentVersionNote,
+    currentStatus,
+    workspaceMode,
+    editorTab,
+    theme
+  ]);
+
+  // Automated Daily Scheduled Backup Runner
+  useEffect(() => {
+    if (!backupConfig.dailyScheduleEnabled || !backupConfig.dailyScheduleTime) return;
+
+    const checkDailyBackup = async () => {
+      // Don't backup if empty application state
+      if (history.length === 0 && !proposal && !rawRequirements.trim()) return;
+
+      if (shouldRunDailyBackup(backupConfig)) {
+        const todayStr = getTodayDateString();
+        const payload = getFullBackupPayload();
+        const snap = createAndSaveSnapshot(
+          payload,
+          'daily_schedule',
+          `Copia diaria programada (${backupConfig.dailyScheduleTime})`,
+          backupConfig.maxSnapshots
+        );
+
+        if (snap) {
+          const updatedConfig = { ...backupConfig, lastDailyBackupDate: todayStr };
+          setBackupConfig(updatedConfig);
+          saveBackupConfig(updatedConfig);
+
+          const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          setLastAutoBackupTime(timeStr);
+
+          // Save directly to selected disk folder or trigger automatic browser download
+          let diskSavedNotice = '';
+          if (backupConfig.dailyAutoDownloadJson || backupConfig.autoDownloadDailyToDisk) {
+            try {
+              const res = await saveBackupToDiskFolderOrDownload(
+                payload,
+                `Advansys_Backup_Diario_${backupConfig.dailyScheduleTime.replace(':', '')}`
+              );
+              if (res.success && res.method === 'direct_folder') {
+                diskSavedNotice = ` en "${res.folderName}"`;
+              }
+            } catch (err) {
+              console.warn('Error saving daily backup to disk folder:', err);
+            }
+          }
+
+          if (backupConfig.showNotificationToast) {
+            setBackupToastMessage(`Copia diaria programada guardada${diskSavedNotice} (${backupConfig.dailyScheduleTime})`);
+            setShowBackupToast(true);
+            setTimeout(() => setShowBackupToast(false), 4000);
+          }
+        }
+      }
+    };
+
+    // Run check immediately
+    checkDailyBackup();
+
+    // Check every 25 seconds
+    const dailyTimer = setInterval(checkDailyBackup, 25000);
+
+    return () => clearInterval(dailyTimer);
+  }, [
+    backupConfig,
+    history,
+    proposal,
+    rawRequirements,
+    metadata,
+    images,
+    branding,
+    currentDocumentId,
+    currentVersion,
+    currentVersionNote,
+    currentStatus,
+    workspaceMode,
+    editorTab,
+    theme
+  ]);
+
   // Save Changes Helper - Updates the current document in-place WITHOUT creating duplicate files
   const handleSaveChanges = () => {
     if (!proposal) return;
@@ -249,6 +425,18 @@ export default function App() {
     try {
       localStorage.setItem(STORAGE_KEY_DRAFT, JSON.stringify(draft));
       saveToHistory(proposal, currentVersion, currentVersionNote, targetDocId, false);
+      
+      // Auto-trigger snapshot on save if configured
+      if (backupConfig.enabled && backupConfig.backupOnSave) {
+        const payload = getFullBackupPayload();
+        createAndSaveSnapshot(
+          payload,
+          'on_save',
+          `Al guardar: ${metadata.nombreProyecto || metadata.ticketNo || 'Documento'}`,
+          backupConfig.maxSnapshots
+        );
+      }
+
       setShowSavedToast(true);
       setTimeout(() => setShowSavedToast(false), 3000);
     } catch (e) {
@@ -375,6 +563,17 @@ export default function App() {
   };
 
   const applySavedDocument = (saved: SavedProposal) => {
+    // If switching documents and auto-backup on switch is enabled, take a snapshot of current draft
+    if (backupConfig.enabled && backupConfig.backupOnDocumentSwitch && proposal && currentDocumentId !== saved.id) {
+      const payload = getFullBackupPayload();
+      createAndSaveSnapshot(
+        payload,
+        'on_switch',
+        `Antes de cambiar a: ${saved.metadata?.nombreProyecto || saved.id}`,
+        backupConfig.maxSnapshots
+      );
+    }
+
     setCurrentDocumentId(saved.id);
     setCurrentStatus(saved.status || 'borrador');
     setMetadata(stripDocumentLogo(saved.metadata));
@@ -711,6 +910,109 @@ export default function App() {
     }
   };
 
+  // Helper to check if the current active document has substantial content
+  const currentDocumentHasSubstance = (): boolean => {
+    const hasMeta = Boolean(
+      metadata.nombreProyecto?.trim() ||
+      metadata.cliente?.trim() ||
+      metadata.ticketNo?.trim() ||
+      metadata.moduloAplicacion?.trim() ||
+      metadata.propuestaNo?.trim() ||
+      metadata.guiaNo?.trim() ||
+      rawRequirements?.trim() ||
+      (images && images.length > 0)
+    );
+    const hasBody = Boolean(
+      proposal && (
+        proposal.resumenEjecutivo?.trim() ||
+        proposal.objetivo?.trim() ||
+        proposal.alcance?.trim() ||
+        proposal.slideDeck ||
+        (proposal.technicalDoc && (
+          proposal.technicalDoc.flujoOperativo?.trim() ||
+          proposal.technicalDoc.diseno?.trim() ||
+          proposal.technicalDoc.ruta?.trim() ||
+          proposal.technicalDoc.tablas?.trim() ||
+          proposal.technicalDoc.programas?.trim() ||
+          proposal.technicalDoc.linkedProposalId
+        ))
+      )
+    );
+    return hasMeta || hasBody;
+  };
+
+  const handleOpenNewDocumentModal = () => {
+    setIsNewDocModalOpen(true);
+  };
+
+  const handleConfirmNewDocument = (docType: NewDocumentType, shouldSaveCurrent: boolean) => {
+    if (shouldSaveCurrent && proposal) {
+      handleSaveChanges();
+    }
+
+    if (docType === 'technical') {
+      const emptyMeta = createEmptyMetadata();
+      setMetadata(emptyMeta);
+      setRawRequirements('');
+      setImages([]);
+      const defaultTech = {
+        ...createDefaultTechnicalDoc(emptyMeta, null),
+        isStandalone: true,
+      };
+      const docId = `tech_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      setCurrentDocumentId(docId);
+      setCurrentVersion('v1.0');
+      setCurrentVersionNote('');
+      setCurrentStatus('borrador');
+      setProposal({
+        ...EMPTY_MANUAL_PROPOSAL,
+        technicalDoc: defaultTech,
+      });
+      setWorkspaceMode('technical');
+      setEditorTab('technical');
+      setLayoutMode('editor');
+      setError(null);
+      setShowWelcome(false);
+    } else if (docType === 'slides') {
+      const emptyMeta = createEmptyMetadata();
+      setMetadata(emptyMeta);
+      setRawRequirements('');
+      setImages([]);
+      setCurrentVersion('v1.0');
+      setCurrentVersionNote('');
+      setCurrentStatus('borrador');
+      setWorkspaceMode('proposal');
+      setEditorTab('slides');
+      setLayoutMode('split');
+      const initialDeck = createDefaultSlideDeck(emptyMeta, []);
+      const docId = `prop-${Date.now()}`;
+      setCurrentDocumentId(docId);
+      setProposal({
+        ...EMPTY_MANUAL_PROPOSAL,
+        slideDeck: initialDeck,
+      });
+      setError(null);
+      setShowWelcome(false);
+    } else {
+      // Standard proposal
+      setCurrentDocumentId(null);
+      setMetadata(createEmptyMetadata());
+      setRawRequirements('');
+      setImages([]);
+      setProposal(null);
+      setCurrentVersion('v1.0');
+      setCurrentVersionNote('');
+      setCurrentStatus('borrador');
+      setWorkspaceMode('proposal');
+      setEditorTab('editor');
+      setLayoutMode('split');
+      setError(null);
+      setShowWelcome(false);
+    }
+
+    setIsNewDocModalOpen(false);
+  };
+
   // Welcome Screen Action Handlers
   const handleStartNewFromWelcome = () => {
     persistCurrentDocumentIfNeeded();
@@ -1019,7 +1321,23 @@ export default function App() {
               : null
           }
           theme={theme}
+          backupConfig={backupConfig}
+          onUpdateBackupConfig={handleUpdateBackupConfig}
           onRestoreBackup={handleRestoreBackup}
+          lastAutoBackupTime={lastAutoBackupTime}
+        />
+
+        {/* New Document Dialog with Save Prompt */}
+        <NewDocumentModal
+          isOpen={isNewDocModalOpen}
+          onClose={() => setIsNewDocModalOpen(false)}
+          onConfirmNew={handleConfirmNewDocument}
+          hasSubstance={currentDocumentHasSubstance()}
+          currentProjectName={metadata.nombreProyecto}
+          currentClient={metadata.cliente}
+          currentTicket={metadata.ticketNo}
+          currentDocumentKind={workspaceMode === 'technical' ? 'technical' : editorTab === 'slides' ? 'slides' : 'proposal'}
+          currentVersion={currentVersion}
         />
       </>
     );
@@ -1030,6 +1348,7 @@ export default function App() {
       
       {/* Top Header */}
       <Header
+        onNewDocument={handleOpenNewDocumentModal}
         onLoadPreset={handleLoadPreset}
         onReset={handleReset}
         onOpenHistory={() => setIsHistoryOpen(true)}
@@ -1044,6 +1363,10 @@ export default function App() {
         logoDataUrl={branding.logoDataUrl}
         projectName={metadata.nombreProyecto}
         documentKind={workspaceMode === 'technical' ? 'technical' : 'proposal'}
+        autoBackupActive={backupConfig.enabled && backupConfig.frequency !== 'off'}
+        autoBackupFrequency={backupConfig.frequency}
+        dailyBackupActive={backupConfig.dailyScheduleEnabled}
+        dailyBackupTime={backupConfig.dailyScheduleTime}
       />
 
       {/* Main Container */}
@@ -1466,8 +1789,20 @@ export default function App() {
             : null
         }
         theme={theme}
+        backupConfig={backupConfig}
+        onUpdateBackupConfig={handleUpdateBackupConfig}
         onRestoreBackup={handleRestoreBackup}
+        lastAutoBackupTime={lastAutoBackupTime}
       />
+
+      {/* Auto-Backup Notification Toast */}
+      {showBackupToast && (
+        <div className="fixed bottom-4 right-4 z-50 bg-[#0A3D62] text-white px-3.5 py-2 rounded-xl shadow-lg border border-emerald-400/40 flex items-center gap-2.5 text-xs font-semibold animate-in fade-in slide-in-from-bottom-3 duration-200">
+          <span className="w-2 h-2 rounded-full bg-[#2ECC71] animate-pulse"></span>
+          <Database className="w-4 h-4 text-[#2ECC71]" />
+          <span>{backupToastMessage || 'Copia de seguridad guardada'}</span>
+        </div>
+      )}
 
       {/* Confirmation Modal for Reset/Clear */}
       <ConfirmModal
@@ -1490,6 +1825,19 @@ export default function App() {
         cancelText="Cancelar"
         onConfirm={handleConfirmRevert}
         onCancel={() => setIsConfirmRevertOpen(false)}
+      />
+
+      {/* New Document Dialog with Save Prompt */}
+      <NewDocumentModal
+        isOpen={isNewDocModalOpen}
+        onClose={() => setIsNewDocModalOpen(false)}
+        onConfirmNew={handleConfirmNewDocument}
+        hasSubstance={currentDocumentHasSubstance()}
+        currentProjectName={metadata.nombreProyecto}
+        currentClient={metadata.cliente}
+        currentTicket={metadata.ticketNo}
+        currentDocumentKind={workspaceMode === 'technical' ? 'technical' : editorTab === 'slides' ? 'slides' : 'proposal'}
+        currentVersion={currentVersion}
       />
 
     </div>

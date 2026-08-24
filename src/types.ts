@@ -149,6 +149,89 @@ export interface BrandingSettings {
   logoWidth?: number;
   logoHeight?: number;
   customTitles?: DocumentTitlesConfig;
+  // Independent Header & Footer presets
+  proposalHeaderBrandTag?: string;
+  proposalHeaderSubtitle?: string;
+  proposalFooterText?: string;
+  techHeaderBrandTag?: string;
+  techHeaderSubtitle?: string;
+  techHeaderRightText?: string;
+  techFooterText?: string;
+  techIncludeHeaderBanner?: boolean;
+}
+
+export const DEFAULT_PROPOSAL_HEADER_FOOTER = {
+  headerBrandTag: 'ADVANSYS',
+  headerSubtitle: 'DOCUMENTACIÓN TÉCNICA Y ANÁLISIS DE CUMPLIMIENTO',
+  footerText: 'Advansys SRL',
+};
+
+export const DEFAULT_TECHNICAL_HEADER_FOOTER = {
+  techHeaderBrandTag: 'ADVANSYS',
+  techHeaderSubtitle: 'ESPECIFICACIÓN TÉCNICA INTERNA DE DESARROLLO',
+  techHeaderRightText: '',
+  techFooterText: 'DOCUMENTO CONFIDENCIAL DE USO INTERNO ADVANSYS',
+  includeFirstPageHeaderImage: false,
+};
+
+export function getEffectiveProposalHeaderFooter(
+  metadata?: Partial<MetadataHeader> | null,
+  branding?: Partial<BrandingSettings> | null
+): {
+  headerBrandTag: string;
+  headerSubtitle: string;
+  footerText: string;
+} {
+  const brand = metadata?.headerBrandTag?.trim() || branding?.proposalHeaderBrandTag?.trim() || DEFAULT_PROPOSAL_HEADER_FOOTER.headerBrandTag;
+  const subtitle = metadata?.headerSubtitle !== undefined && metadata?.headerSubtitle !== null
+    ? metadata.headerSubtitle
+    : (branding?.proposalHeaderSubtitle !== undefined ? branding.proposalHeaderSubtitle : DEFAULT_PROPOSAL_HEADER_FOOTER.headerSubtitle);
+  const footer = metadata?.footerText?.trim() || branding?.proposalFooterText?.trim() || DEFAULT_PROPOSAL_HEADER_FOOTER.footerText;
+
+  return {
+    headerBrandTag: brand,
+    headerSubtitle: subtitle,
+    footerText: footer,
+  };
+}
+
+export function getEffectiveTechnicalHeaderFooter(
+  techDoc?: Partial<TechnicalDoc> | null,
+  metadata?: Partial<MetadataHeader> | null,
+  branding?: Partial<BrandingSettings> | null
+): {
+  techHeaderBrandTag: string;
+  techHeaderSubtitle: string;
+  techHeaderRightText: string;
+  techFooterText: string;
+  includeFirstPageHeaderImage: boolean;
+} {
+  const brand = techDoc?.headerBrandTag?.trim() || metadata?.techHeaderBrandTag?.trim() || branding?.techHeaderBrandTag?.trim() || DEFAULT_TECHNICAL_HEADER_FOOTER.techHeaderBrandTag;
+  const subtitle = techDoc?.headerSubtitle !== undefined && techDoc?.headerSubtitle !== null
+    ? techDoc.headerSubtitle
+    : (metadata?.techHeaderSubtitle !== undefined && metadata?.techHeaderSubtitle !== null
+      ? metadata.techHeaderSubtitle
+      : (branding?.techHeaderSubtitle !== undefined ? branding.techHeaderSubtitle : DEFAULT_TECHNICAL_HEADER_FOOTER.techHeaderSubtitle));
+  const rightText = techDoc?.headerRightText !== undefined && techDoc?.headerRightText !== null
+    ? techDoc.headerRightText
+    : (metadata?.techHeaderRightText !== undefined && metadata?.techHeaderRightText !== null
+      ? metadata.techHeaderRightText
+      : (branding?.techHeaderRightText !== undefined ? branding.techHeaderRightText : (metadata?.ticketNo || '')));
+  const footer = techDoc?.footerText?.trim() || metadata?.techFooterText?.trim() || branding?.techFooterText?.trim() || DEFAULT_TECHNICAL_HEADER_FOOTER.techFooterText;
+
+  const includeFirstPageHeaderImage = techDoc?.includeFirstPageHeaderImage !== undefined
+    ? !!techDoc.includeFirstPageHeaderImage
+    : (metadata?.techIncludeHeaderBanner !== undefined
+      ? !!metadata.techIncludeHeaderBanner
+      : (branding?.techIncludeHeaderBanner !== undefined ? !!branding.techIncludeHeaderBanner : false));
+
+  return {
+    techHeaderBrandTag: brand,
+    techHeaderSubtitle: subtitle,
+    techHeaderRightText: rightText,
+    techFooterText: footer,
+    includeFirstPageHeaderImage,
+  };
 }
 
 export interface MetadataHeader {
@@ -159,9 +242,16 @@ export interface MetadataHeader {
   propuestaNo: string;
   nombreProyecto: string;
   moduloAplicacion: string;
+  // Proposal Header & Footer
   headerBrandTag?: string;
   headerSubtitle?: string;
   footerText?: string;
+  // Technical Doc independent Header & Footer
+  techHeaderBrandTag?: string;
+  techHeaderSubtitle?: string;
+  techHeaderRightText?: string;
+  techFooterText?: string;
+  techIncludeHeaderBanner?: boolean;
   logoDataUrl?: string;
   logoMimeType?: string;
   logoFileName?: string;
@@ -274,6 +364,12 @@ export interface DocumentTable {
 export interface TechnicalDoc {
   tituloDocumento?: string;
   customTitles?: DocumentTitlesConfig;
+  // Independent Header & Footer for this technical document
+  headerBrandTag?: string;
+  headerSubtitle?: string;
+  headerRightText?: string;
+  footerText?: string;
+  includeFirstPageHeaderImage?: boolean;
   ruta: string;
   flujoOperativo: string;
   diseno: string;
@@ -303,6 +399,78 @@ export interface ProposalSection {
 }
 
 export type DocumentStatus = 'borrador' | 'en_revision' | 'finalizado' | 'culminado';
+
+export type BackupFrequency = 'off' | '1m' | '2m' | '5m' | '10m' | '15m' | '30m' | '60m';
+
+export type BackupTrigger = 'interval' | 'daily_schedule' | 'manual' | 'on_save' | 'on_switch' | 'on_import' | 'initial';
+
+export type BackupMode = 'interval' | 'daily' | 'both';
+
+export interface AutoBackupConfig {
+  enabled: boolean;
+  frequency: BackupFrequency;
+  maxSnapshots: number;
+  backupOnSave: boolean;
+  backupOnDocumentSwitch: boolean;
+  showNotificationToast: boolean;
+  includeDraft: boolean;
+  includeBranding: boolean;
+  // Daily schedule settings
+  dailyScheduleEnabled: boolean;
+  dailyScheduleTime: string; // e.g. "18:00"
+  dailyAutoDownloadJson: boolean;
+  lastDailyBackupDate?: string | null;
+  // Local PC Folder destination settings (File System Access API)
+  targetDirectoryName?: string | null;
+  autoDownloadDailyToDisk: boolean;
+}
+
+export const DEFAULT_BACKUP_CONFIG: AutoBackupConfig = {
+  enabled: true,
+  frequency: '5m',
+  maxSnapshots: 15,
+  backupOnSave: true,
+  backupOnDocumentSwitch: true,
+  showNotificationToast: true,
+  includeDraft: true,
+  includeBranding: true,
+  dailyScheduleEnabled: true,
+  dailyScheduleTime: '18:00',
+  dailyAutoDownloadJson: true,
+  lastDailyBackupDate: null,
+  targetDirectoryName: null,
+  autoDownloadDailyToDisk: true,
+};
+
+export interface BackupSnapshot {
+  id: string;
+  timestamp: string;
+  trigger: BackupTrigger;
+  triggerLabel: string;
+  note?: string;
+  isManual?: boolean;
+  stats: {
+    totalHistoryItems: number;
+    hasDraft: boolean;
+    hasBranding: boolean;
+    sizeBytes: number;
+    projectTitles: string[];
+  };
+  data: {
+    version: '1.0';
+    exportDate: string;
+    appName: string;
+    stats: {
+      totalHistoryItems: number;
+      hasDraft: boolean;
+      hasBranding: boolean;
+    };
+    history: SavedProposal[];
+    draft?: any | null;
+    settings?: BrandingSettings | null;
+    theme?: 'light' | 'dark' | null;
+  };
+}
 
 export interface SavedProposal {
   id: string;

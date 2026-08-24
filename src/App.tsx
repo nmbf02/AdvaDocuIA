@@ -13,6 +13,7 @@ import { BackupModal } from './components/BackupModal';
 import { NewDocumentModal, NewDocumentType } from './components/NewDocumentModal';
 import { WelcomeIntro } from './components/WelcomeIntro';
 import { FreeWriteWorkspace } from './components/FreeWriteWorkspace';
+import { ScrollToTopBubble } from './components/ScrollToTopBubble';
 import {
   inferredNoteTitle,
   loadFreeNotesState,
@@ -1459,6 +1460,7 @@ export default function App() {
             </button>
           </div>
         )}
+        <ScrollToTopBubble />
       </>
     );
   }
@@ -1500,6 +1502,7 @@ export default function App() {
             </button>
           </div>
         )}
+        <ScrollToTopBubble />
       </>
     );
   }
@@ -2027,6 +2030,7 @@ export default function App() {
         currentVersion={currentVersion}
       />
 
+      <ScrollToTopBubble />
     </div>
   );
 }

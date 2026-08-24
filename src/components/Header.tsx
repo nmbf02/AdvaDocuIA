@@ -32,7 +32,7 @@ interface HeaderProps {
   historyCount: number;
   logoDataUrl?: string;
   projectName?: string;
-  documentKind?: 'proposal' | 'technical';
+  documentKind?: 'proposal' | 'technical' | 'notes';
   autoBackupActive?: boolean;
   autoBackupFrequency?: string;
   dailyBackupActive?: boolean;
@@ -109,7 +109,9 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="text-blue-100 font-medium truncate max-w-[240px] lg:max-w-[360px]">
                 {projectName
                   ? projectName
-                  : documentKind === 'technical'
+                  : documentKind === 'notes'
+                    ? 'Libre escritura'
+                    : documentKind === 'technical'
                     ? 'Doc. Técnica Interna'
                     : 'Nueva Propuesta Técnica'}
               </span>
@@ -266,7 +268,7 @@ export const Header: React.FC<HeaderProps> = ({
                       </button>
                     )}
 
-                    {onRevertToSaved && hasSavedVersion && (
+                    {onRevertToSaved && hasSavedVersion && documentKind !== 'notes' && (
                       <button
                         type="button"
                         onClick={() => {
@@ -283,6 +285,8 @@ export const Header: React.FC<HeaderProps> = ({
                       </button>
                     )}
 
+                    {documentKind !== 'notes' && (
+                    <>
                     <button
                       type="button"
                       onClick={() => {
@@ -312,6 +316,8 @@ export const Header: React.FC<HeaderProps> = ({
                         <p className="text-[10px] text-red-500/80 dark:text-red-400/80 mt-0.5">Empezar documento de cero</p>
                       </div>
                     </button>
+                    </>
+                    )}
 
                     <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
 

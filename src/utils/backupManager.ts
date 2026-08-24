@@ -8,7 +8,8 @@ import {
   DEFAULT_BACKUP_CONFIG,
   BackupSnapshot,
   BackupTrigger,
-  BackupFrequency
+  BackupFrequency,
+  FreeNote,
 } from '../types';
 
 export const STORAGE_KEY_BACKUP_CONFIG = 'advansys_docgen_backup_config_v1';
@@ -39,6 +40,7 @@ export interface AppBackupData {
   } | null;
   settings?: BrandingSettings | null;
   theme?: 'light' | 'dark' | null;
+  freeNotes?: FreeNote[];
 }
 
 /**
@@ -635,7 +637,8 @@ export function exportAppBackup(
   branding?: BrandingSettings | null,
   draft?: any | null,
   theme?: 'light' | 'dark' | null,
-  customPrefix?: string
+  customPrefix?: string,
+  freeNotes?: FreeNote[]
 ): void {
   const backup: AppBackupData = {
     version: '1.0',
@@ -650,6 +653,7 @@ export function exportAppBackup(
     draft: draft || null,
     settings: branding || null,
     theme: theme || 'light',
+    freeNotes: freeNotes || [],
   };
 
   const jsonString = JSON.stringify(backup, null, 2);
@@ -727,6 +731,7 @@ export function parseAndValidateBackup(jsonText: string): {
             draft: sourceObj.draft || null,
             settings: sourceObj.settings || null,
             theme: sourceObj.theme || 'light',
+            freeNotes: Array.isArray(sourceObj.freeNotes) ? sourceObj.freeNotes : [],
           },
         };
       }

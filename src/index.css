@@ -491,4 +491,30 @@ html.dark input[type="range"] {
   color-scheme: light;
 }
 
+.word-note-sheet {
+  font-family: Calibri, "Segoe UI", Candara, "Noto Sans", sans-serif;
+}
+
+.word-note-sheet input,
+.word-note-sheet textarea,
+.word-note-sheet .note-body-editor {
+  font-family: inherit;
+}
+
+.note-body-editor:empty:before {
+  content: attr(data-placeholder);
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+.word-note-sheet .note-body-editor img,
+.note-inline-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 12px 0;
+  border-radius: 4px;
+  box-shadow: 0 1px 6px rgba(15, 23, 42, 0.12);
+}
+
 

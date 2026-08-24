@@ -398,6 +398,21 @@ export interface ProposalSection {
   technicalDoc?: TechnicalDoc;
 }
 
+export type FreeNoteColor = 'amber' | 'sky' | 'emerald' | 'rose' | 'violet' | 'slate';
+
+export interface FreeNote {
+  id: string;
+  title: string;
+  body: string;
+  color: FreeNoteColor;
+  pinned: boolean;
+  createdAt: string;
+  updatedAt: string;
+  reminderAt?: string | null;
+  reminderDone?: boolean;
+  reminderFiredAt?: string | null;
+}
+
 export type DocumentStatus = 'borrador' | 'en_revision' | 'finalizado' | 'culminado';
 
 export type BackupFrequency = 'off' | '1m' | '2m' | '5m' | '10m' | '15m' | '30m' | '60m';

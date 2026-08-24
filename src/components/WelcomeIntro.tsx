@@ -1,5 +1,9 @@
-import React from 'react';
-import { SavedProposal } from '../types';
+import React, { useMemo } from 'react';
+import { FreeNote, SavedProposal } from '../types';
+import {
+  inferredNoteTitle,
+  dueReminderNotes,
+} from '../utils/freeNotesStorage';
 import { 
   Sparkles, 
   FilePlus2, 
@@ -14,8 +18,9 @@ import {
   Sun,
   Moon,
   Terminal,
-  Code,
-  Database
+  Database,
+  NotebookPen,
+  BellRing,
 } from 'lucide-react';
 
 interface WelcomeIntroProps {
@@ -39,6 +44,8 @@ interface WelcomeIntroProps {
   onLoadPreset: () => void;
   onOpenHistoryModal: () => void;
   onOpenBackup?: () => void;
+  freeNotes?: FreeNote[];
+  onOpenFreeWrite?: (noteId?: string) => void;
 }
 
 export const WelcomeIntro: React.FC<WelcomeIntroProps> = ({
@@ -56,9 +63,13 @@ export const WelcomeIntro: React.FC<WelcomeIntroProps> = ({
   onLoadPreset,
   onOpenHistoryModal,
   onOpenBackup,
+  freeNotes = [],
+  onOpenFreeWrite,
 }) => {
   const isDark = theme === 'dark';
   const recentHistory = history.slice(0, 3);
+
+  const dueNotes = useMemo(() => dueReminderNotes(freeNotes), [freeNotes]);
 
   return (
     <div className={`min-h-screen flex flex-col justify-between relative overflow-hidden transition-colors ${
@@ -108,6 +119,18 @@ export const WelcomeIntro: React.FC<WelcomeIntroProps> = ({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            {onOpenFreeWrite && (
+              <button
+                type="button"
+                onClick={() => onOpenFreeWrite()}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white border border-white/15 transition-colors shadow-sm cursor-pointer"
+                title="Abrir notas en una ventana aparte"
+              >
+                <NotebookPen className="w-3.5 h-3.5 text-[#2ECC71]" />
+                <span className="hidden sm:inline">Notas</span>
+              </button>
+            )}
+
             {onOpenBackup && (
               <button
                 type="button"
@@ -174,9 +197,30 @@ export const WelcomeIntro: React.FC<WelcomeIntroProps> = ({
           <p className={`text-xs sm:text-base max-w-xl mx-auto font-medium ${
             isDark ? 'text-slate-300' : 'text-slate-600'
           }`}>
-            Elige un tipo de documento. Cada uno tiene un flujo propio; no hace falta usar todos.
+            Elige un tipo de documento para empezar.
           </p>
         </div>
+
+        {dueNotes.length > 0 && (
+          <div className={`mb-4 rounded-2xl border px-4 py-3 flex flex-wrap items-center gap-2 ${
+            isDark ? 'bg-rose-950/40 border-rose-500/30' : 'bg-rose-50 border-rose-200'
+          }`}>
+            <BellRing className="w-4 h-4 text-rose-500 shrink-0" />
+            <p className={`text-xs font-bold ${isDark ? 'text-rose-100' : 'text-rose-800'}`}>
+              {dueNotes.length === 1 ? 'Tienes un recordatorio ahora' : `Tienes ${dueNotes.length} recordatorios ahora`}
+            </p>
+            {dueNotes.slice(0, 4).map((note) => (
+              <button
+                key={note.id}
+                type="button"
+                onClick={() => onOpenFreeWrite?.(note.id)}
+                className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-white border border-rose-200 text-rose-800 hover:bg-rose-100 dark:bg-slate-900 dark:border-rose-500/40 dark:text-rose-100 cursor-pointer"
+              >
+                {inferredNoteTitle(note)}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Action Cards Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 sm:gap-6 items-stretch">

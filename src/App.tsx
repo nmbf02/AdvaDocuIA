@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MetadataHeader, UploadedImage, ProposalSection, SavedProposal, BrandingSettings, DocumentStatus, TechnicalDoc, DEFAULT_DESCARGO_TEXT } from './types';
+import { MetadataHeader, UploadedImage, ProposalSection, SavedProposal, BrandingSettings, DocumentStatus, TechnicalDoc, DEFAULT_DESCARGO_TEXT, FreeNote } from './types';
 import { Header } from './components/Header';
 import { MetadataForm } from './components/MetadataForm';
 import { RequirementsInput } from './components/RequirementsInput';
@@ -12,6 +12,14 @@ import { SettingsModal } from './components/SettingsModal';
 import { BackupModal } from './components/BackupModal';
 import { NewDocumentModal, NewDocumentType } from './components/NewDocumentModal';
 import { WelcomeIntro } from './components/WelcomeIntro';
+import { FreeWriteWorkspace } from './components/FreeWriteWorkspace';
+import {
+  inferredNoteTitle,
+  loadFreeNotesState,
+  mergeFreeNotes,
+  saveFreeNotesState,
+  fireReminderNotification,
+} from './utils/freeNotesStorage';
 import { ADVANSYS_SAMPLE_METADATA, ADVANSYS_SAMPLE_REQUIREMENTS, ADVANSYS_SAMPLE_IMAGES, EMPTY_MANUAL_PROPOSAL } from './data/presets';
 import { createDefaultSlideDeck, convertProposalToSlideDeck } from './utils/slideDeckTemplates';
 import { createDefaultTechnicalDoc, proposalHasSubstance, copyLinkedProposalMetadata } from './utils/technicalDocTemplates';
@@ -27,7 +35,7 @@ import {
   saveBackupToDiskFolderOrDownload
 } from './utils/backupManager';
 import { AutoBackupConfig, DEFAULT_BACKUP_CONFIG, BackupSnapshot } from './types';
-import { Sparkles, Loader2, FileText, AlertCircle, Cpu, Columns2, ClipboardList, Maximize2, Image as ImageIcon, PenLine, NotebookPen, Layers, X, Check, Database } from 'lucide-react';
+import { Sparkles, Loader2, FileText, AlertCircle, Cpu, Columns2, ClipboardList, Maximize2, Image as ImageIcon, PenLine, NotebookPen, Layers, X, Check, Database, BellRing } from 'lucide-react';
 
 const STORAGE_KEY_HISTORY = 'advansys_docgen_history_v1';
 const STORAGE_KEY_DRAFT = 'advansys_docgen_current_draft_v1';
@@ -139,7 +147,11 @@ export default function App() {
   const [layoutMode, setLayoutMode] = useState<'split' | 'inputs' | 'editor'>('split');
   const [inputTab, setInputTab] = useState<'metadatos' | 'requerimientos' | 'imagenes' | 'all'>('requerimientos');
   const [editorTab, setEditorTab] = useState<'editor' | 'preview' | 'slides' | 'technical'>('editor');
-  const [workspaceMode, setWorkspaceMode] = useState<'proposal' | 'technical'>('proposal');
+  const [workspaceMode, setWorkspaceMode] = useState<'proposal' | 'technical' | 'notes'>('proposal');
+  const [freeNotes, setFreeNotes] = useState<FreeNote[]>([]);
+  const [activeFreeNoteId, setActiveFreeNoteId] = useState<string | null>(null);
+  const [notesReady, setNotesReady] = useState(false);
+  const [reminderAlert, setReminderAlert] = useState<{ id: string; title: string } | null>(null);
 
   // Theme State ('light' | 'dark')
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
@@ -207,7 +219,53 @@ export default function App() {
     } catch (e) {
       console.error("Failed to load initial storage:", e);
     }
+
+    try {
+      const loadedNotes = loadFreeNotesState();
+      setFreeNotes(loadedNotes.notes);
+      setActiveFreeNoteId(loadedNotes.activeId);
+    } catch (e) {
+      console.error("Failed to load free notes:", e);
+    } finally {
+      setNotesReady(true);
+    }
   }, []);
+
+  useEffect(() => {
+    if (!notesReady) return;
+    saveFreeNotesState(freeNotes, activeFreeNoteId);
+  }, [freeNotes, activeFreeNoteId, notesReady]);
+
+  useEffect(() => {
+    if (!notesReady) return;
+
+    const checkReminders = () => {
+      setFreeNotes((prev) => {
+        const now = Date.now();
+        const due = prev.filter(
+          (note) =>
+            Boolean(note.reminderAt) &&
+            !note.reminderDone &&
+            !note.reminderFiredAt &&
+            new Date(note.reminderAt as string).getTime() <= now
+        );
+        if (due.length === 0) return prev;
+        const first = due[0];
+        const firedAt = new Date().toISOString();
+        window.setTimeout(() => {
+          setReminderAlert({ id: first.id, title: inferredNoteTitle(first) });
+          fireReminderNotification('Recordatorio · Libre escritura', inferredNoteTitle(first), first.id);
+        }, 0);
+        return prev.map((note) =>
+          due.some((item) => item.id === note.id) ? { ...note, reminderFiredAt: firedAt } : note
+        );
+      });
+    };
+
+    checkReminders();
+    const timer = window.setInterval(checkReminders, 15000);
+    return () => window.clearInterval(timer);
+  }, [notesReady]);
 
   const handleToggleTheme = () => {
     setTheme(prev => {
@@ -270,6 +328,7 @@ export default function App() {
       : null,
     settings: branding || null,
     theme: theme || 'light',
+    freeNotes,
   });
 
   // Automated Periodic Backup Scheduler
@@ -281,7 +340,7 @@ export default function App() {
 
     const intervalTimer = setInterval(() => {
       // Only take auto-backup if there are documents or active draft
-      if (history.length === 0 && !proposal && !rawRequirements.trim()) return;
+      if (history.length === 0 && !proposal && !rawRequirements.trim() && freeNotes.length === 0) return;
 
       const payload = getFullBackupPayload();
       const snap = createAndSaveSnapshot(
@@ -317,7 +376,8 @@ export default function App() {
     currentStatus,
     workspaceMode,
     editorTab,
-    theme
+    theme,
+    freeNotes,
   ]);
 
   // Automated Daily Scheduled Backup Runner
@@ -326,7 +386,7 @@ export default function App() {
 
     const checkDailyBackup = async () => {
       // Don't backup if empty application state
-      if (history.length === 0 && !proposal && !rawRequirements.trim()) return;
+      if (history.length === 0 && !proposal && !rawRequirements.trim() && freeNotes.length === 0) return;
 
       if (shouldRunDailyBackup(backupConfig)) {
         const todayStr = getTodayDateString();
@@ -392,7 +452,8 @@ export default function App() {
     currentStatus,
     workspaceMode,
     editorTab,
-    theme
+    theme,
+    freeNotes,
   ]);
 
   // Save Changes Helper - Updates the current document in-place WITHOUT creating duplicate files
@@ -753,6 +814,13 @@ export default function App() {
       applySavedDocument(nextHistory[0]);
     }
 
+    if (Array.isArray(backup.freeNotes)) {
+      const nextNotes = mode === 'replace' ? backup.freeNotes : mergeFreeNotes(freeNotes, backup.freeNotes);
+      setFreeNotes(nextNotes);
+      setActiveFreeNoteId(nextNotes[0]?.id ?? null);
+      saveFreeNotesState(nextNotes, nextNotes[0]?.id ?? null);
+    }
+
     setShowSavedToast(true);
     setTimeout(() => setShowSavedToast(false), 4000);
   };
@@ -1086,8 +1154,31 @@ export default function App() {
     handleStartStandaloneTechnicalDoc({ resetFields: true });
   };
 
+  const leaveNotesForDocuments = () => {
+    setWorkspaceMode((mode) =>
+      mode === 'notes'
+        ? (proposal?.technicalDoc?.isStandalone ? 'technical' : 'proposal')
+        : mode
+    );
+  };
+
   const handleContinueDraftFromWelcome = () => {
+    leaveNotesForDocuments();
     setShowWelcome(false);
+  };
+
+  const handleOpenFreeWrite = (noteId?: string) => {
+    setWorkspaceMode('notes');
+    if (noteId) setActiveFreeNoteId(noteId);
+    setShowWelcome(false);
+  };
+
+  const handleOpenReminderAlert = () => {
+    if (!reminderAlert) return;
+    setActiveFreeNoteId(reminderAlert.id);
+    setWorkspaceMode('notes');
+    setShowWelcome(false);
+    setReminderAlert(null);
   };
 
   const handleLoadHistoryFromWelcome = (saved: SavedProposal) => {
@@ -1265,10 +1356,13 @@ export default function App() {
           onLoadHistoryItem={handleLoadHistoryFromWelcome}
           onLoadPreset={handleLoadPresetFromWelcome}
           onOpenHistoryModal={() => {
+            leaveNotesForDocuments();
             setShowWelcome(false);
             setIsHistoryOpen(true);
           }}
           onOpenBackup={() => setIsBackupOpen(true)}
+          freeNotes={freeNotes}
+          onOpenFreeWrite={handleOpenFreeWrite}
         />
 
         {/* History Drawer Modal */}
@@ -1321,6 +1415,7 @@ export default function App() {
               : null
           }
           theme={theme}
+          freeNotes={freeNotes}
           backupConfig={backupConfig}
           onUpdateBackupConfig={handleUpdateBackupConfig}
           onRestoreBackup={handleRestoreBackup}
@@ -1339,6 +1434,72 @@ export default function App() {
           currentDocumentKind={workspaceMode === 'technical' ? 'technical' : editorTab === 'slides' ? 'slides' : 'proposal'}
           currentVersion={currentVersion}
         />
+
+        {reminderAlert && (
+          <div className="fixed bottom-4 right-4 z-[60] max-w-sm bg-amber-50 text-slate-900 px-3.5 py-3 rounded-2xl shadow-lg border border-amber-300 flex items-start gap-2.5">
+            <BellRing className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-black uppercase tracking-wide text-amber-700">Recordatorio</p>
+              <p className="text-xs font-bold truncate">{reminderAlert.title}</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleOpenReminderAlert}
+              className="px-2.5 py-1 rounded-lg bg-[#0A3D62] text-white text-[10px] font-bold cursor-pointer"
+            >
+              Abrir
+            </button>
+            <button
+              type="button"
+              onClick={() => setReminderAlert(null)}
+              className="p-1 rounded-lg hover:bg-amber-100 cursor-pointer"
+              aria-label="Cerrar aviso"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  if (workspaceMode === 'notes') {
+    return (
+      <>
+        <FreeWriteWorkspace
+          notes={freeNotes}
+          activeNoteId={activeFreeNoteId}
+          onChangeNotes={setFreeNotes}
+          onChangeActiveNoteId={setActiveFreeNoteId}
+          theme={theme}
+          onToggleTheme={handleToggleTheme}
+          onGoHome={() => setShowWelcome(true)}
+          logoDataUrl={branding.logoDataUrl}
+        />
+        {reminderAlert && (
+          <div className="fixed bottom-4 right-4 z-[60] max-w-sm bg-amber-50 text-slate-900 px-3.5 py-3 rounded-2xl shadow-lg border border-amber-300 flex items-start gap-2.5">
+            <BellRing className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-black uppercase tracking-wide text-amber-700">Recordatorio</p>
+              <p className="text-xs font-bold truncate">{reminderAlert.title}</p>
+            </div>
+            <button
+              type="button"
+              onClick={handleOpenReminderAlert}
+              className="px-2.5 py-1 rounded-lg bg-[#0A3D62] text-white text-[10px] font-bold cursor-pointer"
+            >
+              Abrir
+            </button>
+            <button
+              type="button"
+              onClick={() => setReminderAlert(null)}
+              className="p-1 rounded-lg hover:bg-amber-100 cursor-pointer"
+              aria-label="Cerrar aviso"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
       </>
     );
   }
@@ -1789,6 +1950,7 @@ export default function App() {
             : null
         }
         theme={theme}
+        freeNotes={freeNotes}
         backupConfig={backupConfig}
         onUpdateBackupConfig={handleUpdateBackupConfig}
         onRestoreBackup={handleRestoreBackup}
@@ -1801,6 +1963,31 @@ export default function App() {
           <span className="w-2 h-2 rounded-full bg-[#2ECC71] animate-pulse"></span>
           <Database className="w-4 h-4 text-[#2ECC71]" />
           <span>{backupToastMessage || 'Copia de seguridad guardada'}</span>
+        </div>
+      )}
+
+      {reminderAlert && (
+        <div className="fixed bottom-4 right-4 z-[60] max-w-sm bg-amber-50 text-slate-900 px-3.5 py-3 rounded-2xl shadow-lg border border-amber-300 flex items-start gap-2.5">
+          <BellRing className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-black uppercase tracking-wide text-amber-700">Recordatorio</p>
+            <p className="text-xs font-bold truncate">{reminderAlert.title}</p>
+          </div>
+          <button
+            type="button"
+            onClick={handleOpenReminderAlert}
+            className="px-2.5 py-1 rounded-lg bg-[#0A3D62] text-white text-[10px] font-bold cursor-pointer"
+          >
+            Abrir
+          </button>
+          <button
+            type="button"
+            onClick={() => setReminderAlert(null)}
+            className="p-1 rounded-lg hover:bg-amber-100 cursor-pointer"
+            aria-label="Cerrar aviso"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
 

@@ -37,7 +37,8 @@ import {
   BrandingSettings, 
   AutoBackupConfig, 
   BackupSnapshot,
-  BackupFrequency
+  BackupFrequency,
+  FreeNote,
 } from '../types';
 import { 
   exportAppBackup, 
@@ -73,6 +74,7 @@ interface BackupModalProps {
   onRestoreBackup: (backup: AppBackupData, mode: 'merge' | 'replace') => void;
   onManualSnapshotCreated?: (snapshot: BackupSnapshot) => void;
   lastAutoBackupTime?: string | null;
+  freeNotes?: FreeNote[];
 }
 
 export const BackupModal: React.FC<BackupModalProps> = ({
@@ -87,6 +89,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
   onRestoreBackup,
   onManualSnapshotCreated,
   lastAutoBackupTime,
+  freeNotes = [],
 }) => {
   // Tabs: 'snapshots' | 'config' | 'files'
   const [activeTab, setActiveTab] = useState<'snapshots' | 'config' | 'files'>('snapshots');
@@ -163,6 +166,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
         draft: currentDraft || null,
         settings: branding || null,
         theme: theme || 'light',
+        freeNotes: freeNotes || [],
       };
 
       const newSnap = createAndSaveSnapshot(
@@ -203,6 +207,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
         draft: currentDraft || null,
         settings: branding || null,
         theme: theme || 'light',
+        freeNotes: freeNotes || [],
       };
 
       const newSnap = createAndSaveSnapshot(
@@ -294,6 +299,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
         draft: currentDraft || null,
         settings: branding || null,
         theme: theme || 'light',
+        freeNotes: freeNotes || [],
       };
 
       const res = await saveBackupToDiskFolderOrDownload(backupData, 'Advansys_Backup_Test');
@@ -362,7 +368,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
   const handleExportFile = () => {
     setIsExporting(true);
     try {
-      exportAppBackup(history, branding, currentDraft, theme);
+      exportAppBackup(history, branding, currentDraft, theme, undefined, freeNotes);
       setSuccessMessage('¡Copia de seguridad descargada exitosamente en formato JSON!');
       setTimeout(() => setSuccessMessage(null), 4000);
     } catch (err: any) {

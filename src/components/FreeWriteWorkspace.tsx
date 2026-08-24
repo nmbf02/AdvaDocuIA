@@ -177,7 +177,7 @@ export const FreeWriteWorkspace: React.FC<FreeWriteWorkspaceProps> = ({
               className="h-8 inline-flex items-center gap-1.5 px-3 rounded-lg text-xs font-bold bg-[#2ECC71] hover:bg-[#27ae60] text-slate-950 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              Nueva nota
+              <span className="hidden sm:inline">Nueva nota</span>
             </button>
             {onToggleTheme && (
               <button
@@ -265,7 +265,7 @@ export const FreeWriteWorkspace: React.FC<FreeWriteWorkspaceProps> = ({
         <section className={`flex-1 min-h-0 overflow-y-auto ${isDark ? 'bg-slate-800' : 'bg-[#b8c5d3]'}`}>
           {activeNote && (
             <div className="max-w-[860px] mx-auto px-3 sm:px-6 py-4 sm:py-8">
-              <article className="advansys-document-sheet word-note-sheet bg-white text-slate-900 shadow-[0_8px_30px_rgba(15,23,42,0.18)] min-h-[min(92vh,1100px)] px-8 sm:px-14 py-10 sm:py-12 flex flex-col">
+              <article className="advansys-document-sheet word-note-sheet bg-white text-slate-900 shadow-[0_8px_30px_rgba(15,23,42,0.18)] min-h-[min(92vh,1100px)] px-4 sm:px-8 md:px-14 py-8 sm:py-10 md:py-12 flex flex-col min-w-0">
                 <input
                   ref={titleRef}
                   value={activeNote.title}

@@ -1803,7 +1803,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                             <select
                               value={currentValueForSelect}
                               onChange={(e) => handleStepImageSelect(idx, e.target.value)}
-                              className="flex-1 min-w-[200px] text-xs bg-white border border-slate-300 rounded px-2 py-1.5 text-slate-800 font-medium focus:ring-1 focus:ring-[#0A3D62]"
+                              className="flex-1 min-w-0 w-full text-xs bg-white border border-slate-300 rounded px-2 py-1.5 text-slate-800 font-medium focus:ring-1 focus:ring-[#0A3D62]"
                             >
                               <option value="none">Sin imagen vinculada</option>
                               {images.map((img, i) => (

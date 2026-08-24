@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { SavedProposal, DocumentStatus } from '../types';
-import { X, Calendar, Building2, FileText, Trash2, ArrowRight, Copy, GitBranch, Search, Check, Tag, Sparkles, Filter, RotateCcw, CheckCircle2, CheckCheck, Clock, ShieldCheck, Award, Terminal, Layers, Link, Database, Download } from 'lucide-react';
+import { X, Calendar, Building2, FileText, Trash2, ArrowRight, Copy, GitBranch, Search, Check, Tag, Sparkles, Filter, RotateCcw, CheckCircle2, CheckCheck, Clock, ShieldCheck, Award, Terminal, Layers, Link, Database, Download, ChevronDown } from 'lucide-react';
 
 interface HistoryModalProps {
   isOpen: boolean;
@@ -21,6 +21,20 @@ const linkedProposalIdOf = (p: SavedProposal): string | undefined =>
 
 const linkedProposalNameOf = (p: SavedProposal): string | undefined =>
   p.linkedProposalName || p.content?.technicalDoc?.linkedProposalName || undefined;
+
+const embeddedTechnicalDocOf = (p: SavedProposal) =>
+  p.technicalDoc || p.content?.technicalDoc || undefined;
+
+/** Doc. Técnica ya va dentro de la misma ficha de propuesta (pestaña Doc. Técnica), no como documento suelto. */
+const hasEmbeddedTechnicalDoc = (p: SavedProposal): boolean => {
+  if (isTechnicalHistoryItem(p)) return false;
+  const tech = embeddedTechnicalDocOf(p);
+  if (!tech || tech.isStandalone) return false;
+  return true;
+};
+
+const isTiedToProposal = (p: SavedProposal): boolean =>
+  Boolean(linkedProposalIdOf(p)) || Boolean(p.linkedTechnicalDocId && !isTechnicalHistoryItem(p)) || hasEmbeddedTechnicalDoc(p);
 
 const proposalHistoryLabel = (p: SavedProposal): string => {
   const ticket = p.metadata.ticketNo ? `[${p.metadata.ticketNo}] ` : '';
@@ -49,6 +63,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'client' | 'project'>('newest');
   const [filterDocType, setFilterDocType] = useState<'all' | 'proposal' | 'slides' | 'technical'>('all');
   const [filterLinkedProposalId, setFilterLinkedProposalId] = useState<'all' | 'any' | string>('all');
+  const [showFilters, setShowFilters] = useState(false);
 
   const counts = useMemo(() => {
     const total = proposals.length;
@@ -95,14 +110,16 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
       if (p.linkedTechnicalDocId && !isTechnicalHistoryItem(p)) {
         map.set(p.id, proposalHistoryLabel(p));
       }
+      if (hasEmbeddedTechnicalDoc(p)) {
+        map.set(p.id, proposalHistoryLabel(p));
+      }
     });
     return Array.from(map.entries())
       .map(([id, label]) => ({ id, label }))
       .sort((a, b) => a.label.localeCompare(b.label, 'es'));
   }, [proposals]);
 
-  const hasActiveFilters =
-    statusTab !== 'all' ||
+  const hasExtraFilters =
     filterStatus !== 'all' ||
     filterCliente !== 'all' ||
     filterTicket !== 'all' ||
@@ -110,8 +127,9 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
     filterPeriod !== 'all' ||
     filterDocType !== 'all' ||
     filterLinkedProposalId !== 'all' ||
-    sortBy !== 'newest' ||
-    searchQuery.trim() !== '';
+    sortBy !== 'newest';
+
+  const hasActiveFilters = hasExtraFilters || statusTab !== 'all' || searchQuery.trim() !== '';
 
   const clearFilters = () => {
     setSearchQuery('');
@@ -172,12 +190,12 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
       }
 
       const linkedId = linkedProposalIdOf(p);
-      const isLinkedProposal = Boolean(p.linkedTechnicalDocId) && !isTechnicalHistoryItem(p);
-      const isLinkedTechDoc = Boolean(linkedId);
       if (filterLinkedProposalId === 'any') {
-        if (!isLinkedProposal && !isLinkedTechDoc) return false;
+        if (!isTiedToProposal(p)) return false;
       } else if (filterLinkedProposalId !== 'all') {
-        const matchesAsProposal = p.id === filterLinkedProposalId && (isLinkedProposal || proposals.some((x) => linkedProposalIdOf(x) === p.id));
+        const matchesAsProposal =
+          p.id === filterLinkedProposalId &&
+          (isTiedToProposal(p) || proposals.some((x) => linkedProposalIdOf(x) === p.id));
         const matchesAsTechDoc = linkedId === filterLinkedProposalId;
         if (!matchesAsProposal && !matchesAsTechDoc) return false;
       }
@@ -280,16 +298,16 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col h-[88vh] max-h-[88vh]">
+    <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-[2px] flex items-center justify-center p-3 sm:p-6 overflow-hidden">
+      <div className="history-modal bg-white w-full max-w-3xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[min(82dvh,720px)] min-w-0">
         
         {/* Modal Header */}
-        <div className="bg-[#0A3D62] text-white p-4 px-4 sm:px-6 flex items-center justify-between border-b border-[#1E5F8A] shrink-0">
-          <div className="flex items-center space-x-2">
-            <GitBranch className="w-5 h-5 text-[#2ECC71]" />
-            <div>
-              <h2 className="text-base font-bold">Historial de Documentos</h2>
-              <p className="text-[11px] text-blue-200">
+        <div className="bg-[#0A3D62] text-white p-3 sm:p-4 px-3 sm:px-6 flex items-center justify-between gap-2 border-b border-[#1E5F8A] shrink-0 min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <GitBranch className="w-5 h-5 text-[#2ECC71] shrink-0" />
+            <div className="min-w-0">
+              <h2 className="text-sm sm:text-base font-bold truncate">Historial de Documentos</h2>
+              <p className="text-[11px] text-blue-200 hidden sm:block">
                 Gestiona tus propuestas, revisa versiones y marca documentos como finalizados o culminados
               </p>
             </div>
@@ -316,90 +334,115 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
         </div>
 
         {/* Section Tabs: Todos / En Progreso / Finalizados & Culminados */}
-        <div className="bg-white px-4 sm:px-6 pt-3 pb-0 border-b border-slate-200 flex items-center gap-2 overflow-x-auto shrink-0">
+        <div className="bg-white px-3 sm:px-6 pt-3 pb-0 border-b border-slate-200 flex items-center gap-1 sm:gap-2 overflow-x-auto overscroll-x-contain shrink-0 min-w-0 max-w-full no-scrollbar">
           <button
             onClick={() => setStatusTab('all')}
-            className={`pb-2.5 px-3 text-xs font-bold flex items-center gap-1.5 border-b-2 transition-all shrink-0 ${
+            className={`pb-2.5 px-2 sm:px-3 text-xs font-bold flex items-center gap-1 sm:gap-1.5 border-b-2 transition-all shrink-0 ${
               statusTab === 'all'
                 ? 'border-[#0A3D62] text-[#0A3D62]'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
             <FileText className="w-3.5 h-3.5" />
-            <span>Todos los documentos</span>
-            <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-slate-100 text-slate-700 font-semibold ml-1">
+            <span>Todos</span>
+            <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-slate-100 text-slate-700 font-semibold">
               {counts.total}
             </span>
           </button>
 
           <button
             onClick={() => setStatusTab('in_progress')}
-            className={`pb-2.5 px-3 text-xs font-bold flex items-center gap-1.5 border-b-2 transition-all shrink-0 ${
+            className={`pb-2.5 px-2 sm:px-3 text-xs font-bold flex items-center gap-1 sm:gap-1.5 border-b-2 transition-all shrink-0 ${
               statusTab === 'in_progress'
                 ? 'border-amber-500 text-amber-900'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
             <Clock className="w-3.5 h-3.5 text-amber-500" />
-            <span>En Proceso / Borradores</span>
-            <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-amber-100 text-amber-800 font-semibold ml-1">
+            <span className="hidden sm:inline">En Proceso / Borradores</span>
+            <span className="sm:hidden">En proceso</span>
+            <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-amber-100 text-amber-800 font-semibold">
               {counts.inProgress}
             </span>
           </button>
 
           <button
             onClick={() => setStatusTab('completed')}
-            className={`pb-2.5 px-3 text-xs font-bold flex items-center gap-1.5 border-b-2 transition-all shrink-0 ${
+            className={`pb-2.5 px-2 sm:px-3 text-xs font-bold flex items-center gap-1 sm:gap-1.5 border-b-2 transition-all shrink-0 ${
               statusTab === 'completed'
                 ? 'border-[#2ECC71] text-emerald-800'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
             <CheckCircle2 className="w-3.5 h-3.5 text-[#2ECC71]" />
-            <span>Finalizados / Culminados</span>
-            <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-emerald-100 text-emerald-900 font-bold ml-1">
+            <span className="hidden sm:inline">Finalizados / Culminados</span>
+            <span className="sm:hidden">Cerrados</span>
+            <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-emerald-100 text-emerald-900 font-bold">
               {counts.completed}
             </span>
           </button>
         </div>
 
-        {/* Search + Filters — always visible */}
-        <div className="shrink-0 p-3 px-4 sm:px-6 bg-slate-50 border-b border-slate-200 space-y-2.5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 min-w-0">
+        {/* Search always visible; extra filters stay collapsed */}
+        <div className="shrink-0 p-3 px-3 sm:px-6 bg-slate-50 border-b border-slate-200 space-y-2 min-w-0 max-w-full overflow-x-hidden">
+          <div className="flex items-center gap-2 min-w-0">
             <div className="relative flex-1 min-w-0">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Buscar por cliente, proyecto, versión, estado o ticket..."
+                placeholder="Buscar cliente, proyecto o ticket..."
                 className="w-full min-w-0 pl-9 pr-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-800"
               />
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              {hasActiveFilters && (
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-[#0A3D62] bg-white hover:bg-slate-50 border border-slate-300 rounded-lg shadow-2xs"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  Limpiar filtros
-                </button>
+            <button
+              type="button"
+              onClick={() => setShowFilters((open) => !open)}
+              className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold rounded-lg border shrink-0 ${
+                showFilters || hasExtraFilters
+                  ? 'bg-[#0A3D62] text-white border-[#0A3D62]'
+                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+              }`}
+            >
+              <Filter className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Filtros</span>
+              {hasExtraFilters && (
+                <span className="min-w-[1rem] h-4 px-1 rounded-full bg-[#2ECC71] text-slate-950 text-[10px] font-black leading-4">
+                  !
+                </span>
               )}
-              <span className="text-xs font-semibold text-slate-600">
-                Mostrando {filteredProposals.length} de {proposals.length}
-              </span>
-            </div>
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+            </button>
+            <span className="text-[11px] font-semibold text-slate-600 shrink-0 hidden sm:inline">
+              {filteredProposals.length}/{proposals.length}
+            </span>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2 min-w-0">
+          {showFilters && (
+          <div className="space-y-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-semibold text-slate-600">
+              {filteredProposals.length} de {proposals.length}
+            </span>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-[#0A3D62] bg-white hover:bg-slate-50 border border-slate-300 rounded-lg"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Limpiar
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-1 min-[400px]:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2 min-w-0">
             <label className="min-w-0">
               <span className="block text-[10px] font-bold text-[#0A3D62] mb-1">Tipo</span>
               <select
                 value={filterDocType}
                 onChange={(e) => setFilterDocType(e.target.value as typeof filterDocType)}
-                className="w-full min-w-0 px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
+                className="w-full min-w-0 max-w-full px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
               >
                 <option value="all">Todos</option>
                 <option value="proposal">Propuesta</option>
@@ -413,7 +456,7 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
-                className="w-full min-w-0 px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
+                className="w-full min-w-0 max-w-full px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
               >
                 <option value="all">Todos</option>
                 <option value="borrador">Borrador</option>
@@ -428,7 +471,7 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
               <select
                 value={filterCliente}
                 onChange={(e) => setFilterCliente(e.target.value)}
-                className="w-full min-w-0 px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
+                className="w-full min-w-0 max-w-full px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
               >
                 <option value="all">Todos</option>
                 {uniqueClientes.map((c) => (
@@ -442,7 +485,7 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
               <select
                 value={filterTicket}
                 onChange={(e) => setFilterTicket(e.target.value)}
-                className="w-full min-w-0 px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
+                className="w-full min-w-0 max-w-full px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
               >
                 <option value="all">Todos</option>
                 {uniqueTickets.map((t) => (
@@ -456,7 +499,7 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
               <select
                 value={filterVersion}
                 onChange={(e) => setFilterVersion(e.target.value)}
-                className="w-full min-w-0 px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
+                className="w-full min-w-0 max-w-full px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
               >
                 <option value="all">Todas</option>
                 {uniqueVersions.map((v) => (
@@ -470,7 +513,7 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
               <select
                 value={filterPeriod}
                 onChange={(e) => setFilterPeriod(e.target.value as typeof filterPeriod)}
-                className="w-full min-w-0 px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
+                className="w-full min-w-0 max-w-full px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
               >
                 <option value="all">Cualquier fecha</option>
                 <option value="today">Hoy</option>
@@ -485,7 +528,7 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-                className="w-full min-w-0 px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
+                className="w-full min-w-0 max-w-full px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-[#0A3D62]"
               >
                 <option value="newest">Más reciente</option>
                 <option value="oldest">Más antiguo</option>
@@ -499,8 +542,8 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 min-w-0">
                 <Link className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
-                <span className="text-[11px] font-bold text-emerald-900">
-                  Propuestas técnicas vinculadas a Doc. Técnica
+                <span className="text-[11px] font-bold text-emerald-900 min-w-0 break-words">
+                  Propuestas vinculadas a Doc. Técnica
                 </span>
                 <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-white text-emerald-800 border border-emerald-200">
                   {uniqueLinkedProposals.length}
@@ -526,13 +569,13 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
               <select
                 value={filterLinkedProposalId === 'any' ? 'any' : filterLinkedProposalId}
                 onChange={(e) => setFilterLinkedProposalId(e.target.value as typeof filterLinkedProposalId)}
-                className="w-full min-w-0 px-2 py-1.5 text-xs bg-white border border-emerald-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-emerald-600"
+                className="w-full max-w-full min-w-0 px-2 py-1.5 text-xs bg-white border border-emerald-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-emerald-600"
               >
-                <option value="all">Todas las propuestas (con o sin vínculo)</option>
-                <option value="any">Todas las que tienen vínculo Doc. Técnica ↔ Propuesta</option>
+                <option value="all">Todas (con o sin vínculo)</option>
+                <option value="any">Solo con vínculo Doc. Técnica</option>
                 {uniqueLinkedProposals.map((item) => (
                   <option key={item.id} value={item.id}>
-                    {item.label}
+                    {item.label.length > 52 ? `${item.label.slice(0, 51)}…` : item.label}
                   </option>
                 ))}
               </select>
@@ -540,15 +583,17 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
 
             {uniqueLinkedProposals.length === 0 && (
               <p className="text-[11px] text-emerald-800/80">
-                Aún no hay propuestas atadas. En una Doc. Técnica usa “Atar a Propuesta Técnica”.
+                Aún no hay propuestas atadas. La Doc. Técnica dentro de una propuesta ya cuenta como vínculo.
               </p>
             )}
           </div>
+          </div>
+          )}
         </div>
 
         {/* Section Banner if viewing Completed items */}
         {statusTab === 'completed' && (
-          <div className="bg-emerald-50 px-4 sm:px-6 py-2 border-b border-emerald-200 flex items-center justify-between text-xs text-emerald-900 shrink-0">
+          <div className="bg-emerald-50 px-3 sm:px-6 py-2 border-b border-emerald-200 flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-900 shrink-0 min-w-0">
             <div className="flex items-center gap-1.5 font-bold">
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
               <span>Sección de Documentos Finalizados y Culminados</span>
@@ -560,7 +605,7 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
         )}
 
         {/* Modal Content List */}
-        <div className="p-4 sm:p-6 overflow-y-auto min-h-0 flex-1 space-y-3">
+        <div className="p-3 sm:p-6 overflow-y-auto overflow-x-hidden min-h-0 flex-1 space-y-3">
           {proposals.length === 0 ? (
             <div className="text-center py-12 text-slate-400">
               <FileText className="w-12 h-12 mx-auto mb-3 opacity-30 text-[#0A3D62]" />
@@ -588,7 +633,7 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
               return (
                 <div
                   key={item.id}
-                  className={`p-4 rounded-xl border transition-all flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 group ${
+                  className={`p-3 sm:p-4 rounded-xl border transition-all flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 sm:gap-4 group min-w-0 max-w-full overflow-hidden ${
                     isFinished
                       ? 'bg-emerald-50/40 hover:bg-emerald-50/80 border-emerald-200 hover:border-emerald-400 shadow-2xs'
                       : 'bg-slate-50 hover:bg-blue-50/50 border-slate-200 hover:border-[#0A3D62]'
@@ -622,7 +667,7 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
                           Atada: {item.linkedProposalName}
                         </span>
                       )}
-                      {item.linkedTechnicalDocId && !isTechnicalHistoryItem(item) && (
+                      {((item.linkedTechnicalDocId && !isTechnicalHistoryItem(item)) || hasEmbeddedTechnicalDoc(item)) && (
                         <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-bold bg-white text-emerald-800 rounded border border-emerald-200">
                           <Link className="w-3 h-3 mr-1" />
                           Con Doc. Técnica
@@ -634,7 +679,7 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
                         {item.metadata.ticketNo || item.metadata.propuestaNo || 'S/N'}
                       </span>
 
-                      <h3 className="text-sm font-bold text-slate-900 group-hover:text-[#0A3D62] truncate">
+                      <h3 className="text-sm font-bold text-slate-900 group-hover:text-[#0A3D62] min-w-0 max-w-full break-words">
                         {item.metadata.nombreProyecto || 'Proyecto sin título'}
                       </h3>
                     </div>
@@ -677,16 +722,16 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
                   </div>
 
                   {/* Actions & Status Control Bar */}
-                  <div className="flex flex-wrap items-center gap-2 shrink-0 self-stretch lg:self-center justify-end">
+                  <div className="flex flex-wrap items-center gap-2 min-w-0 max-w-full self-stretch lg:self-center justify-end">
                     
                     {/* Status Changer Selector */}
                     {onUpdateStatus && (
-                      <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-200 shadow-2xs">
+                      <div className="flex flex-wrap items-center gap-1 bg-white p-1 rounded-lg border border-slate-200 shadow-2xs max-w-full min-w-0">
                         <span className="text-[10px] font-bold text-slate-500 px-1 hidden sm:inline">Estado:</span>
                         <select
                           value={currentStatus}
                           onChange={(e) => onUpdateStatus(item.id, e.target.value as DocumentStatus)}
-                          className={`text-xs font-bold rounded-md px-2 py-1 border transition-colors focus:ring-2 focus:ring-[#0A3D62] ${
+                          className={`text-xs font-bold rounded-md px-2 py-1 border max-w-[8.5rem] min-w-0 transition-colors focus:ring-2 focus:ring-[#0A3D62] ${
                             isFinished
                               ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
                               : currentStatus === 'en_revision'
@@ -791,7 +836,7 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
         </div>
 
         {/* Modal Footer */}
-        <div className="shrink-0 bg-slate-50 p-3 sm:p-4 border-t border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+        <div className="shrink-0 bg-slate-50 p-3 sm:p-4 border-t border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 text-xs min-w-0 max-w-full">
           <span className="text-slate-500 flex items-start gap-1.5 min-w-0">
             <Sparkles className="w-3.5 h-3.5 mt-0.5 text-[#2ECC71] shrink-0" />
             <span>Los documentos marcados como <strong>Finalizado</strong> o <strong>Culminado</strong> quedan archivados formalmente en su propia sección.</span>
@@ -804,7 +849,8 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
                 className="px-3.5 py-2 text-xs font-bold text-[#0A3D62] hover:bg-blue-50 bg-white border border-blue-200 rounded-lg shadow-2xs flex items-center gap-1.5 cursor-pointer"
               >
                 <Database className="w-3.5 h-3.5 text-[#0A3D62]" />
-                <span>Exportar / Importar Backup</span>
+                <span className="hidden sm:inline">Exportar / Importar Backup</span>
+                <span className="sm:hidden">Backup</span>
               </button>
             )}
             <button

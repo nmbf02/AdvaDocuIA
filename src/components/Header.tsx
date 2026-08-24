@@ -77,7 +77,7 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="sticky top-0 z-50 bg-[#0A3D62] text-white border-b border-white/10 shadow-md">
       <div className="max-w-[1800px] w-full mx-auto px-3 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-13 sm:h-14 gap-3">
+        <div className="flex items-center justify-between h-13 sm:h-14 gap-2 min-w-0">
           
           {/* LEFT: Logo & Brand Identity */}
           <div className="flex items-center gap-3 min-w-0">
@@ -98,7 +98,7 @@ export const Header: React.FC<HeaderProps> = ({
                   <div className="p-1 rounded-md bg-white/10 border border-white/15">
                     <FileText className="w-4 h-4 text-[#2ECC71]" />
                   </div>
-                  <span className="tracking-[0.12em]">ADVANSYS</span>
+                  <span className="tracking-[0.12em] hidden sm:inline">ADVANSYS</span>
                 </div>
               )}
             </button>
@@ -119,7 +119,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* RIGHT: Compact, Organized Action Hub */}
-          <div className="flex items-center gap-1.5 sm:gap-2">
+          <div className="flex items-center gap-1 sm:gap-2 min-w-0 overflow-x-auto no-scrollbar">
             
             {/* GROUP 1: Document Actions (Nuevo + Historial) */}
             <div className="flex items-center gap-1 sm:gap-1.5">
@@ -132,7 +132,7 @@ export const Header: React.FC<HeaderProps> = ({
                   title="Crear un nuevo documento (te preguntará si deseas guardar el actual)"
                 >
                   <FilePlus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  <span>Nuevo</span>
+                  <span className="hidden sm:inline">Nuevo</span>
                 </button>
               )}
 

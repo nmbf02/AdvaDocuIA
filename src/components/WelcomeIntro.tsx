@@ -90,26 +90,26 @@ export const WelcomeIntro: React.FC<WelcomeIntroProps> = ({
 
       {/* Top Header Navbar with Dark Background */}
       <header className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-2">
-        <div className="bg-[#0A3D62] text-white rounded-2xl p-3.5 sm:px-6 sm:py-3.5 shadow-md border border-[#1E5F8A] flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
+        <div className="bg-[#0A3D62] text-white rounded-2xl p-3 sm:px-6 sm:py-3.5 shadow-md border border-[#1E5F8A] flex flex-wrap items-center justify-between gap-2 min-w-0">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
             <div className="shrink-0 flex items-center">
               {logoDataUrl ? (
                 <img
                   src={logoDataUrl}
                   alt="Logo"
-                  className="h-8 sm:h-9 w-auto max-w-[150px] object-contain"
+                  className="h-8 sm:h-9 w-auto max-w-[120px] sm:max-w-[150px] object-contain"
                 />
               ) : (
                 <div className="flex items-center gap-2 font-black tracking-wider text-white text-base">
                   <div className="p-1.5 rounded-lg bg-white/10 border border-white/15">
                     <FileText className="w-4 sm:w-5 h-4 sm:h-5 text-[#2ECC71]" />
                   </div>
-                  <span className="tracking-wider">ADVANSYS</span>
+                  <span className="tracking-wider hidden sm:inline">ADVANSYS</span>
                 </div>
               )}
             </div>
-            <div className="min-w-0">
-              <h2 className="text-xs sm:text-xs font-bold text-white tracking-wide uppercase truncate">
+            <div className="min-w-0 hidden sm:block">
+              <h2 className="text-xs font-bold text-white tracking-wide uppercase truncate">
                 Generador de Documentos & Diapositivas
               </h2>
               <p className="text-[10px] sm:text-[11px] text-blue-200/90 truncate">
@@ -118,7 +118,7 @@ export const WelcomeIntro: React.FC<WelcomeIntroProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {onOpenFreeWrite && (
               <button
                 type="button"
@@ -181,13 +181,13 @@ export const WelcomeIntro: React.FC<WelcomeIntroProps> = ({
       <main className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex-1 flex flex-col justify-center">
         {/* Welcome Question & Subtitle */}
         <div className="text-center mb-6 sm:mb-8 space-y-2">
-          <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border text-xs font-semibold mb-1 shadow-sm ${
+          <div className={`inline-flex items-center gap-2 max-w-full px-2.5 sm:px-3 py-1 rounded-full border text-xs font-semibold mb-1 shadow-sm ${
             isDark 
               ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' 
               : 'bg-emerald-50 border-emerald-200 text-emerald-800'
           }`}>
-            <Sparkles className="w-3.5 h-3.5 text-[#2ECC71]" />
-            <span>Workspace Inteligente de Documentación & Presentaciones</span>
+            <Sparkles className="w-3.5 h-3.5 text-[#2ECC71] shrink-0" />
+            <span className="text-center leading-snug">Workspace Inteligente de Documentación & Presentaciones</span>
           </div>
           <h1 className={`text-2xl sm:text-4xl md:text-5xl font-black tracking-tight ${
             isDark ? 'text-white' : 'text-[#0A3D62]'

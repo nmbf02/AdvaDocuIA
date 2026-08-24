@@ -92,6 +92,16 @@ html {
    and crystal-clear typography across all panels and forms
    ========================================================================= */
 
+#root {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: clip;
+}
+
+select {
+  max-width: 100%;
+}
+
 body {
   overflow-x: hidden;
   font-family: var(--font-sans);
@@ -161,6 +171,12 @@ input,
 textarea,
 select {
   max-width: 100%;
+  min-width: 0;
+}
+.history-modal select {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 input[type="date"] {
   min-width: 0;
@@ -505,6 +521,33 @@ html.dark input[type="range"] {
   content: attr(data-placeholder);
   color: #94a3b8;
   pointer-events: none;
+}
+
+/* Tailwind Preflight pone list-style: none en capa base; estas reglas van sin capa y deben ganar. */
+.note-body-editor ul,
+.note-body-editor ol {
+  margin: 0.35em 0 0.55em;
+  padding-left: 1.75em;
+}
+.note-body-editor ul {
+  list-style: disc outside;
+}
+.note-body-editor ol {
+  list-style: decimal outside;
+}
+.note-body-editor ul ul {
+  list-style-type: circle;
+}
+.note-body-editor li {
+  display: list-item;
+  margin: 0.1em 0;
+}
+.note-body-editor li::marker {
+  color: #1e293b;
+}
+.note-body-editor strong,
+.note-body-editor b {
+  font-weight: 700;
 }
 
 .word-note-sheet .note-body-editor img,

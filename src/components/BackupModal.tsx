@@ -445,14 +445,14 @@ export const BackupModal: React.FC<BackupModalProps> = ({
       <div className="bg-white dark:bg-slate-900 w-full max-w-4xl rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[92vh]">
         
         {/* MODAL HEADER */}
-        <div className="bg-[#0A3D62] text-white p-4 sm:px-6 flex items-center justify-between border-b border-[#1E5F8A] shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-white/10 rounded-xl border border-white/15">
+        <div className="bg-[#0A3D62] text-white p-3 sm:p-4 sm:px-6 flex items-center justify-between gap-2 border-b border-[#1E5F8A] shrink-0 min-w-0">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+            <div className="p-2 sm:p-2.5 bg-white/10 rounded-xl border border-white/15 shrink-0">
               <Database className="w-5 h-5 text-[#2ECC71]" />
             </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-base font-bold text-white">Centro de Copias de Seguridad (Backup)</h2>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2 min-w-0">
+                <h2 className="text-sm sm:text-base font-bold text-white leading-snug">Centro de Copias de Seguridad (Backup)</h2>
                 {backupConfig.enabled ? (
                   <span className="inline-flex items-center gap-1 bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-400/30">
                     <span className="w-1.5 h-1.5 rounded-full bg-[#2ECC71] animate-pulse"></span>
@@ -475,7 +475,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
                   </span>
                 )}
               </div>
-              <p className="text-[11px] text-blue-200">
+              <p className="text-[11px] text-blue-200 hidden sm:block">
                 Puntos de restauración periódicos, diarios programados a una hora y exportación JSON
               </p>
             </div>

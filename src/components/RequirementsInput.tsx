@@ -271,8 +271,8 @@ export const RequirementsInput: React.FC<RequirementsInputProps> = ({
         <div className="space-y-3">
 
           {/* Sub-tab navigation pills for 4 apartados */}
-          <div className="flex items-center gap-1 text-xs overflow-x-auto no-scrollbar pb-1 border-b border-slate-200">
-            <span className="text-[10px] font-bold text-slate-400 uppercase shrink-0 mr-0.5">Sección</span>
+          <div className="flex items-center gap-1 text-xs overflow-x-auto no-scrollbar pb-1 border-b border-slate-200 min-w-0 max-w-full">
+            <span className="text-[10px] font-bold text-slate-400 uppercase shrink-0 mr-0.5 hidden sm:inline">Sección</span>
             {[
               { id: 'all', label: 'Todas' },
               { id: 'premisa', label: 'Premisa' },

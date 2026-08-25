@@ -86,7 +86,7 @@ function wrapSelectionInList(editor: HTMLElement, kind: 'ul' | 'ol') {
     if (anchor && anchor.nodeType === Node.TEXT_NODE && anchor.parentNode === editor) {
       li.textContent = anchor.textContent || '';
       list.appendChild(li);
-      anchor.replaceWith(list);
+      anchor.parentNode.replaceChild(list, anchor);
       return;
     }
     li.innerHTML = '<br>';

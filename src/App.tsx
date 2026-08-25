@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { MetadataHeader, UploadedImage, ProposalSection, SavedProposal, BrandingSettings, DocumentStatus, TechnicalDoc, DEFAULT_DESCARGO_TEXT, FreeNote } from './types';
 import { Header } from './components/Header';
 import { MetadataForm } from './components/MetadataForm';
@@ -301,70 +301,8 @@ export default function App() {
     saveBackupConfig(newConfig);
   };
 
-  // Helper to compile current AppBackupData
-  const getFullBackupPayload = (): AppBackupData => ({
-    version: '1.0',
-    exportDate: new Date().toISOString(),
-    appName: 'ADVANSYS Document Generator',
-    stats: {
-      totalHistoryItems: history.length,
-      hasDraft: Boolean(proposal),
-      hasBranding: Boolean(branding && (branding.logoDataUrl || branding.customTitles)),
-    },
-    history,
-    draft: proposal
-      ? {
-          currentDocumentId,
-          metadata,
-          rawRequirements,
-          images,
-          proposal,
-          version: currentVersion,
-          versionNote: currentVersionNote,
-          status: currentStatus,
-          workspaceMode,
-          editorTab,
-          timestamp: new Date().toISOString(),
-        }
-      : null,
-    settings: branding || null,
-    theme: theme || 'light',
-    freeNotes,
-  });
-
-  // Automated Periodic Backup Scheduler
-  useEffect(() => {
-    if (!backupConfig.enabled || backupConfig.frequency === 'off') return;
-
-    const intervalMs = frequencyToMilliseconds(backupConfig.frequency);
-    if (intervalMs <= 0) return;
-
-    const intervalTimer = setInterval(() => {
-      // Only take auto-backup if there are documents or active draft
-      if (history.length === 0 && !proposal && !rawRequirements.trim() && freeNotes.length === 0) return;
-
-      const payload = getFullBackupPayload();
-      const snap = createAndSaveSnapshot(
-        payload,
-        'interval',
-        `Automático (${backupConfig.frequency})`,
-        backupConfig.maxSnapshots
-      );
-
-      if (snap) {
-        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        setLastAutoBackupTime(timeStr);
-        if (backupConfig.showNotificationToast) {
-          setBackupToastMessage(`Copia de seguridad automática (${timeStr})`);
-          setShowBackupToast(true);
-          setTimeout(() => setShowBackupToast(false), 2500);
-        }
-      }
-    }, intervalMs);
-
-    return () => clearInterval(intervalTimer);
-  }, [
-    backupConfig,
+  // Keep latest snapshot of all reactive state in a ref to avoid resetting timer intervals on every keystroke
+  const latestStateRef = useRef({
     history,
     proposal,
     rawRequirements,
@@ -379,28 +317,169 @@ export default function App() {
     editorTab,
     theme,
     freeNotes,
+    backupConfig,
+  });
+
+  useEffect(() => {
+    latestStateRef.current = {
+      history,
+      proposal,
+      rawRequirements,
+      metadata,
+      images,
+      branding,
+      currentDocumentId,
+      currentVersion,
+      currentVersionNote,
+      currentStatus,
+      workspaceMode,
+      editorTab,
+      theme,
+      freeNotes,
+      backupConfig,
+    };
+  });
+
+  // Helper to compile current AppBackupData
+  const getFullBackupPayload = (customState?: typeof latestStateRef.current): AppBackupData => {
+    const s = customState || latestStateRef.current;
+    return {
+      version: '1.0',
+      exportDate: new Date().toISOString(),
+      appName: 'ADVANSYS Document Generator',
+      stats: {
+        totalHistoryItems: s.history.length,
+        hasDraft: Boolean(s.proposal),
+        hasBranding: Boolean(s.branding && (s.branding.logoDataUrl || s.branding.customTitles)),
+      },
+      history: s.history,
+      draft: s.proposal
+        ? {
+            currentDocumentId: s.currentDocumentId,
+            metadata: s.metadata,
+            rawRequirements: s.rawRequirements,
+            images: s.images,
+            proposal: s.proposal,
+            version: s.currentVersion,
+            versionNote: s.currentVersionNote,
+            status: s.currentStatus,
+            workspaceMode: s.workspaceMode,
+            editorTab: s.editorTab,
+            timestamp: new Date().toISOString(),
+          }
+        : null,
+      settings: s.branding || null,
+      theme: s.theme || 'light',
+      freeNotes: s.freeNotes,
+    };
+  };
+
+  // 1. Real-time Debounced Auto-Save for Active Document & Draft
+  useEffect(() => {
+    if (!proposal && !rawRequirements.trim()) return;
+
+    const draftTimer = setTimeout(() => {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const targetDocId = currentDocumentId || `prop-${Date.now()}`;
+      if (!currentDocumentId) {
+        setCurrentDocumentId(targetDocId);
+      }
+
+      const draft = {
+        currentDocumentId: targetDocId,
+        metadata,
+        rawRequirements,
+        images,
+        proposal,
+        version: currentVersion,
+        versionNote: currentVersionNote,
+        status: currentStatus,
+        workspaceMode,
+        editorTab,
+        timestamp: now.toISOString(),
+      };
+
+      try {
+        localStorage.setItem(STORAGE_KEY_DRAFT, JSON.stringify(draft));
+        setLastSavedTime(timeStr);
+      } catch (e) {
+        console.error("Failed to auto-save draft:", e);
+      }
+    }, 1000);
+
+    return () => clearTimeout(draftTimer);
+  }, [
+    proposal,
+    rawRequirements,
+    metadata,
+    images,
+    currentDocumentId,
+    currentVersion,
+    currentVersionNote,
+    currentStatus,
+    workspaceMode,
+    editorTab,
   ]);
 
-  // Automated Daily Scheduled Backup Runner
+  // 2. Automated Periodic Backup Scheduler (Interval-based Snapshots)
+  useEffect(() => {
+    if (!backupConfig.enabled || backupConfig.frequency === 'off') return;
+
+    const intervalMs = frequencyToMilliseconds(backupConfig.frequency);
+    if (intervalMs <= 0) return;
+
+    const intervalTimer = setInterval(() => {
+      const s = latestStateRef.current;
+      // Only take auto-backup if there are documents, active draft or free notes
+      if (s.history.length === 0 && !s.proposal && !s.rawRequirements.trim() && s.freeNotes.length === 0) return;
+
+      const payload = getFullBackupPayload(s);
+      const snap = createAndSaveSnapshot(
+        payload,
+        'interval',
+        `Automático (${s.backupConfig.frequency})`,
+        s.backupConfig.maxSnapshots
+      );
+
+      if (snap) {
+        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        setLastAutoBackupTime(timeStr);
+        if (s.backupConfig.showNotificationToast) {
+          setBackupToastMessage(`Copia de seguridad automática (${timeStr})`);
+          setShowBackupToast(true);
+          setTimeout(() => setShowBackupToast(false), 2500);
+        }
+      }
+    }, intervalMs);
+
+    return () => clearInterval(intervalTimer);
+  }, [backupConfig.enabled, backupConfig.frequency, backupConfig.maxSnapshots]);
+
+  // 3. Automated Daily Scheduled Backup Runner
   useEffect(() => {
     if (!backupConfig.dailyScheduleEnabled || !backupConfig.dailyScheduleTime) return;
 
     const checkDailyBackup = async () => {
-      // Don't backup if empty application state
-      if (history.length === 0 && !proposal && !rawRequirements.trim() && freeNotes.length === 0) return;
+      const s = latestStateRef.current;
+      const currentConfig = s.backupConfig;
+      if (!currentConfig.dailyScheduleEnabled || !currentConfig.dailyScheduleTime) return;
 
-      if (shouldRunDailyBackup(backupConfig)) {
+      // Don't backup if empty application state
+      if (s.history.length === 0 && !s.proposal && !s.rawRequirements.trim() && s.freeNotes.length === 0) return;
+
+      if (shouldRunDailyBackup(currentConfig)) {
         const todayStr = getTodayDateString();
-        const payload = getFullBackupPayload();
+        const payload = getFullBackupPayload(s);
         const snap = createAndSaveSnapshot(
           payload,
           'daily_schedule',
-          `Copia diaria programada (${backupConfig.dailyScheduleTime})`,
-          backupConfig.maxSnapshots
+          `Copia diaria programada (${currentConfig.dailyScheduleTime})`,
+          currentConfig.maxSnapshots
         );
 
         if (snap) {
-          const updatedConfig = { ...backupConfig, lastDailyBackupDate: todayStr };
+          const updatedConfig = { ...currentConfig, lastDailyBackupDate: todayStr };
           setBackupConfig(updatedConfig);
           saveBackupConfig(updatedConfig);
 
@@ -409,11 +488,11 @@ export default function App() {
 
           // Save directly to selected disk folder or trigger automatic browser download
           let diskSavedNotice = '';
-          if (backupConfig.dailyAutoDownloadJson || backupConfig.autoDownloadDailyToDisk) {
+          if (currentConfig.dailyAutoDownloadJson || currentConfig.autoDownloadDailyToDisk) {
             try {
               const res = await saveBackupToDiskFolderOrDownload(
                 payload,
-                `Advansys_Backup_Diario_${backupConfig.dailyScheduleTime.replace(':', '')}`
+                `Advansys_Backup_Diario_${currentConfig.dailyScheduleTime.replace(':', '')}`
               );
               if (res.success && res.method === 'direct_folder') {
                 diskSavedNotice = ` en "${res.folderName}"`;
@@ -423,8 +502,8 @@ export default function App() {
             }
           }
 
-          if (backupConfig.showNotificationToast) {
-            setBackupToastMessage(`Copia diaria programada guardada${diskSavedNotice} (${backupConfig.dailyScheduleTime})`);
+          if (currentConfig.showNotificationToast) {
+            setBackupToastMessage(`Copia diaria programada guardada${diskSavedNotice} (${currentConfig.dailyScheduleTime})`);
             setShowBackupToast(true);
             setTimeout(() => setShowBackupToast(false), 4000);
           }
@@ -435,26 +514,17 @@ export default function App() {
     // Run check immediately
     checkDailyBackup();
 
-    // Check every 25 seconds
-    const dailyTimer = setInterval(checkDailyBackup, 25000);
+    // Check every 20 seconds
+    const dailyTimer = setInterval(checkDailyBackup, 20000);
 
     return () => clearInterval(dailyTimer);
   }, [
-    backupConfig,
-    history,
-    proposal,
-    rawRequirements,
-    metadata,
-    images,
-    branding,
-    currentDocumentId,
-    currentVersion,
-    currentVersionNote,
-    currentStatus,
-    workspaceMode,
-    editorTab,
-    theme,
-    freeNotes,
+    backupConfig.dailyScheduleEnabled,
+    backupConfig.dailyScheduleTime,
+    backupConfig.maxSnapshots,
+    backupConfig.lastDailyBackupDate,
+    backupConfig.dailyAutoDownloadJson,
+    backupConfig.autoDownloadDailyToDisk,
   ]);
 
   // Save Changes Helper - Updates the current document in-place WITHOUT creating duplicate files

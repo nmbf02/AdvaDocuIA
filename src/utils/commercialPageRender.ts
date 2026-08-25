@@ -304,9 +304,9 @@ export async function renderCommercialPagePng(
   y += 8;
 
   const midY = y;
-  const leftW = barW * 0.52;
-  const rightX = pad + leftW + 18;
-  const rightW = barW - leftW - 18;
+  const leftW = barW * 0.58;
+  const rightX = pad + leftW + 22;
+  const rightW = barW - leftW - 22;
   ctx.fillStyle = NAVY;
   ctx.font = '800 12px Calibri, Segoe UI, sans-serif';
   ctx.fillText(commercial.conditionsTitle, pad, midY);
@@ -377,31 +377,31 @@ export async function renderCommercialPagePng(
   noteLines.forEach((line, i) => ctx.fillText(line, pad + 14, y + 10 + i * 15));
 
   const footH = 36;
-  const sigBlockH = 90;
+  const sigBlockH = 118;
   let sySig = H - footH - sigBlockH;
   ctx.fillStyle = NAVY;
   ctx.font = '800 12px Calibri, Segoe UI, sans-serif';
   ctx.fillText(commercial.reviewedByTitle, pad, sySig);
-  sySig += 40;
-  const sigW = (barW - 40) / 2;
+  sySig += 62;
+  const sigW = (barW - 56) / 2;
   ctx.strokeStyle = NAVY;
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(pad, sySig);
-  ctx.lineTo(pad + sigW, sySig);
-  ctx.moveTo(pad + sigW + 40, sySig);
-  ctx.lineTo(pad + barW, sySig);
+  ctx.moveTo(pad + 8, sySig);
+  ctx.lineTo(pad + sigW - 8, sySig);
+  ctx.moveTo(pad + sigW + 56 + 8, sySig);
+  ctx.lineTo(pad + barW - 8, sySig);
   ctx.stroke();
-  sySig += 16;
+  sySig += 18;
   ctx.textAlign = 'center';
   ctx.font = '700 11px Calibri, Segoe UI, sans-serif';
   ctx.fillText(commercial.reviewedLeftRole, pad + sigW / 2, sySig);
-  ctx.fillText(commercial.reviewedRightRole, pad + sigW + 40 + sigW / 2, sySig);
+  ctx.fillText(commercial.reviewedRightRole, pad + sigW + 56 + sigW / 2, sySig);
   sySig += 16;
   ctx.font = '500 11px Calibri, Segoe UI, sans-serif';
   ctx.fillStyle = BLUE;
   ctx.fillText(commercial.reviewedBy.trim() || commercial.reviewedLeftOrg, pad + sigW / 2, sySig);
-  ctx.fillText(commercial.reviewedRightOrg, pad + sigW + 40 + sigW / 2, sySig);
+  ctx.fillText(commercial.reviewedRightOrg, pad + sigW + 56 + sigW / 2, sySig);
   ctx.textAlign = 'left';
 
   ctx.fillStyle = NAVY;

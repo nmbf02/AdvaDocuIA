@@ -523,11 +523,14 @@ export async function generateAdvansysPdf(
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     const innerW = colW - pad * 2;
+    const bulletIndent = 3.6;
     const prepared = cards.map((card) => {
       doc.setFont('helvetica', 'bold');
       const titleLines = doc.splitTextToSize(card.title, innerW);
       doc.setFont('helvetica', 'normal');
-      const bodyBlocks = card.items.map((item) => doc.splitTextToSize(item, innerW));
+      const bodyBlocks = card.items.map((item) =>
+        doc.splitTextToSize(item.replace(/^[•\-\*]\s+/, ''), innerW - bulletIndent)
+      );
       const bodyH = bodyBlocks.reduce((sum, lines) => sum + lines.length * 4.2 + 2.2, 0);
       const h = 6 + titleLines.length * 4.8 + 3 + bodyH + pad;
       return { ...card, titleLines, bodyBlocks, h };
@@ -552,7 +555,8 @@ export async function generateAdvansysPdf(
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(COLOR_TEXT_DARK[0], COLOR_TEXT_DARK[1], COLOR_TEXT_DARK[2]);
       card.bodyBlocks.forEach((lines) => {
-        doc.text(lines, x + pad, ty);
+        doc.text('•', x + pad, ty);
+        doc.text(lines, x + pad + bulletIndent, ty);
         ty += lines.length * 4.2 + 2.2;
       });
     });

@@ -848,7 +848,10 @@ export async function generateAdvansysDocx(
               (item) =>
                 new Paragraph({
                   spacing: { before: 60, after: 60, line: 276, lineRule: LineRuleType.AUTO },
-                  children: parseBoldRuns(item, 18),
+                  children: [
+                    new TextRun({ text: '•  ', color: COLOR_TEXT_DARK, size: 18, font: 'Calibri' }),
+                    ...parseBoldRuns(item.replace(/^[•\-\*]\s+/, ''), 18),
+                  ],
                 })
             )
           : [emptyPara()]),
@@ -1136,6 +1139,60 @@ export async function generateAdvansysDocx(
       );
     }
 
+    const condW = Math.round(commercialTableW * 0.58);
+    const condGap = 240;
+    const stepsW = commercialTableW - condW - condGap;
+    const sigColW = Math.round((commercialTableW - condGap) / 2);
+    const sigLineW = Math.min(4200, sigColW - 120);
+    const makeSignatureBlock = (role: string, org: string) =>
+      new Table({
+        width: { size: sigLineW, type: WidthType.DXA },
+        alignment: AlignmentType.CENTER,
+        columnWidths: [sigLineW],
+        borders: {
+          top: NO_BORDER,
+          bottom: NO_BORDER,
+          left: NO_BORDER,
+          right: NO_BORDER,
+          insideHorizontal: NO_BORDER,
+          insideVertical: NO_BORDER,
+        },
+        rows: [
+          new TableRow({
+            children: [
+              new TableCell({
+                width: { size: sigLineW, type: WidthType.DXA },
+                borders: {
+                  top: NO_BORDER,
+                  bottom: { style: BorderStyle.SINGLE, size: 8, color: COLOR_PRIMARY_BLUE },
+                  left: NO_BORDER,
+                  right: NO_BORDER,
+                },
+                children: [new Paragraph({ spacing: { before: 40, after: 60 }, children: [new TextRun({ text: '', size: 2 })] })],
+              }),
+            ],
+          }),
+          new TableRow({
+            children: [
+              new TableCell({
+                width: { size: sigLineW, type: WidthType.DXA },
+                borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER },
+                children: [
+                  new Paragraph({
+                    alignment: AlignmentType.CENTER,
+                    spacing: { before: 80, after: 0 },
+                    children: [new TextRun({ text: role, bold: true, color: COLOR_PRIMARY_BLUE, size: 18, font: 'Calibri' })],
+                  }),
+                  new Paragraph({
+                    alignment: AlignmentType.CENTER,
+                    children: [new TextRun({ text: org, color: COLOR_SECONDARY_BLUE, size: 18, font: 'Calibri' })],
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ],
+      });
     const condChildren = [
       ...commercial.conditions.map(
         (cond) =>
@@ -1160,8 +1217,8 @@ export async function generateAdvansysDocx(
     );
     commercialElements.push(
       new Table({
-        width: { size: 9520, type: WidthType.DXA },
-        columnWidths: [4680, 160, 4680],
+        width: { size: commercialTableW, type: WidthType.DXA },
+        columnWidths: [condW, condGap, stepsW],
         borders: {
           top: NO_BORDER,
           bottom: NO_BORDER,
@@ -1174,7 +1231,7 @@ export async function generateAdvansysDocx(
           new TableRow({
             children: [
               new TableCell({
-                width: { size: 4680, type: WidthType.DXA },
+                width: { size: condW, type: WidthType.DXA },
                 borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER },
                 children: [
                   new Paragraph({
@@ -1184,12 +1241,12 @@ export async function generateAdvansysDocx(
                 ],
               }),
               new TableCell({
-                width: { size: 160, type: WidthType.DXA },
+                width: { size: condGap, type: WidthType.DXA },
                 borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER },
                 children: [emptyPara()],
               }),
               new TableCell({
-                width: { size: 4680, type: WidthType.DXA },
+                width: { size: stepsW, type: WidthType.DXA },
                 borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER },
                 children: [
                   new Paragraph({
@@ -1203,18 +1260,18 @@ export async function generateAdvansysDocx(
           new TableRow({
             children: [
               new TableCell({
-                width: { size: 4680, type: WidthType.DXA },
+                width: { size: condW, type: WidthType.DXA },
                 shading: { fill: 'F1F5F9', type: ShadingType.CLEAR },
                 margins: { top: 140, bottom: 140, left: 160, right: 160 },
                 children: condChildren,
               }),
               new TableCell({
-                width: { size: 160, type: WidthType.DXA },
+                width: { size: condGap, type: WidthType.DXA },
                 borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER },
                 children: [emptyPara()],
               }),
               new TableCell({
-                width: { size: 4680, type: WidthType.DXA },
+                width: { size: stepsW, type: WidthType.DXA },
                 borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER },
                 children: stepsChildren,
               }),
@@ -1227,7 +1284,7 @@ export async function generateAdvansysDocx(
         children: [new TextRun({ text: commercial.notesTitle, bold: true, color: COLOR_PRIMARY_BLUE, size: 20, font: 'Calibri' })],
       }),
       new Table({
-        width: { size: 9520, type: WidthType.DXA },
+        width: { size: commercialTableW, type: WidthType.DXA },
         borders: {
           top: NO_BORDER,
           bottom: NO_BORDER,
@@ -1249,8 +1306,8 @@ export async function generateAdvansysDocx(
         ],
       }),
       new Table({
-        width: { size: 9520, type: WidthType.DXA },
-        columnWidths: [4680, 160, 4680],
+        width: { size: commercialTableW, type: WidthType.DXA },
+        columnWidths: [sigColW, condGap, commercialTableW - sigColW - condGap],
         float: {
           horizontalAnchor: TableAnchorType.MARGIN,
           verticalAnchor: TableAnchorType.MARGIN,
@@ -1273,7 +1330,7 @@ export async function generateAdvansysDocx(
                 borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER },
                 children: [
                   new Paragraph({
-                    spacing: { after: 360 },
+                    spacing: { after: 900 },
                     children: [new TextRun({ text: commercial.reviewedByTitle, bold: true, color: COLOR_PRIMARY_BLUE, size: 20, font: 'Calibri' })],
                   }),
                 ],
@@ -1283,73 +1340,19 @@ export async function generateAdvansysDocx(
           new TableRow({
             children: [
               new TableCell({
-                width: { size: 4680, type: WidthType.DXA },
-                borders: {
-                  top: NO_BORDER,
-                  bottom: { style: BorderStyle.SINGLE, size: 8, color: COLOR_PRIMARY_BLUE },
-                  left: NO_BORDER,
-                  right: NO_BORDER,
-                },
-                children: [new Paragraph({ spacing: { before: 80, after: 40 }, children: [new TextRun({ text: ' ', size: 18 })] })],
+                width: { size: sigColW, type: WidthType.DXA },
+                borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER },
+                children: [makeSignatureBlock(commercial.reviewedLeftRole, commercial.reviewedBy.trim() || commercial.reviewedLeftOrg)],
               }),
               new TableCell({
-                width: { size: 160, type: WidthType.DXA },
+                width: { size: condGap, type: WidthType.DXA },
                 borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER },
                 children: [emptyPara()],
               }),
               new TableCell({
-                width: { size: 4680, type: WidthType.DXA },
-                borders: {
-                  top: NO_BORDER,
-                  bottom: { style: BorderStyle.SINGLE, size: 8, color: COLOR_PRIMARY_BLUE },
-                  left: NO_BORDER,
-                  right: NO_BORDER,
-                },
-                children: [new Paragraph({ spacing: { before: 80, after: 40 }, children: [new TextRun({ text: ' ', size: 18 })] })],
-              }),
-            ],
-          }),
-          new TableRow({
-            children: [
-              new TableCell({
-                width: { size: 4680, type: WidthType.DXA },
+                width: { size: commercialTableW - sigColW - condGap, type: WidthType.DXA },
                 borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER },
-                children: [
-                  new Paragraph({
-                    alignment: AlignmentType.CENTER,
-                    children: [new TextRun({ text: commercial.reviewedLeftRole, bold: true, color: COLOR_PRIMARY_BLUE, size: 18, font: 'Calibri' })],
-                  }),
-                  new Paragraph({
-                    alignment: AlignmentType.CENTER,
-                    children: [
-                      new TextRun({
-                        text: commercial.reviewedBy.trim() || commercial.reviewedLeftOrg,
-                        color: COLOR_SECONDARY_BLUE,
-                        size: 18,
-                        font: 'Calibri',
-                      }),
-                    ],
-                  }),
-                ],
-              }),
-              new TableCell({
-                width: { size: 160, type: WidthType.DXA },
-                borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER },
-                children: [emptyPara()],
-              }),
-              new TableCell({
-                width: { size: 4680, type: WidthType.DXA },
-                borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER },
-                children: [
-                  new Paragraph({
-                    alignment: AlignmentType.CENTER,
-                    children: [new TextRun({ text: commercial.reviewedRightRole, bold: true, color: COLOR_PRIMARY_BLUE, size: 18, font: 'Calibri' })],
-                  }),
-                  new Paragraph({
-                    alignment: AlignmentType.CENTER,
-                    children: [new TextRun({ text: commercial.reviewedRightOrg, color: COLOR_SECONDARY_BLUE, size: 18, font: 'Calibri' })],
-                  }),
-                ],
+                children: [makeSignatureBlock(commercial.reviewedRightRole, commercial.reviewedRightOrg)],
               }),
             ],
           }),

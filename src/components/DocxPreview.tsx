@@ -152,7 +152,10 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
                       ?.filter(i => i && i.trim().length > 0)
                       .slice(0, COVER_SCOPE_MAX_ITEMS)
                       .map((item, idx) => (
-                        <li key={idx}>{formatInlineBold(item)}</li>
+                        <li key={idx} className="flex gap-2">
+                          <span className="shrink-0 text-[#0A3D62]">•</span>
+                          <span>{formatInlineBold(item.replace(/^[•\-\*]\s+/, ''))}</span>
+                        </li>
                       ))}
                   </ul>
                 </div>
@@ -167,7 +170,10 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
                       ?.filter(i => i && i.trim().length > 0)
                       .slice(0, COVER_SCOPE_MAX_ITEMS)
                       .map((item, idx) => (
-                        <li key={idx}>{formatInlineBold(item)}</li>
+                        <li key={idx} className="flex gap-2">
+                          <span className="shrink-0 text-[#0A3D62]">•</span>
+                          <span>{formatInlineBold(item.replace(/^[•\-\*]\s+/, ''))}</span>
+                        </li>
                       ))}
                   </ul>
                 </div>
@@ -182,7 +188,10 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
                       ?.filter(i => i && i.trim().length > 0)
                       .slice(0, COVER_SCOPE_MAX_ITEMS)
                       .map((item, idx) => (
-                        <li key={idx}>{formatInlineBold(item)}</li>
+                        <li key={idx} className="flex gap-2">
+                          <span className="shrink-0 text-[#0A3D62]">•</span>
+                          <span>{formatInlineBold(item.replace(/^[•\-\*]\s+/, ''))}</span>
+                        </li>
                       ))}
                   </ul>
                 </div>
@@ -263,7 +272,7 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
               <p className="text-right text-[11px] font-bold text-red-600 mt-1">{commercial.itbisLabel}</p>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
+            <div className="grid grid-cols-1 md:grid-cols-[1.35fr_1fr] gap-8 mt-8">
               <div>
                 <h3 className="text-sm font-bold text-[#0A3D62] uppercase mb-3">{commercial.conditionsTitle}</h3>
                 <div className="rounded-2xl bg-slate-100/80 p-4 space-y-3">
@@ -304,17 +313,17 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
             </div>
             <div className="flex-1 min-h-[3rem]" />
             <div className="pt-6">
-              <h3 className="text-sm font-bold text-[#0A3D62] uppercase mb-12">{commercial.reviewedByTitle}</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
-                <div className="text-center">
-                  <div className="border-t border-[#0A3D62] mb-2" />
-                  <p className="text-[11px] font-bold text-[#0A3D62]">{commercial.reviewedLeftRole}</p>
-                  <p className="text-[11px] text-[#1E5F8A]">{commercial.reviewedBy.trim() || commercial.reviewedLeftOrg}</p>
+              <h3 className="text-sm font-bold text-[#0A3D62] uppercase mb-16">{commercial.reviewedByTitle}</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-10">
+                <div className="flex flex-col items-center">
+                  <div className="w-[88%] border-t border-[#0A3D62] mb-3" />
+                  <p className="text-[11px] font-bold text-[#0A3D62] text-center">{commercial.reviewedLeftRole}</p>
+                  <p className="text-[11px] text-[#1E5F8A] text-center">{commercial.reviewedBy.trim() || commercial.reviewedLeftOrg}</p>
                 </div>
-                <div className="text-center">
-                  <div className="border-t border-[#0A3D62] mb-2" />
-                  <p className="text-[11px] font-bold text-[#0A3D62]">{commercial.reviewedRightRole}</p>
-                  <p className="text-[11px] text-[#1E5F8A]">{commercial.reviewedRightOrg}</p>
+                <div className="flex flex-col items-center">
+                  <div className="w-[88%] border-t border-[#0A3D62] mb-3" />
+                  <p className="text-[11px] font-bold text-[#0A3D62] text-center">{commercial.reviewedRightRole}</p>
+                  <p className="text-[11px] text-[#1E5F8A] text-center">{commercial.reviewedRightOrg}</p>
                 </div>
               </div>
             </div>

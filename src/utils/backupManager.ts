@@ -131,6 +131,73 @@ export function shouldRunDailyBackup(config: AutoBackupConfig, now: Date = new D
   return currentTimeInMinutes >= targetTimeInMinutes;
 }
 
+function formatWait(ms: number): string {
+  if (ms <= 0) return 'ahora';
+  const totalMin = Math.max(1, Math.ceil(ms / 60000));
+  const hours = Math.floor(totalMin / 60);
+  const minutes = totalMin % 60;
+  if (hours <= 0) return minutes === 1 ? '1 minuto' : `${minutes} minutos`;
+  if (minutes === 0) return hours === 1 ? '1 hora' : `${hours} horas`;
+  return `${hours} h ${minutes} min`;
+}
+
+/**
+ * Live status of the daily scheduled backup (waiting / due now / already done).
+ */
+export function getDailyBackupStatus(
+  config: AutoBackupConfig,
+  now: Date = new Date()
+): {
+  state: 'off' | 'waiting' | 'due' | 'done';
+  title: string;
+  detail: string;
+  timeString: string;
+} {
+  if (!config.dailyScheduleEnabled || !config.dailyScheduleTime) {
+    return {
+      state: 'off',
+      title: 'Copia diaria desactivada',
+      detail: '',
+      timeString: '--:--',
+    };
+  }
+
+  const [targetH, targetM] = config.dailyScheduleTime.split(':').map(Number);
+  const targetDate = new Date(now);
+  targetDate.setHours(targetH, targetM, 0, 0);
+  const todayStr = getTodayDateString(now);
+  const doneToday = config.lastDailyBackupDate === todayStr;
+  const timeString = config.dailyScheduleTime;
+
+  if (doneToday) {
+    const clock = config.lastDailyBackupClock;
+    return {
+      state: 'done',
+      title: clock ? `Ya se guardó hoy a las ${clock}` : 'Ya se guardó hoy',
+      detail: `La próxima será mañana a las ${timeString}. La pestaña de la app debe estar abierta a esa hora.`,
+      timeString,
+    };
+  }
+
+  if (now.getTime() >= targetDate.getTime()) {
+    return {
+      state: 'due',
+      title: `Pendiente ahora (${timeString} ya pasó)`,
+      detail: config.targetDirectoryPath
+        ? `Debería escribirse en ${config.targetDirectoryPath}.`
+        : 'Se guardará en la carpeta backups del proyecto.',
+      timeString,
+    };
+  }
+
+  return {
+    state: 'waiting',
+    title: `Se guardará hoy a las ${timeString}`,
+    detail: `Faltan ${formatWait(targetDate.getTime() - now.getTime())}. Esta pestaña tiene que seguir abierta; si cierras el navegador, no se ejecuta.`,
+    timeString,
+  };
+}
+
 /**
  * Formats time remaining until next daily backup
  */
@@ -139,35 +206,11 @@ export function getNextDailyBackupInfo(config: AutoBackupConfig): {
   isToday: boolean;
   timeString: string;
 } {
-  if (!config.dailyScheduleEnabled || !config.dailyScheduleTime) {
-    return {
-      nextRunLabel: 'Desactivado',
-      isToday: false,
-      timeString: '--:--',
-    };
-  }
-
-  const now = new Date();
-  const [targetH, targetM] = config.dailyScheduleTime.split(':').map(Number);
-  const todayStr = getTodayDateString(now);
-
-  const targetDate = new Date();
-  targetDate.setHours(targetH, targetM, 0, 0);
-
-  const alreadyRunToday = config.lastDailyBackupDate === todayStr;
-
-  if (alreadyRunToday || now.getTime() >= targetDate.getTime()) {
-    return {
-      nextRunLabel: `Mañana a las ${config.dailyScheduleTime}`,
-      isToday: false,
-      timeString: config.dailyScheduleTime,
-    };
-  }
-
+  const status = getDailyBackupStatus(config);
   return {
-    nextRunLabel: `Hoy a las ${config.dailyScheduleTime}`,
-    isToday: true,
-    timeString: config.dailyScheduleTime,
+    nextRunLabel: status.title,
+    isToday: status.state === 'waiting' || status.state === 'due',
+    timeString: status.timeString,
   };
 }
 
@@ -312,6 +355,177 @@ export async function requestTargetDirectory(): Promise<{
   }
 }
 
+export async function fetchDefaultBackupFolder(): Promise<string | null> {
+  try {
+    const res = await fetch('/api/backup-folder');
+    const data = await res.json();
+    if (data?.success && typeof data.path === 'string') return data.path;
+  } catch (e) {
+    console.warn('No se pudo obtener la carpeta de copias del servidor:', e);
+  }
+  return null;
+}
+
+function buildBackupFilename(prefix: string): string {
+  const now = new Date();
+  const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+  return `${prefix}_${dateStr}.json`;
+}
+
+export async function persistBackupToPc(
+  backupData: AppBackupData,
+  prefix: string,
+  options?: {
+    directoryPath?: string | null;
+    allowBrowserDownload?: boolean;
+  }
+): Promise<{
+  success: boolean;
+  method: 'server_folder' | 'direct_folder' | 'browser_download';
+  filename: string;
+  folderName?: string;
+  fullPath?: string;
+  error?: string;
+  needsPermission?: boolean;
+}> {
+  const filename = buildBackupFilename(prefix);
+  const jsonString = JSON.stringify(backupData, null, 2);
+  const directoryPath = (options?.directoryPath || '').trim();
+
+  if (directoryPath) {
+    try {
+      const res = await fetch('/api/save-backup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          directory: directoryPath,
+          filename,
+          content: jsonString,
+        }),
+      });
+      const raw = await res.text();
+      let data: any = null;
+      try {
+        data = raw ? JSON.parse(raw) : null;
+      } catch {
+        data = null;
+      }
+      if (data?.success) {
+        return {
+          success: true,
+          method: 'server_folder',
+          filename: data.filename || filename,
+          folderName: data.folder || directoryPath,
+          fullPath: data.path,
+        };
+      }
+      const apiError =
+        data?.error ||
+        (res.status === 404
+          ? 'Reinicia el servidor (npm run dev) para activar el guardado en disco.'
+          : `No se pudo escribir en la carpeta (HTTP ${res.status}).`);
+      if (!options?.allowBrowserDownload) {
+        return {
+          success: false,
+          method: 'server_folder',
+          filename,
+          folderName: directoryPath,
+          error: apiError,
+        };
+      }
+    } catch (e: any) {
+      if (!options?.allowBrowserDownload) {
+        return {
+          success: false,
+          method: 'server_folder',
+          filename,
+          folderName: directoryPath,
+          error: e?.message || 'El servidor no pudo guardar el archivo.',
+        };
+      }
+    }
+  }
+
+  const browserFallback = await saveBackupToDiskFolderOrDownload(backupData, prefix);
+  return {
+    ...browserFallback,
+    fullPath: undefined,
+  };
+}
+
+async function writeJsonToDirectoryHandle(handle: any, filename: string, jsonString: string): Promise<void> {
+  const fileHandle = await handle.getFileHandle(filename, { create: true });
+  const writable = await fileHandle.createWritable();
+  await writable.write(jsonString);
+  await writable.close();
+}
+
+/**
+ * Background write: only if the linked folder already has granted permission.
+ * Does not prompt (timers cannot request File System Access permission).
+ */
+export async function tryWriteBackupToLinkedFolder(
+  backupData: AppBackupData,
+  prefix = 'Advansys_Backup_Auto'
+): Promise<{
+  success: boolean;
+  filename: string;
+  folderName?: string;
+  error?: string;
+  needsPermission?: boolean;
+}> {
+  const filename = buildBackupFilename(prefix);
+  const jsonString = JSON.stringify(backupData, null, 2);
+
+  if (!isFileSystemAccessSupported()) {
+    return { success: false, filename, error: 'El navegador no permite escritura directa a carpeta.' };
+  }
+
+  try {
+    const handle = await getStoredDirectoryHandle();
+    if (!handle) {
+      return { success: false, filename, error: 'No hay carpeta vinculada.' };
+    }
+
+    const status = await handle.queryPermission({ mode: 'readwrite' });
+    if (status !== 'granted') {
+      return {
+        success: false,
+        filename,
+        folderName: handle.name,
+        needsPermission: true,
+        error: 'Abre Copias / Backup y confirma el permiso de la carpeta para el autoguardado en disco.',
+      };
+    }
+
+    await writeJsonToDirectoryHandle(handle, filename, jsonString);
+    return { success: true, filename, folderName: handle.name };
+  } catch (e: any) {
+    return {
+      success: false,
+      filename,
+      error: e?.message || 'No se pudo escribir en la carpeta vinculada.',
+    };
+  }
+}
+
+/**
+ * Re-request folder permission during a user gesture (opening Backup Center).
+ */
+export async function reconnectLinkedFolderPermission(): Promise<{
+  granted: boolean;
+  dirName?: string;
+}> {
+  try {
+    const handle = await getStoredDirectoryHandle();
+    if (!handle) return { granted: false };
+    const granted = await verifyDirectoryPermission(handle, true);
+    return { granted, dirName: handle.name };
+  } catch {
+    return { granted: false };
+  }
+}
+
 /**
  * Saves a backup directly into the user's PC folder (if selected), or falls back to automatic browser download
  */
@@ -325,9 +539,7 @@ export async function saveBackupToDiskFolderOrDownload(
   folderName?: string;
   error?: string;
 }> {
-  const now = new Date();
-  const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
-  const filename = `${prefix}_${dateStr}.json`;
+  const filename = buildBackupFilename(prefix);
   const jsonString = JSON.stringify(backupData, null, 2);
 
   // 1. Try direct write into local PC directory via File System Access API
@@ -337,10 +549,7 @@ export async function saveBackupToDiskFolderOrDownload(
       if (handle) {
         const hasPerm = await verifyDirectoryPermission(handle, true);
         if (hasPerm) {
-          const fileHandle = await handle.getFileHandle(filename, { create: true });
-          const writable = await fileHandle.createWritable();
-          await writable.write(jsonString);
-          await writable.close();
+          await writeJsonToDirectoryHandle(handle, filename, jsonString);
           return {
             success: true,
             method: 'direct_folder',
@@ -496,6 +705,31 @@ export function loadSnapshots(): BackupSnapshot[] {
   return [];
 }
 
+function persistSnapshotsWithQuotaRetry(snapshots: BackupSnapshot[]): void {
+  let current = snapshots;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    try {
+      localStorage.setItem(STORAGE_KEY_SNAPSHOTS, JSON.stringify(current));
+      return;
+    } catch (err: any) {
+      const quota =
+        err?.name === 'QuotaExceededError' ||
+        err?.code === 22 ||
+        String(err?.message || err).toLowerCase().includes('quota');
+      if (!quota || current.length <= 1) throw err;
+      const manuals = current.filter((s) => s.isManual);
+      const autos = current.filter((s) => !s.isManual);
+      if (autos.length > 1) {
+        current = [...manuals, ...autos.slice(0, autos.length - 1)].sort(
+          (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
+      } else {
+        current = current.slice(0, Math.max(1, current.length - 1));
+      }
+    }
+  }
+}
+
 /**
  * Saves a new Snapshot into local snapshot storage with smart pruning
  */
@@ -546,14 +780,15 @@ export function createAndSaveSnapshot(
     if (trigger === 'interval' && existingSnapshots.length > 0) {
       const latest = existingSnapshots[0];
       const diffMs = Date.now() - new Date(latest.timestamp).getTime();
-      if (diffMs < 45 * 1000) {
-        return null;
+      if (latest.trigger === 'interval' && diffMs < 45 * 1000) {
+        return latest;
       }
     }
 
     // Combine and smart prune:
     // We retain manual snapshots and prune the oldest automated ones first
     const updated = [newSnapshot, ...existingSnapshots];
+    let toStore = updated;
     
     // If exceeds maxSnapshots, prune automated snapshots first
     if (updated.length > maxSnapshots) {
@@ -563,15 +798,12 @@ export function createAndSaveSnapshot(
       const allowedAutos = Math.max(2, maxSnapshots - manualSnapshots.length);
       const prunedAutos = autoSnapshots.slice(0, allowedAutos);
 
-      const finalSnapshots = [...manualSnapshots, ...prunedAutos].sort(
+      toStore = [...manualSnapshots, ...prunedAutos].sort(
         (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-      );
-      
-      localStorage.setItem(STORAGE_KEY_SNAPSHOTS, JSON.stringify(finalSnapshots.slice(0, maxSnapshots)));
-    } else {
-      localStorage.setItem(STORAGE_KEY_SNAPSHOTS, JSON.stringify(updated));
+      ).slice(0, maxSnapshots);
     }
 
+    persistSnapshotsWithQuotaRetry(toStore);
     return newSnapshot;
   } catch (err) {
     console.error('Failed to create and save snapshot:', err);

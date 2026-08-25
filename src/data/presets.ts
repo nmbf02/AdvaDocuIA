@@ -75,6 +75,7 @@ export const EMPTY_MANUAL_PROPOSAL = {
   indiceAnalisisOperativo: [],
   analisisOperativo: [],
   descargo: DEFAULT_DESCARGO_TEXT,
+  subsections: {},
   tables: []
 };
 

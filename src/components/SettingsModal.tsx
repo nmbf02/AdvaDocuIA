@@ -11,6 +11,7 @@ import {
   getEffectiveTechnicalTitles,
   getEffectiveProposalHeaderFooter,
   getEffectiveTechnicalHeaderFooter,
+  Page2LogoMode,
 } from '../types';
 import {
   Settings,
@@ -53,6 +54,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onOpenBackup,
 }) => {
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const page2LogoInputRef = useRef<HTMLInputElement>(null);
   const tabsContainerRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<'titles' | 'techTitles' | 'headersFooters' | 'branding' | 'backup' | 'local'>('titles');
   const [headerFooterSubTab, setHeaderFooterSubTab] = useState<'proposal' | 'technical'>('proposal');
@@ -115,12 +117,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const nextTitles: DocumentTitlesConfig = {
       ...branding.customTitles,
       mainTitle: undefined,
+      coverSubtitle: undefined,
+      confidentialityTitle: undefined,
+      confidentialityText: undefined,
+      hideConfidentiality: false,
       section1: undefined,
       section2: undefined,
       section3: undefined,
       section3_1: undefined,
       section3_2: undefined,
       section3_3: undefined,
+      sectionPage2: undefined,
       section4: undefined,
       section5: undefined,
       section6: undefined,
@@ -215,13 +222,36 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setTimeout(() => setCopiedNotification(null), 2500);
   };
 
-  const applyLogoFromFile = (file: File) => {
+  const applyLogoFromFile = (file: File, target: 'main' | 'page2' = 'main') => {
     if (!file.type.startsWith('image/')) return;
 
     const reader = new FileReader();
     reader.onload = (e) => {
       const result = e.target?.result as string;
       if (!result) return;
+
+      const apply = (dataUrl: string, mime: string, width?: number, height?: number) => {
+        if (target === 'page2') {
+          onChange({
+            ...branding,
+            page2LogoDataUrl: dataUrl,
+            page2LogoMimeType: mime,
+            page2LogoFileName: file.name,
+            page2LogoWidth: width,
+            page2LogoHeight: height,
+            page2LogoMode: branding.page2LogoMode || 'page2',
+          });
+          return;
+        }
+        onChange({
+          ...branding,
+          logoDataUrl: dataUrl,
+          logoMimeType: mime,
+          logoFileName: file.name,
+          logoWidth: width,
+          logoHeight: height,
+        });
+      };
 
       const img = new Image();
       img.onload = () => {
@@ -230,32 +260,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         const scale = Math.min(1, maxW / (img.width || 1), maxH / (img.height || 1));
         const width = Math.max(1, Math.round(img.width * scale));
         const height = Math.max(1, Math.round(img.height * scale));
-
         const canvas = document.createElement('canvas');
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-        }
-
-        onChange({
-          ...branding,
-          logoDataUrl: canvas.toDataURL('image/png'),
-          logoMimeType: 'image/png',
-          logoFileName: file.name,
-          logoWidth: width,
-          logoHeight: height,
-        });
+        if (ctx) ctx.drawImage(img, 0, 0, width, height);
+        apply(canvas.toDataURL('image/png'), 'image/png', width, height);
       };
-      img.onerror = () => {
-        onChange({
-          ...branding,
-          logoDataUrl: result,
-          logoMimeType: file.type,
-          logoFileName: file.name,
-        });
-      };
+      img.onerror = () => apply(result, file.type);
       img.src = result;
     };
     reader.readAsDataURL(file);
@@ -272,6 +284,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     });
     if (logoInputRef.current) logoInputRef.current.value = '';
   };
+
+  const handleRemovePage2Logo = () => {
+    onChange({
+      ...branding,
+      page2LogoDataUrl: undefined,
+      page2LogoMimeType: undefined,
+      page2LogoFileName: undefined,
+      page2LogoWidth: undefined,
+      page2LogoHeight: undefined,
+    });
+    if (page2LogoInputRef.current) page2LogoInputRef.current.value = '';
+  };
+
+  const page2LogoMode: Page2LogoMode = branding.page2LogoMode || (branding.page2LogoDataUrl ? 'page2' : 'main');
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
@@ -464,6 +490,42 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </p>
               </div>
 
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
+                <label className="block text-xs font-bold text-[#0A3D62] uppercase tracking-wide">
+                  Subtítulo de la portada (debajo del título)
+                </label>
+                <input
+                  type="text"
+                  value={currentTitles.coverSubtitle ?? ''}
+                  onChange={(e) => handleTitleChange('coverSubtitle', e.target.value)}
+                  placeholder={DEFAULT_DOCUMENT_TITLES.coverSubtitle}
+                  className="w-full bg-white border border-slate-300 focus:border-[#0A3D62] focus:ring-1 focus:ring-[#0A3D62] rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm"
+                />
+                <p className="text-[10px] text-slate-400">
+                  Por defecto: <span className="font-mono">{DEFAULT_DOCUMENT_TITLES.coverSubtitle}</span>
+                </p>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
+                <label className="block text-xs font-bold text-[#0A3D62] uppercase tracking-wide">
+                  Sección Confidencialidad (página 1)
+                </label>
+                <input
+                  type="text"
+                  value={currentTitles.confidentialityTitle ?? ''}
+                  onChange={(e) => handleTitleChange('confidentialityTitle', e.target.value)}
+                  placeholder={DEFAULT_DOCUMENT_TITLES.confidentialityTitle}
+                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm"
+                />
+                <textarea
+                  value={currentTitles.confidentialityText ?? ''}
+                  onChange={(e) => handleTitleChange('confidentialityText', e.target.value)}
+                  placeholder={DEFAULT_DOCUMENT_TITLES.confidentialityText}
+                  rows={3}
+                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-800 shadow-sm"
+                />
+              </div>
+
               {/* Individual Section Titles Grid */}
               <div className="space-y-3">
                 <h4 className="text-xs font-bold text-[#0A3D62] uppercase tracking-wider flex items-center gap-1.5">
@@ -630,6 +692,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         />
                       </div>
                     </div>
+                  </div>
+
+                  {/* Página 2 Comercial */}
+                  <div className="border rounded-xl p-3 shadow-xs bg-white border-slate-200 sm:col-span-2">
+                    <label className="text-[11px] font-bold text-slate-700 mb-1 block">
+                      Página 2 · Comercial
+                    </label>
+                    <input
+                      type="text"
+                      value={currentTitles.sectionPage2 ?? ''}
+                      onChange={(e) => handleTitleChange('sectionPage2', e.target.value)}
+                      placeholder={DEFAULT_DOCUMENT_TITLES.sectionPage2}
+                      className="w-full bg-slate-50/50 border border-slate-200 focus:bg-white focus:border-[#0A3D62] rounded-lg px-2.5 py-1.5 text-xs text-slate-800"
+                    />
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      Nombre de la sección comercial en el editor y en la vista previa. Por defecto: {DEFAULT_DOCUMENT_TITLES.sectionPage2}
+                    </p>
                   </div>
 
                   {/* Section 4 */}
@@ -1403,7 +1482,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </h3>
                 </div>
                 <p className="text-xs text-slate-500 mb-3 leading-relaxed">
-                  Este logo aparece en la barra superior, la carátula de presentación y los encabezados en los documentos Word (.docx) y PDF que generes.
+                  Este logo aparece en la barra superior, la carátula (página 1) y los encabezados de las páginas siguientes. La página comercial tiene su propio logo.
                 </p>
 
                 <input
@@ -1460,6 +1539,78 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <Upload className="w-6 h-6 mx-auto mb-2 text-[#0A3D62] group-hover:scale-110 transition-transform" />
                     <span className="block text-xs font-semibold text-slate-700">Cargar logotipo institucional</span>
                     <span className="block text-[10px] text-slate-500 mt-1">PNG, JPG o SVG — arrastra o haz clic aquí</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="pt-4 border-t border-slate-200 space-y-3">
+                <div className="flex items-center gap-2">
+                  <ImageIcon className="w-4 h-4 text-[#1E5F8A]" />
+                  <h3 className="text-xs font-bold text-[#0A3D62] uppercase tracking-wide">
+                    Logo de la página 2 (comercial)
+                  </h3>
+                </div>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Independiente del logo de carátula y encabezados. Puedes ocultarlo, usar el logo general o uno exclusivo de esta página.
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {(
+                    [
+                      { id: 'off' as const, label: 'Ocultar' },
+                      { id: 'main' as const, label: 'Logo general' },
+                      { id: 'page2' as const, label: 'Logo página 2' },
+                    ]
+                  ).map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => onChange({ ...branding, page2LogoMode: opt.id })}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                        page2LogoMode === opt.id
+                          ? 'bg-[#0A3D62] text-white border-[#0A3D62]'
+                          : 'bg-white text-slate-600 border-slate-200 hover:border-[#1E5F8A]'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="file"
+                  ref={page2LogoInputRef}
+                  accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) applyLogoFromFile(file, 'page2');
+                  }}
+                />
+                {branding.page2LogoDataUrl ? (
+                  <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl p-3.5 min-w-0">
+                    <div className="h-16 w-28 shrink-0 rounded-lg bg-white border border-slate-200 flex items-center justify-center overflow-hidden p-1">
+                      <img src={branding.page2LogoDataUrl} alt="Logo página 2" className="max-h-full max-w-full object-contain" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-[#0A3D62] truncate">{branding.page2LogoFileName || 'Logo página 2'}</p>
+                      <p className="text-[10px] text-slate-500">Solo se usa en la hoja comercial si eliges “Logo página 2”</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemovePage2Logo}
+                      className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors shrink-0"
+                      title="Quitar logo de página 2"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => page2LogoInputRef.current?.click()}
+                    className="w-full border-2 border-dashed border-slate-300 hover:border-[#1E5F8A] bg-slate-50 hover:bg-blue-50/40 rounded-xl p-5 text-center transition-all"
+                  >
+                    <Upload className="w-5 h-5 mx-auto mb-1.5 text-[#1E5F8A]" />
+                    <span className="block text-xs font-semibold text-slate-700">Cargar logo exclusivo de página 2</span>
                   </button>
                 )}
               </div>

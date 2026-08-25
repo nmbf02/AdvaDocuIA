@@ -53,13 +53,15 @@ import {
   saveBackupConfig,
   formatBytes,
   frequencyToLabel,
-  getNextDailyBackupInfo,
+  getDailyBackupStatus,
   getTodayDateString,
   isFileSystemAccessSupported,
   requestTargetDirectory,
   getStoredDirectoryHandle,
   removeStoredDirectoryHandle,
-  saveBackupToDiskFolderOrDownload
+  reconnectLinkedFolderPermission,
+  persistBackupToPc,
+  fetchDefaultBackupFolder,
 } from '../utils/backupManager';
 
 interface BackupModalProps {
@@ -108,10 +110,19 @@ export const BackupModal: React.FC<BackupModalProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [isDailyTesting, setIsDailyTesting] = useState(false);
 
   // Storage Health State
   const [storageInfo, setStorageInfo] = useState(getStorageHealthInfo());
   const isFsSupported = isFileSystemAccessSupported();
+  const [statusNow, setStatusNow] = useState(() => new Date());
+  const [folderPathDraft, setFolderPathDraft] = useState(backupConfig.targetDirectoryPath || '');
+
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'config') return;
+    const tick = window.setInterval(() => setStatusNow(new Date()), 1000);
+    return () => window.clearInterval(tick);
+  }, [isOpen, activeTab]);
 
   // Reload snapshots on open or tab change
   const refreshSnapshots = () => {
@@ -127,8 +138,25 @@ export const BackupModal: React.FC<BackupModalProps> = ({
       setSuccessMessage(null);
       setIsCreatingManual(false);
       setManualNote('');
+      setFolderPathDraft(backupConfig.targetDirectoryPath || '');
+      if (!backupConfig.targetDirectoryPath) {
+        void fetchDefaultBackupFolder().then((folder) => {
+          if (!folder) return;
+          setFolderPathDraft(folder);
+          const next = {
+            ...backupConfig,
+            targetDirectoryPath: folder,
+            targetDirectoryName: folder,
+          };
+          onUpdateBackupConfig(next);
+          saveBackupConfig(next);
+        });
+      }
+      if (backupConfig.targetDirectoryName && !backupConfig.targetDirectoryPath) {
+        void reconnectLinkedFolderPermission();
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, backupConfig.targetDirectoryName]);
 
   if (!isOpen) return null;
 
@@ -193,6 +221,10 @@ export const BackupModal: React.FC<BackupModalProps> = ({
 
   // Handle Daily Scheduled Backup Test Run
   const handleTriggerDailyTest = async () => {
+    if (isDailyTesting) return;
+    setIsDailyTesting(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
     try {
       const backupData: AppBackupData = {
         version: '1.0',
@@ -210,63 +242,83 @@ export const BackupModal: React.FC<BackupModalProps> = ({
         freeNotes: freeNotes || [],
       };
 
+      const scheduleTime = backupConfig.dailyScheduleTime || '18:00';
       const newSnap = createAndSaveSnapshot(
         backupData,
         'daily_schedule',
-        `Copia diaria programada (${backupConfig.dailyScheduleTime || '18:00'})`,
+        `Copia diaria programada (${scheduleTime})`,
         backupConfig.maxSnapshots
       );
 
-      if (newSnap) {
-        const todayStr = getTodayDateString();
-        const updatedConfig = { ...backupConfig, lastDailyBackupDate: todayStr };
-        onUpdateBackupConfig(updatedConfig);
-        saveBackupConfig(updatedConfig);
-        refreshSnapshots();
-        
-        let saveResultInfo = '';
-        if (backupConfig.dailyAutoDownloadJson || backupConfig.autoDownloadDailyToDisk) {
-          const res = await saveBackupToDiskFolderOrDownload(
-            backupData,
-            `Advansys_Backup_Diario_${backupConfig.dailyScheduleTime.replace(':', '')}`
-          );
-          if (res.success) {
-            saveResultInfo = res.method === 'direct_folder'
-              ? ` y guardado en carpeta "${res.folderName}"`
-              : ' y descargado en tu equipo';
-          }
-        }
+      const folder =
+        (backupConfig.targetDirectoryPath || folderPathDraft || '').trim() ||
+        (await fetchDefaultBackupFolder());
 
-        setSuccessMessage(`¡Copia diaria registrada con éxito (${backupConfig.dailyScheduleTime})${saveResultInfo}!`);
-        setTimeout(() => setSuccessMessage(null), 5000);
+      const res = await persistBackupToPc(
+        backupData,
+        `Advansys_Backup_Diario_${scheduleTime.replace(':', '')}`,
+        {
+          directoryPath: folder,
+          allowBrowserDownload: false,
+        }
+      );
+
+      if (!res.success) {
+        setErrorMessage(res.error || 'No se pudo escribir el archivo en la carpeta.');
+        if (!newSnap) {
+          setErrorMessage(
+            (res.error || 'No se pudo escribir en disco.') +
+              ' Tampoco se pudo guardar el punto en el navegador (memoria llena).'
+          );
+        }
+        return;
       }
+
+      const todayStr = getTodayDateString();
+      const clock = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const updatedConfig = {
+        ...backupConfig,
+        lastDailyBackupDate: todayStr,
+        lastDailyBackupClock: clock,
+        targetDirectoryPath: folder || backupConfig.targetDirectoryPath,
+        targetDirectoryName: folder || backupConfig.targetDirectoryName,
+      };
+      onUpdateBackupConfig(updatedConfig);
+      saveBackupConfig(updatedConfig);
+      refreshSnapshots();
+      if (folder) setFolderPathDraft(folder);
+
+      setSuccessMessage(
+        res.fullPath
+          ? `Copia diaria de prueba escrita en: ${res.fullPath}`
+          : `Copia diaria de prueba guardada en "${res.folderName}".`
+      );
+      setTimeout(() => setSuccessMessage(null), 8000);
     } catch (err: any) {
-      setErrorMessage(`Error al ejecutar copia diaria: ${err.message}`);
+      setErrorMessage(`Error al ejecutar copia diaria: ${err?.message || String(err)}`);
+    } finally {
+      setIsDailyTesting(false);
     }
   };
 
   // Select Target Directory on PC Disk
-  const handleSelectTargetDirectory = async () => {
-    try {
-      const res = await requestTargetDirectory();
-      if (res.success && res.dirName) {
-        const next: AutoBackupConfig = {
-          ...backupConfig,
-          targetDirectoryName: res.dirName,
-          autoDownloadDailyToDisk: true,
-          dailyAutoDownloadJson: true,
-        };
-        onUpdateBackupConfig(next);
-        saveBackupConfig(next);
-        setSuccessMessage(`¡Carpeta vinculada: "${res.dirName}"! Las copias se guardarán directamente en ella.`);
-        setTimeout(() => setSuccessMessage(null), 5000);
-      } else if (res.error) {
-        setErrorMessage(res.error);
-        setTimeout(() => setErrorMessage(null), 5000);
-      }
-    } catch (e: any) {
-      setErrorMessage(`Error al vincular carpeta: ${e.message}`);
+  const handleApplyFolderPath = () => {
+    const folder = folderPathDraft.trim();
+    if (!folder) {
+      setErrorMessage('Escribe la ruta completa de la carpeta, por ejemplo C:\\AdvaDocuIA\\backups');
+      return;
     }
+    const next: AutoBackupConfig = {
+      ...backupConfig,
+      targetDirectoryPath: folder,
+      targetDirectoryName: folder,
+      autoDownloadDailyToDisk: true,
+      dailyAutoDownloadJson: true,
+    };
+    onUpdateBackupConfig(next);
+    saveBackupConfig(next);
+    setSuccessMessage(`Las copias se escribirán en: ${folder}`);
+    setTimeout(() => setSuccessMessage(null), 4000);
   };
 
   // Remove Target Directory Link
@@ -275,6 +327,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
     const next: AutoBackupConfig = {
       ...backupConfig,
       targetDirectoryName: null,
+      targetDirectoryPath: null,
     };
     onUpdateBackupConfig(next);
     saveBackupConfig(next);
@@ -302,13 +355,12 @@ export const BackupModal: React.FC<BackupModalProps> = ({
         freeNotes: freeNotes || [],
       };
 
-      const res = await saveBackupToDiskFolderOrDownload(backupData, 'Advansys_Backup_Test');
+      const res = await persistBackupToPc(backupData, 'Advansys_Backup_Test', {
+        directoryPath: backupConfig.targetDirectoryPath || folderPathDraft,
+        allowBrowserDownload: false,
+      });
       if (res.success) {
-        if (res.method === 'direct_folder') {
-          setSuccessMessage(`¡Archivo guardado directamente en la carpeta "${res.folderName}": ${res.filename}!`);
-        } else {
-          setSuccessMessage(`¡Archivo descargado a tu equipo con éxito: ${res.filename}!`);
-        }
+        setSuccessMessage(`Archivo escrito en: ${res.fullPath || res.folderName}`);
         setTimeout(() => setSuccessMessage(null), 5000);
       } else {
         setErrorMessage(`Error al guardar en disco: ${res.error}`);
@@ -880,7 +932,12 @@ export const BackupModal: React.FC<BackupModalProps> = ({
                         value={backupConfig.dailyScheduleTime || '18:00'}
                         onChange={(e) => {
                           const val = e.target.value || '18:00';
-                          const next = { ...backupConfig, dailyScheduleTime: val };
+                          const next = {
+                            ...backupConfig,
+                            dailyScheduleTime: val,
+                            lastDailyBackupDate: null,
+                            lastDailyBackupClock: null,
+                          };
                           onUpdateBackupConfig(next);
                           saveBackupConfig(next);
                         }}
@@ -908,7 +965,12 @@ export const BackupModal: React.FC<BackupModalProps> = ({
                             key={preset.time}
                             type="button"
                             onClick={() => {
-                              const next = { ...backupConfig, dailyScheduleTime: preset.time };
+                              const next = {
+                                ...backupConfig,
+                                dailyScheduleTime: preset.time,
+                                lastDailyBackupDate: null,
+                                lastDailyBackupClock: null,
+                              };
                               onUpdateBackupConfig(next);
                               saveBackupConfig(next);
                             }}
@@ -930,98 +992,62 @@ export const BackupModal: React.FC<BackupModalProps> = ({
 
                   {/* Local PC Target Folder Section */}
                   <div className="bg-purple-50/70 dark:bg-purple-950/30 p-3.5 rounded-xl border border-purple-200 dark:border-purple-800/80 space-y-3">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-1.5">
-                          <Folder className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                          <h4 className="text-xs font-bold text-slate-900 dark:text-white">
-                            Carpeta de Destino en el Disco de tu PC
-                          </h4>
-                        </div>
-                        <p className="text-[11px] text-slate-600 dark:text-slate-300">
-                          {backupConfig.targetDirectoryName
-                            ? `Los archivos diarios se escribirán directamente en tu carpeta "${backupConfig.targetDirectoryName}".`
-                            : 'Selecciona una carpeta en tu disco local (ej. C:\\Backups) para guardar sin confirmación manual.'}
-                        </p>
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <Folder className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                        <h4 className="text-xs font-bold text-slate-900 dark:text-white">
+                          Carpeta real en tu PC (ruta completa)
+                        </h4>
                       </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        {backupConfig.targetDirectoryName ? (
-                          <div className="flex items-center gap-1.5">
-                            <span className="inline-flex items-center gap-1 bg-white dark:bg-slate-800 px-2.5 py-1.5 rounded-lg border border-purple-300 dark:border-purple-700 text-xs font-bold text-purple-900 dark:text-purple-300">
-                              <FolderCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                              {backupConfig.targetDirectoryName}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={handleSelectTargetDirectory}
-                              className="px-2.5 py-1.5 bg-purple-100 hover:bg-purple-200 dark:bg-purple-900/60 text-purple-900 dark:text-purple-200 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
-                              title="Cambiar carpeta"
-                            >
-                              Cambiar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={handleRemoveTargetDirectory}
-                              className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors cursor-pointer"
-                              title="Desvincular carpeta"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={handleSelectTargetDirectory}
-                            className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
-                          >
-                            <FolderPlus className="w-3.5 h-3.5" />
-                            <span>Seleccionar Carpeta en mi PC</span>
-                          </button>
-                        )}
-                      </div>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                        Los archivos se crean aquí, no en Descargas. Por defecto: carpeta <strong>backups</strong> dentro del proyecto.
+                      </p>
                     </div>
 
-                    {/* Checkbox auto-save to disk */}
-                    <div className="flex items-center justify-between gap-4 pt-2 border-t border-purple-200/60 dark:border-purple-800/40">
-                      <div>
-                        <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                          Guardar archivo físico .JSON en el disco cada vez que se ejecute la copia diaria
-                        </p>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                          {backupConfig.targetDirectoryName
-                            ? `Se guardará directo en la carpeta "${backupConfig.targetDirectoryName}".`
-                            : 'Se descargará automáticamente a tu carpeta de Descargas.'}
-                        </p>
-                      </div>
+                    <div className="flex flex-col sm:flex-row gap-2">
                       <input
-                        type="checkbox"
-                        checked={backupConfig.dailyAutoDownloadJson || backupConfig.autoDownloadDailyToDisk}
-                        onChange={(e) => {
-                          const next = { 
-                            ...backupConfig, 
-                            dailyAutoDownloadJson: e.target.checked,
-                            autoDownloadDailyToDisk: e.target.checked
-                          };
-                          onUpdateBackupConfig(next);
-                          saveBackupConfig(next);
-                        }}
-                        className="w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-600 cursor-pointer"
+                        type="text"
+                        value={folderPathDraft}
+                        onChange={(e) => setFolderPathDraft(e.target.value)}
+                        placeholder="C:\AdvaDocuIA\backups"
+                        className="flex-1 px-3 py-2 text-xs font-mono rounded-xl border border-purple-300 dark:border-purple-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
                       />
+                      <button
+                        type="button"
+                        onClick={handleApplyFolderPath}
+                        className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold cursor-pointer shrink-0"
+                      >
+                        Usar esta ruta
+                      </button>
                     </div>
+
+                    {backupConfig.targetDirectoryPath && (
+                      <p className="text-[11px] font-semibold text-emerald-800 dark:text-emerald-300 break-all">
+                        Guardando en: {backupConfig.targetDirectoryPath}
+                      </p>
+                    )}
                   </div>
 
                   {/* Status banner and Test execution button */}
-                  <div className="bg-white/80 dark:bg-slate-900/60 p-3 rounded-xl border border-purple-200 dark:border-purple-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  {(() => {
+                    const dailyStatus = getDailyBackupStatus(backupConfig, statusNow);
+                    const tone =
+                      dailyStatus.state === 'done'
+                        ? 'border-emerald-300 bg-emerald-50/90 dark:bg-emerald-950/30 dark:border-emerald-800'
+                        : dailyStatus.state === 'due'
+                          ? 'border-amber-300 bg-amber-50/90 dark:bg-amber-950/30 dark:border-amber-800'
+                          : 'border-purple-200 bg-white/80 dark:bg-slate-900/60 dark:border-purple-800';
+                    return (
+                  <div className={`${tone} p-3 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3`}>
                     <div className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
                       <Info className="w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0" />
                       <div>
                         <span className="font-bold">
-                          {getNextDailyBackupInfo(backupConfig).nextRunLabel}
+                          {dailyStatus.title}
                         </span>
-                        {backupConfig.lastDailyBackupDate && (
+                        {dailyStatus.detail && (
                           <span className="text-[11px] text-slate-500 dark:text-slate-400 block">
-                            Última copia diaria completada: {backupConfig.lastDailyBackupDate}
+                            {dailyStatus.detail}
                           </span>
                         )}
                       </div>
@@ -1031,14 +1057,17 @@ export const BackupModal: React.FC<BackupModalProps> = ({
                       <button
                         type="button"
                         onClick={handleTriggerDailyTest}
-                        className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm shrink-0"
+                        disabled={isDailyTesting}
+                        className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm shrink-0 disabled:opacity-60 disabled:cursor-wait"
                         title="Prueba la ejecución diaria creando una copia ahora"
                       >
-                        <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                        <span>Ejecutar copia diaria ahora (Prueba)</span>
+                        <Sparkles className={`w-3.5 h-3.5 text-amber-300 ${isDailyTesting ? 'animate-pulse' : ''}`} />
+                        <span>{isDailyTesting ? 'Guardando copia…' : 'Ejecutar copia diaria ahora (Prueba)'}</span>
                       </button>
                     </div>
                   </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>
@@ -1080,7 +1109,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
                   Frecuencia de Guardado Automático
                 </h4>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Intervalo de tiempo con el que se registrará un nuevo punto si hubo actividad o cambios.
+                  Intervalo de tiempo con el que se registrará un nuevo punto. La primera copia se toma a los pocos segundos de activarlo; si hay carpeta vinculada, también se escribe el .JSON en disco.
                 </p>
               </div>
 
@@ -1278,16 +1307,16 @@ export const BackupModal: React.FC<BackupModalProps> = ({
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
-                  {backupConfig.targetDirectoryName && (
+                  {backupConfig.targetDirectoryPath && (
                     <button
                       type="button"
                       onClick={handleTestDiskSave}
                       disabled={isExporting}
                       className="px-3.5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-50"
-                      title={`Guardar directo en ${backupConfig.targetDirectoryName}`}
+                      title={`Guardar en ${backupConfig.targetDirectoryPath}`}
                     >
                       <FolderCheck className="w-4 h-4 text-amber-300" />
-                      <span>Guardar en "{backupConfig.targetDirectoryName}"</span>
+                      <span>Escribir copia de prueba en disco</span>
                     </button>
                   )}
                   <button

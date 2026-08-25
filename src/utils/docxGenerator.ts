@@ -19,9 +19,17 @@ import {
   HorizontalPositionRelativeFrom,
   VerticalPositionRelativeFrom,
   TextWrappingType,
+  FrameAnchorType,
+  FrameWrap,
+  LineRuleType,
+  VerticalAlign,
+  TableAnchorType,
+  RelativeVerticalPosition,
+  OverlapType,
 } from 'docx';
-import { MetadataHeader, ProposalSection, UploadedImage, DocumentTable, getEffectiveTitles } from '../types';
-import { getAdvansysBannerSvg } from '../data/banner';
+import { MetadataHeader, ProposalSection, UploadedImage, DocumentTable, getEffectiveTitles, COVER_SCOPE_MAX_ITEMS, getEffectiveCommercialPage, formatUsd, parseCommercialNumber, resolvePage2LogoDataUrl, getSubsections, subsectionHasContent, sectionHasBodyOrSubs, NestedSectionField } from '../types';
+import { getAdvansysBannerSvg, getCoverInfoCardSvg } from '../data/banner';
+import { formatFechaEs } from './dateFormat';
 import { fitImageSize } from './imageLayout';
 import { createDocxImageBlock } from './imageDocx';
 import { prepareImageForDocx, DocxRasterType } from './imageExport';
@@ -59,7 +67,7 @@ function createSectionHeader(title: string, sectionNumber?: string, pageBreakBef
     text: '',
     heading: HeadingLevel.HEADING_2,
     pageBreakBefore,
-    spacing: { before: 360, after: 180 },
+    spacing: { before: 360, after: 180, line: 360, lineRule: LineRuleType.AUTO },
     border: {
       bottom: {
         color: COLOR_ACCENT_GREEN,
@@ -86,6 +94,30 @@ function createSectionHeader(title: string, sectionNumber?: string, pageBreakBef
         font: 'Calibri',
       })
     ]
+  });
+}
+
+function createSubsectionHeader(sectionNumber: string, index: number, title: string): Paragraph {
+  const label = title.trim() || `Subsección ${index}`;
+  return new Paragraph({
+    heading: HeadingLevel.HEADING_3,
+    spacing: { before: 220, after: 80 },
+    children: [
+      new TextRun({
+        text: `${sectionNumber}.${index}  `,
+        bold: true,
+        color: COLOR_ACCENT_GREEN,
+        size: 22,
+        font: 'Calibri',
+      }),
+      new TextRun({
+        text: label,
+        bold: true,
+        color: COLOR_PRIMARY_BLUE,
+        size: 22,
+        font: 'Calibri',
+      }),
+    ],
   });
 }
 
@@ -279,7 +311,7 @@ function createContentTable(table: DocumentTable): Table {
   });
 }
 
-function parseBoldRuns(text: string): TextRun[] {
+function parseBoldRuns(text: string, size = 22): TextRun[] {
   const runs: TextRun[] = [];
   const parts = text.split(/(\*\*[^*]+\*\*)/g);
   for (const part of parts) {
@@ -290,7 +322,7 @@ function parseBoldRuns(text: string): TextRun[] {
           text: part.slice(2, -2),
           bold: true,
           color: COLOR_TEXT_DARK,
-          size: 22,
+          size,
           font: 'Calibri',
         })
       );
@@ -299,13 +331,39 @@ function parseBoldRuns(text: string): TextRun[] {
         new TextRun({
           text: part,
           color: COLOR_TEXT_DARK,
-          size: 22,
+          size,
           font: 'Calibri',
         })
       );
     }
   }
-  return runs.length > 0 ? runs : [new TextRun({ text: text, color: COLOR_TEXT_DARK, size: 22, font: 'Calibri' })];
+  return runs.length > 0 ? runs : [new TextRun({ text: text, color: COLOR_TEXT_DARK, size, font: 'Calibri' })];
+}
+
+const NO_BORDER = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
+const CARD_BORDER = { style: BorderStyle.SINGLE, size: 8, color: 'E2E8F0' };
+
+function emptyPara() {
+  return new Paragraph({ children: [new TextRun({ text: '', size: 2 })] });
+}
+
+function appendSubsections(
+  target: (Paragraph | Table)[],
+  proposal: ProposalSection,
+  field: NestedSectionField,
+  sectionNumber: string,
+  tables: DocumentTable[],
+  used: Set<number>,
+  imageMapByIndex?: Map<number, ProcessedImage>
+) {
+  getSubsections(proposal, field)
+    .filter(subsectionHasContent)
+    .forEach((sub, i) => {
+      target.push(createSubsectionHeader(sectionNumber, i + 1, sub.title));
+      if (sub.body?.trim()) {
+        pushTextWithTables(target, sub.body.trim(), tables, used, imageMapByIndex);
+      }
+    });
 }
 
 function pushTextWithTables(
@@ -500,10 +558,20 @@ export async function generateAdvansysDocx(
   }
 
   try {
+    const titlesForBanner = getEffectiveTitles(metadata.customTitles);
     const bannerSvg = getAdvansysBannerSvg(
       metadata.headerBrandTag || 'ADVANSYS',
-      metadata.headerSubtitle ?? '',
-      metadata.logoDataUrl
+      titlesForBanner.coverSubtitle,
+      metadata.logoDataUrl,
+      {
+        coverTitle: titlesForBanner.mainTitle,
+        cliente: metadata.cliente,
+        fecha: formatFechaEs(metadata.fecha),
+        ticketNo: metadata.ticketNo,
+        propuestaNo: metadata.propuestaNo,
+        showInfoCard: true,
+        omitPropuestaValue: true,
+      }
     );
     const bannerImgData = await prepareImageForDocx(bannerSvg, 'image/svg+xml');
     if (bannerImgData && bannerImgData.data && bannerImgData.data.length > 0) {
@@ -516,8 +584,8 @@ export async function generateAdvansysDocx(
               data: bannerImgData.data,
               type: bannerImgData.type,
               transformation: {
-                width: 816, // 8.5 inches at 96 DPI (Full page width)
-                height: 204, // Aspect ratio 4:1
+                width: 816,
+                height: 270,
               },
               floating: {
                 horizontalPosition: {
@@ -528,6 +596,8 @@ export async function generateAdvansysDocx(
                   relative: VerticalPositionRelativeFrom.PAGE,
                   offset: 0,
                 },
+                allowOverlap: true,
+                behindDocument: true,
                 wrap: {
                   type: TextWrappingType.TOP_AND_BOTTOM,
                 },
@@ -547,26 +617,72 @@ export async function generateAdvansysDocx(
 
   const titles = getEffectiveTitles(metadata.customTitles);
 
-  // Top Title Block (Positioned cleanly right below the cover header banner without empty gaps)
+  // Real Word text (not part of the banner image) so Propuesta No. can be edited in the document
   docElements.push(
     new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { before: 180, after: 200 },
+      frame: {
+        width: 2900,
+        height: 480,
+        anchor: {
+          horizontal: FrameAnchorType.PAGE,
+          vertical: FrameAnchorType.PAGE,
+        },
+        position: {
+          x: 9320,
+          y: 2960,
+        },
+      },
+      spacing: { before: 0, after: 0 },
       children: [
         new TextRun({
-          text: titles.mainTitle,
+          text: metadata.propuestaNo?.trim() || '—',
           bold: true,
           color: COLOR_PRIMARY_BLUE,
-          size: 32, // 16pt
+          size: 28,
           font: 'Calibri',
         }),
       ],
     })
   );
 
-  // Metadata Table
-  docElements.push(createMetadataTable(metadata));
-  docElements.push(new Paragraph({ text: '', spacing: { after: 240 } }));
+  docElements.push(
+    new Paragraph({
+      spacing: { before: 80, after: 40 },
+      children: [
+        new TextRun({
+          text: 'PROYECTO',
+          bold: true,
+          color: COLOR_ACCENT_GREEN,
+          size: 18,
+          font: 'Calibri',
+        }),
+      ],
+    }),
+    new Paragraph({
+      spacing: { before: 0, after: 40 },
+      children: [
+        new TextRun({
+          text: metadata.nombreProyecto || 'Nombre del análisis',
+          bold: true,
+          color: COLOR_PRIMARY_BLUE,
+          size: 36,
+          font: 'Calibri',
+        }),
+      ],
+    }),
+    new Paragraph({
+      spacing: { before: 0, after: 240 },
+      children: [
+        new TextRun({
+          text: metadata.moduloAplicacion || 'Aplicación o módulo',
+          bold: true,
+          color: COLOR_SECONDARY_BLUE,
+          size: 22,
+          font: 'Calibri',
+        }),
+      ],
+    })
+  );
 
   // Track page 2 break so first section after sections 1-3 triggers page break
   let page2BreakEmitted = false;
@@ -578,144 +694,705 @@ export async function generateAdvansysDocx(
     return false;
   };
 
-  // 1. Resumen Ejecutivo
-  const hasSection1 = !titles.hideSection1 && Boolean(proposal.resumenEjecutivo && proposal.resumenEjecutivo.trim());
-  if (hasSection1) {
-    docElements.push(createSectionHeader(titles.section1, '1'));
-    pushTextWithTables(docElements, proposal.resumenEjecutivo.trim(), contentTables, usedTables, imageMapByIndex);
-  }
-
-  // 2. Beneficios de la Propuesta
-  const validBeneficios = (proposal.beneficios || []).filter((b) => b && b.trim().length > 0);
+  // 1-2. Resumen + Beneficios (two columns)
+  const resumenSubs = getSubsections(proposal, 'resumenEjecutivo');
+  const hasSection1 =
+    !titles.hideSection1 && sectionHasBodyOrSubs(proposal.resumenEjecutivo, resumenSubs);
+  const validBeneficios = (proposal.beneficios || []).filter((b) => b && b.trim().length > 0).slice(0, COVER_SCOPE_MAX_ITEMS);
   const hasSection2 = !titles.hideSection2 && validBeneficios.length > 0;
-  if (hasSection2) {
-    docElements.push(createSectionHeader(titles.section2, '2'));
-    validBeneficios.forEach((b) => {
-      docElements.push(
-        new Paragraph({
-          bullet: { level: 0 },
-          spacing: { before: 60, after: 60 },
-          children: parseBoldRuns(b),
-        })
-      );
-    });
+
+  if (hasSection1 || hasSection2) {
+    const leftChildren = hasSection1
+      ? [
+          new Paragraph({
+            spacing: { before: 0, after: 80, line: 360, lineRule: LineRuleType.AUTO },
+            border: { bottom: { color: COLOR_ACCENT_GREEN, space: 4, style: BorderStyle.SINGLE, size: 12 } },
+            children: [
+              new TextRun({
+                text: titles.section1.toUpperCase(),
+                bold: true,
+                color: COLOR_PRIMARY_BLUE,
+                size: 22,
+                font: 'Calibri',
+              }),
+            ],
+          }),
+          ...(proposal.resumenEjecutivo?.trim()
+            ? [
+                new Paragraph({
+                  spacing: { before: 80, after: 80, line: 276, lineRule: LineRuleType.AUTO },
+                  children: parseBoldRuns(proposal.resumenEjecutivo.trim(), 18),
+                }),
+              ]
+            : []),
+          ...(() => {
+            const extra: (Paragraph | Table)[] = [];
+            appendSubsections(extra, proposal, 'resumenEjecutivo', '1', contentTables, usedTables, imageMapByIndex);
+            return extra;
+          })(),
+        ]
+      : [new Paragraph({ children: [] })];
+
+    const rightChildren = hasSection2
+      ? [
+          new Paragraph({
+            spacing: { before: 0, after: 80, line: 360, lineRule: LineRuleType.AUTO },
+            border: { bottom: { color: COLOR_ACCENT_GREEN, space: 4, style: BorderStyle.SINGLE, size: 12 } },
+            children: [
+              new TextRun({
+                text: titles.section2.toUpperCase(),
+                bold: true,
+                color: COLOR_PRIMARY_BLUE,
+                size: 22,
+                font: 'Calibri',
+              }),
+            ],
+          }),
+          ...validBeneficios.map(
+            (b) =>
+              new Paragraph({
+                spacing: { before: 60, after: 40, line: 276, lineRule: LineRuleType.AUTO },
+                children: [
+                  new TextRun({ text: '✓  ', bold: true, color: COLOR_ACCENT_GREEN, size: 18, font: 'Calibri' }),
+                  ...parseBoldRuns(b, 18),
+                ],
+              })
+          ),
+        ]
+      : [new Paragraph({ children: [] })];
+
+    docElements.push(
+      new Table({
+        width: { size: 9520, type: WidthType.DXA },
+        columnWidths: [4760, 4760],
+        borders: {
+          top: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+          bottom: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+          left: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+          right: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+          insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+          insideVertical: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+        },
+        rows: [
+          new TableRow({
+            children: [
+              new TableCell({
+                width: { size: 4760, type: WidthType.DXA },
+                margins: { top: 60, bottom: 60, left: 0, right: 140 },
+                children: leftChildren,
+              }),
+              new TableCell({
+                width: { size: 4760, type: WidthType.DXA },
+                margins: { top: 60, bottom: 60, left: 140, right: 0 },
+                children: rightChildren,
+              }),
+            ],
+          }),
+        ],
+      })
+    );
   }
 
-  // 3. Alcance, Exclusiones y Entregables
-  const validAlcance = (proposal.alcanceExclusionesEntregables?.alcance || []).filter((i) => i && i.trim().length > 0);
-  const validExclusiones = (proposal.alcanceExclusionesEntregables?.exclusiones || []).filter((i) => i && i.trim().length > 0);
-  const validEntregables = (proposal.alcanceExclusionesEntregables?.entregables || []).filter((i) => i && i.trim().length > 0);
+  // 3. Alcance, Exclusiones y Entregables — 3-column grid, max 3 items
+  const validAlcance = (proposal.alcanceExclusionesEntregables?.alcance || [])
+    .filter((i) => i && i.trim().length > 0)
+    .slice(0, COVER_SCOPE_MAX_ITEMS);
+  const validExclusiones = (proposal.alcanceExclusionesEntregables?.exclusiones || [])
+    .filter((i) => i && i.trim().length > 0)
+    .slice(0, COVER_SCOPE_MAX_ITEMS);
+  const validEntregables = (proposal.alcanceExclusionesEntregables?.entregables || [])
+    .filter((i) => i && i.trim().length > 0)
+    .slice(0, COVER_SCOPE_MAX_ITEMS);
   const hasSection3_1 = !titles.hideSection3_1 && validAlcance.length > 0;
   const hasSection3_2 = !titles.hideSection3_2 && validExclusiones.length > 0;
   const hasSection3_3 = !titles.hideSection3_3 && validEntregables.length > 0;
   const hasSection3 = !titles.hideSection3 && (hasSection3_1 || hasSection3_2 || hasSection3_3);
 
+  const GAP = 160;
+  const CARD_W = Math.floor((9520 - GAP * 2) / 3);
+  const CARD_LAST = 9520 - CARD_W * 2 - GAP * 2;
+
+  const spacerCell = () =>
+    new TableCell({
+      width: { size: GAP, type: WidthType.DXA },
+      borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER },
+      children: [emptyPara()],
+    });
+
+  const gridCell = (heading: string, items: string[], color: string, width: number) =>
+    new TableCell({
+      width: { size: width, type: WidthType.DXA },
+      shading: { fill: 'FFFFFF', type: ShadingType.CLEAR },
+      margins: { top: 160, bottom: 160, left: 160, right: 160 },
+      borders: {
+        top: CARD_BORDER,
+        bottom: CARD_BORDER,
+        left: CARD_BORDER,
+        right: CARD_BORDER,
+      },
+      children: [
+        new Paragraph({
+          spacing: { before: 0, after: 120, line: 360, lineRule: LineRuleType.AUTO },
+          children: [
+            new TextRun({
+              text: heading.replace(/^3\.\d\s*/, '').toUpperCase(),
+              bold: true,
+              color,
+              size: 18,
+              font: 'Calibri',
+            }),
+          ],
+        }),
+        ...(items.length
+          ? items.map(
+              (item) =>
+                new Paragraph({
+                  spacing: { before: 60, after: 60, line: 276, lineRule: LineRuleType.AUTO },
+                  children: parseBoldRuns(item, 18),
+                })
+            )
+          : [emptyPara()]),
+      ],
+    });
+
   if (hasSection3) {
-    docElements.push(createSectionHeader(titles.section3, '3'));
-
-    // Alcance
-    if (hasSection3_1) {
-      docElements.push(
-        new Paragraph({
-          spacing: { before: 120, after: 60 },
-          children: [
-            new TextRun({
-              text: titles.section3_1.startsWith('3.1') ? titles.section3_1 : `3.1 ${titles.section3_1}`,
-              bold: true,
-              color: COLOR_SECONDARY_BLUE,
-              size: 24,
-              font: 'Calibri',
-            }),
-          ],
-        })
-      );
-      validAlcance.forEach((item) => {
-        docElements.push(
-          new Paragraph({
-            bullet: { level: 0 },
-            spacing: { before: 40, after: 40 },
-            children: parseBoldRuns(item),
-          })
-        );
-      });
-    }
-
-    // Exclusiones
-    if (hasSection3_2) {
-      docElements.push(
-        new Paragraph({
-          spacing: { before: 120, after: 60 },
-          children: [
-            new TextRun({
-              text: titles.section3_2.startsWith('3.2') ? titles.section3_2 : `3.2 ${titles.section3_2}`,
-              bold: true,
-              color: COLOR_SECONDARY_BLUE,
-              size: 24,
-              font: 'Calibri',
-            }),
-          ],
-        })
-      );
-      validExclusiones.forEach((item) => {
-        docElements.push(
-          new Paragraph({
-            bullet: { level: 0 },
-            spacing: { before: 40, after: 40 },
-            children: parseBoldRuns(item),
-          })
-        );
-      });
-    }
-
-    // Entregables
-    if (hasSection3_3) {
-      docElements.push(
-        new Paragraph({
-          spacing: { before: 120, after: 60 },
-          children: [
-            new TextRun({
-              text: titles.section3_3.startsWith('3.3') ? titles.section3_3 : `3.3 ${titles.section3_3}`,
-              bold: true,
-              color: COLOR_SECONDARY_BLUE,
-              size: 24,
-              font: 'Calibri',
-            }),
-          ],
-        })
-      );
-      validEntregables.forEach((item) => {
-        docElements.push(
-          new Paragraph({
-            bullet: { level: 0 },
-            spacing: { before: 40, after: 40 },
-            children: parseBoldRuns(item),
-          })
-        );
-      });
-    }
+    docElements.push(createSectionHeader(titles.section3));
+    docElements.push(
+      new Table({
+        width: { size: 9520, type: WidthType.DXA },
+        columnWidths: [CARD_W, GAP, CARD_W, GAP, CARD_LAST],
+        borders: {
+          top: NO_BORDER,
+          bottom: NO_BORDER,
+          left: NO_BORDER,
+          right: NO_BORDER,
+          insideHorizontal: NO_BORDER,
+          insideVertical: NO_BORDER,
+        },
+        rows: [
+          new TableRow({
+            children: [
+              gridCell(titles.section3_1, hasSection3_1 ? validAlcance : [], COLOR_SECONDARY_BLUE, CARD_W),
+              spacerCell(),
+              gridCell(titles.section3_2, hasSection3_2 ? validExclusiones : [], COLOR_PRIMARY_BLUE, CARD_W),
+              spacerCell(),
+              gridCell(titles.section3_3, hasSection3_3 ? validEntregables : [], '047857', CARD_LAST),
+            ],
+          }),
+        ],
+      })
+    );
   }
 
-  // 4. Objetivo (Starts on Page 2 after Section 3 if present)
-  const hasSection4 = !titles.hideSection4 && Boolean(proposal.objetivo && proposal.objetivo.trim());
+  if (!titles.hideConfidentiality) {
+    docElements.push(
+      new Paragraph({
+        spacing: { before: 280, after: 80, line: 360, lineRule: LineRuleType.AUTO },
+        children: [
+          new TextRun({
+            text: titles.confidentialityTitle.toUpperCase(),
+            bold: true,
+            color: COLOR_ACCENT_GREEN,
+            size: 22,
+            font: 'Calibri',
+          }),
+        ],
+      }),
+      new Paragraph({
+        spacing: { before: 0, after: 120, line: 276, lineRule: LineRuleType.AUTO },
+        children: [
+          new TextRun({
+            text: titles.confidentialityText,
+            color: COLOR_MUTED_GRAY,
+            size: 18,
+            font: 'Calibri',
+          }),
+        ],
+      })
+    );
+  }
+
+  const commercial = getEffectiveCommercialPage(proposal);
+  const commercialElements: (Paragraph | Table)[] = [];
+  if (!commercial.hide) {
+    const page2LogoUrl = resolvePage2LogoDataUrl(metadata, proposal.commercial);
+    let page2LogoBytes: Uint8Array | null = null;
+    let page2LogoType: DocxRasterType = 'png';
+    let page2LogoSize = { width: 160, height: 44 };
+    if (page2LogoUrl) {
+      try {
+        const prepared = await prepareImageForDocx(page2LogoUrl);
+        if (prepared.data?.length) {
+          page2LogoBytes = prepared.data;
+          page2LogoType = prepared.type;
+          page2LogoSize = fitLogoSize(prepared.width, prepared.height, 180, 48);
+        }
+      } catch (err) {
+        console.error('Error processing page 2 logo:', err);
+      }
+    }
+
+    let page2CardBytes: Uint8Array | null = null;
+    let page2CardType: DocxRasterType = 'png';
+    const page2CardWidth = 740;
+    let page2CardSize = { width: page2CardWidth, height: 109 };
+    try {
+      const cardSvg = getCoverInfoCardSvg({
+        cliente: metadata.cliente,
+        fecha: formatFechaEs(metadata.fecha),
+        ticketNo: metadata.ticketNo,
+        propuestaNo: metadata.propuestaNo,
+        omitPropuestaValue: true,
+        flushToPageMargin: true,
+      });
+      const preparedCard = await prepareImageForDocx(cardSvg, 'image/svg+xml');
+      if (preparedCard.data?.length) {
+        page2CardBytes = preparedCard.data;
+        page2CardType = preparedCard.type;
+        page2CardSize = {
+          width: page2CardWidth,
+          height: Math.max(100, Math.round((page2CardWidth * preparedCard.height) / preparedCard.width)),
+        };
+      }
+    } catch (err) {
+      console.error('Error processing page 2 info card:', err);
+    }
+
+    commercialElements.push(
+      new Paragraph({
+        spacing: { before: 0, after: 80 },
+        children: page2LogoBytes
+          ? [
+              new ImageRun({
+                data: page2LogoBytes,
+                type: page2LogoType,
+                transformation: page2LogoSize,
+                altText: { name: 'Logo', title: '', description: '' },
+              }),
+            ]
+          : [new TextRun({ text: metadata.headerBrandTag || 'ADVANSYS', bold: true, color: COLOR_PRIMARY_BLUE, size: 32, font: 'Calibri' })],
+      })
+    );
+    if (page2CardBytes) {
+      commercialElements.push(
+        new Paragraph({
+          spacing: { before: 40, after: 0 },
+          children: [
+            new ImageRun({
+              data: page2CardBytes,
+              type: page2CardType,
+              transformation: page2CardSize,
+              altText: { name: 'Ficha', title: '', description: '' },
+            }),
+          ],
+        }),
+        new Paragraph({
+          frame: {
+            type: 'absolute',
+            width: 2400,
+            height: 400,
+            wrap: FrameWrap.NONE,
+            anchor: {
+              horizontal: FrameAnchorType.MARGIN,
+              vertical: FrameAnchorType.TEXT,
+            },
+            position: {
+              x: 8617, // 15.20 cm from the left margin
+              y: -980,
+            },
+          },
+          spacing: { before: 0, after: 200 },
+          children: [
+            new TextRun({
+              text: metadata.propuestaNo?.trim() || '—',
+              bold: true,
+              color: COLOR_PRIMARY_BLUE,
+              size: 28,
+              font: 'Calibri',
+            }),
+          ],
+        })
+      );
+    }
+
+    const moneyRows = commercial.lineItems.map((item) => {
+      const hours = parseCommercialNumber(item.hours);
+      const unit = parseCommercialNumber(item.unitValue);
+      return { item, hours, unit, sub: hours * unit };
+    });
+    const total = moneyRows.reduce((s, r) => s + r.sub, 0);
+    const colDesc = 4200;
+    const colH = 1700;
+    const colU = 2400;
+    const colS = 2700;
+    const commercialTableW = colDesc + colH + colU + colS;
+    const priceCell = (
+      text: string,
+      width: number,
+      opts?: { bold?: boolean; color?: string; align?: (typeof AlignmentType)[keyof typeof AlignmentType]; fill?: string }
+    ) =>
+      new TableCell({
+        width: { size: width, type: WidthType.DXA },
+        shading: { fill: opts?.fill || 'FFFFFF', type: ShadingType.CLEAR },
+        margins: { top: 80, bottom: 80, left: 80, right: 80 },
+        verticalAlign: VerticalAlign.CENTER,
+        children: [
+          new Paragraph({
+            alignment: opts?.align || AlignmentType.LEFT,
+            children: [
+              new TextRun({
+                text,
+                bold: opts?.bold,
+                color: opts?.color || COLOR_TEXT_DARK,
+                size: 18,
+                font: 'Calibri',
+              }),
+            ],
+          }),
+        ],
+      });
+
+    commercialElements.push(
+      new Paragraph({ spacing: { before: 200, after: 0 }, children: [new TextRun({ text: '', size: 2 })] }),
+      new Table({
+        width: { size: commercialTableW, type: WidthType.DXA },
+        columnWidths: [colDesc, colH, colU, colS],
+        rows: [
+          new TableRow({
+            children: [
+              priceCell('', colDesc, { fill: COLOR_PRIMARY_BLUE, color: 'FFFFFF', bold: true }),
+              priceCell('HORAS', colH, { fill: COLOR_PRIMARY_BLUE, color: 'FFFFFF', bold: true, align: AlignmentType.CENTER }),
+              priceCell('VALOR UNITARIO (USD)', colU, { fill: COLOR_PRIMARY_BLUE, color: 'FFFFFF', bold: true, align: AlignmentType.CENTER }),
+              priceCell('SUBTOTAL (USD)', colS, { fill: COLOR_PRIMARY_BLUE, color: 'FFFFFF', bold: true, align: AlignmentType.RIGHT }),
+            ],
+          }),
+          ...moneyRows.map((r) =>
+            new TableRow({
+              children: [
+                priceCell(r.item.description || '—', colDesc, { bold: true, color: COLOR_PRIMARY_BLUE, fill: 'F8FAFC' }),
+                priceCell(r.hours ? String(r.hours) : '—', colH, { bold: true, color: COLOR_SECONDARY_BLUE, align: AlignmentType.CENTER, fill: 'F8FAFC' }),
+                priceCell(r.unit ? formatUsd(r.unit) : '—', colU, { align: AlignmentType.CENTER, fill: 'F8FAFC' }),
+                priceCell(r.hours && r.unit ? formatUsd(r.sub) : '—', colS, { bold: true, color: COLOR_PRIMARY_BLUE, align: AlignmentType.RIGHT, fill: 'F8FAFC' }),
+              ],
+            })
+          ),
+        ],
+      }),
+      new Paragraph({ spacing: { before: 360, after: 80 }, children: [new TextRun({ text: '', size: 2 })] }),
+      new Table({
+        width: { size: commercialTableW, type: WidthType.DXA },
+        columnWidths: [3000, commercialTableW - 3000],
+        borders: {
+          top: NO_BORDER,
+          bottom: NO_BORDER,
+          left: NO_BORDER,
+          right: NO_BORDER,
+          insideHorizontal: NO_BORDER,
+          insideVertical: NO_BORDER,
+        },
+        rows: [
+          new TableRow({
+            children: [
+              new TableCell({
+                width: { size: 3000, type: WidthType.DXA },
+                borders: { top: CARD_BORDER, bottom: CARD_BORDER, left: CARD_BORDER, right: CARD_BORDER },
+                margins: { top: 60, bottom: 60, left: 120, right: 120 },
+                children: [
+                  new Paragraph({
+                    children: [new TextRun({ text: 'TOTAL', bold: true, color: COLOR_PRIMARY_BLUE, size: 22, font: 'Calibri' })],
+                  }),
+                ],
+              }),
+              new TableCell({
+                width: { size: commercialTableW - 3000, type: WidthType.DXA },
+                borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER },
+                children: [
+                  new Paragraph({
+                    alignment: AlignmentType.RIGHT,
+                    children: [
+                      new TextRun({
+                        text: formatUsd(total).replace('USD$', 'US$'),
+                        bold: true,
+                        color: COLOR_TEXT_DARK,
+                        size: 32,
+                        font: 'Calibri',
+                      }),
+                    ],
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ],
+      })
+    );
+    if (commercial.itbisExempt) {
+      commercialElements.push(
+        new Paragraph({
+          alignment: AlignmentType.RIGHT,
+          spacing: { before: 60, after: 200 },
+          children: [new TextRun({ text: commercial.itbisLabel, bold: true, color: 'DC2626', size: 18, font: 'Calibri' })],
+        })
+      );
+    }
+
+    const condChildren = [
+      ...commercial.conditions.map(
+        (cond) =>
+          new Paragraph({
+            spacing: { after: 80 },
+            children: [
+              new TextRun({ text: `${cond.title} `, bold: true, color: COLOR_PRIMARY_BLUE, size: 18, font: 'Calibri' }),
+              new TextRun({ text: cond.text, color: COLOR_TEXT_DARK, size: 18, font: 'Calibri' }),
+            ],
+          })
+      ),
+    ];
+    const stepsChildren = commercial.nextSteps.map(
+      (step) =>
+        new Paragraph({
+          spacing: { after: 60 },
+          children: [
+            new TextRun({ text: '•  ', color: COLOR_PRIMARY_BLUE, size: 18, font: 'Calibri' }),
+            ...parseBoldRuns(step, 18),
+          ],
+        })
+    );
+    commercialElements.push(
+      new Table({
+        width: { size: 9520, type: WidthType.DXA },
+        columnWidths: [4680, 160, 4680],
+        borders: {
+          top: NO_BORDER,
+          bottom: NO_BORDER,
+          left: NO_BORDER,
+          right: NO_BORDER,
+          insideHorizontal: NO_BORDER,
+          insideVertical: NO_BORDER,
+        },
+        rows: [
+          new TableRow({
+            children: [
+              new TableCell({
+                width: { size: 4680, type: WidthType.DXA },
+                borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER },
+                children: [
+                  new Paragraph({
+                    spacing: { after: 120 },
+                    children: [new TextRun({ text: commercial.conditionsTitle, bold: true, color: COLOR_PRIMARY_BLUE, size: 20, font: 'Calibri' })],
+                  }),
+                ],
+              }),
+              new TableCell({
+                width: { size: 160, type: WidthType.DXA },
+                borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER },
+                children: [emptyPara()],
+              }),
+              new TableCell({
+                width: { size: 4680, type: WidthType.DXA },
+                borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER },
+                children: [
+                  new Paragraph({
+                    spacing: { after: 120 },
+                    children: [new TextRun({ text: commercial.nextStepsTitle, bold: true, color: COLOR_ACCENT_GREEN, size: 20, font: 'Calibri' })],
+                  }),
+                ],
+              }),
+            ],
+          }),
+          new TableRow({
+            children: [
+              new TableCell({
+                width: { size: 4680, type: WidthType.DXA },
+                shading: { fill: 'F1F5F9', type: ShadingType.CLEAR },
+                margins: { top: 140, bottom: 140, left: 160, right: 160 },
+                children: condChildren,
+              }),
+              new TableCell({
+                width: { size: 160, type: WidthType.DXA },
+                borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER },
+                children: [emptyPara()],
+              }),
+              new TableCell({
+                width: { size: 4680, type: WidthType.DXA },
+                borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER },
+                children: stepsChildren,
+              }),
+            ],
+          }),
+        ],
+      }),
+      new Paragraph({
+        spacing: { before: 280, after: 80 },
+        children: [new TextRun({ text: commercial.notesTitle, bold: true, color: COLOR_PRIMARY_BLUE, size: 20, font: 'Calibri' })],
+      }),
+      new Table({
+        width: { size: 9520, type: WidthType.DXA },
+        borders: {
+          top: NO_BORDER,
+          bottom: NO_BORDER,
+          left: NO_BORDER,
+          right: NO_BORDER,
+          insideHorizontal: NO_BORDER,
+          insideVertical: NO_BORDER,
+        },
+        rows: [
+          new TableRow({
+            children: [
+              new TableCell({
+                shading: { fill: 'F1F5F9', type: ShadingType.CLEAR },
+                margins: { top: 120, bottom: 120, left: 160, right: 160 },
+                children: [new Paragraph({ children: parseBoldRuns(commercial.notes, 18) })],
+              }),
+            ],
+          }),
+        ],
+      }),
+      new Table({
+        width: { size: 9520, type: WidthType.DXA },
+        columnWidths: [4680, 160, 4680],
+        float: {
+          horizontalAnchor: TableAnchorType.MARGIN,
+          verticalAnchor: TableAnchorType.MARGIN,
+          relativeVerticalPosition: RelativeVerticalPosition.BOTTOM,
+          overlap: OverlapType.NEVER,
+        },
+        borders: {
+          top: NO_BORDER,
+          bottom: NO_BORDER,
+          left: NO_BORDER,
+          right: NO_BORDER,
+          insideHorizontal: NO_BORDER,
+          insideVertical: NO_BORDER,
+        },
+        rows: [
+          new TableRow({
+            children: [
+              new TableCell({
+                columnSpan: 3,
+                borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER },
+                children: [
+                  new Paragraph({
+                    spacing: { after: 360 },
+                    children: [new TextRun({ text: commercial.reviewedByTitle, bold: true, color: COLOR_PRIMARY_BLUE, size: 20, font: 'Calibri' })],
+                  }),
+                ],
+              }),
+            ],
+          }),
+          new TableRow({
+            children: [
+              new TableCell({
+                width: { size: 4680, type: WidthType.DXA },
+                borders: {
+                  top: NO_BORDER,
+                  bottom: { style: BorderStyle.SINGLE, size: 8, color: COLOR_PRIMARY_BLUE },
+                  left: NO_BORDER,
+                  right: NO_BORDER,
+                },
+                children: [new Paragraph({ spacing: { before: 80, after: 40 }, children: [new TextRun({ text: ' ', size: 18 })] })],
+              }),
+              new TableCell({
+                width: { size: 160, type: WidthType.DXA },
+                borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER },
+                children: [emptyPara()],
+              }),
+              new TableCell({
+                width: { size: 4680, type: WidthType.DXA },
+                borders: {
+                  top: NO_BORDER,
+                  bottom: { style: BorderStyle.SINGLE, size: 8, color: COLOR_PRIMARY_BLUE },
+                  left: NO_BORDER,
+                  right: NO_BORDER,
+                },
+                children: [new Paragraph({ spacing: { before: 80, after: 40 }, children: [new TextRun({ text: ' ', size: 18 })] })],
+              }),
+            ],
+          }),
+          new TableRow({
+            children: [
+              new TableCell({
+                width: { size: 4680, type: WidthType.DXA },
+                borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER },
+                children: [
+                  new Paragraph({
+                    alignment: AlignmentType.CENTER,
+                    children: [new TextRun({ text: commercial.reviewedLeftRole, bold: true, color: COLOR_PRIMARY_BLUE, size: 18, font: 'Calibri' })],
+                  }),
+                  new Paragraph({
+                    alignment: AlignmentType.CENTER,
+                    children: [
+                      new TextRun({
+                        text: commercial.reviewedBy.trim() || commercial.reviewedLeftOrg,
+                        color: COLOR_SECONDARY_BLUE,
+                        size: 18,
+                        font: 'Calibri',
+                      }),
+                    ],
+                  }),
+                ],
+              }),
+              new TableCell({
+                width: { size: 160, type: WidthType.DXA },
+                borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER },
+                children: [emptyPara()],
+              }),
+              new TableCell({
+                width: { size: 4680, type: WidthType.DXA },
+                borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER },
+                children: [
+                  new Paragraph({
+                    alignment: AlignmentType.CENTER,
+                    children: [new TextRun({ text: commercial.reviewedRightRole, bold: true, color: COLOR_PRIMARY_BLUE, size: 18, font: 'Calibri' })],
+                  }),
+                  new Paragraph({
+                    alignment: AlignmentType.CENTER,
+                    children: [new TextRun({ text: commercial.reviewedRightOrg, color: COLOR_SECONDARY_BLUE, size: 18, font: 'Calibri' })],
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ],
+      })
+    );
+  }
+
+  if (!commercial.hide) {
+    page2BreakEmitted = true;
+  }
+
+  const laterElements: (Paragraph | Table)[] = [];
+
+  // 4. Objetivo (Página 3 si existe la página comercial)
+  const hasSection4 =
+    !titles.hideSection4 && sectionHasBodyOrSubs(proposal.objetivo, getSubsections(proposal, 'objetivo'));
   if (hasSection4) {
-    docElements.push(createSectionHeader(titles.section4, '4', getPageBreakForLaterSection()));
-    pushTextWithTables(docElements, proposal.objetivo.trim(), contentTables, usedTables, imageMapByIndex);
+    laterElements.push(createSectionHeader(titles.section4, '4', getPageBreakForLaterSection()));
+    if (proposal.objetivo?.trim()) {
+      pushTextWithTables(laterElements, proposal.objetivo.trim(), contentTables, usedTables, imageMapByIndex);
+    }
+    appendSubsections(laterElements, proposal, 'objetivo', '4', contentTables, usedTables, imageMapByIndex);
   }
 
   // 5. Descripción
-  const hasSection5 = !titles.hideSection5 && Boolean(proposal.descripcion && proposal.descripcion.trim());
+  const hasSection5 =
+    !titles.hideSection5 && sectionHasBodyOrSubs(proposal.descripcion, getSubsections(proposal, 'descripcion'));
   if (hasSection5) {
-    docElements.push(createSectionHeader(titles.section5, '5', getPageBreakForLaterSection()));
-    pushTextWithTables(docElements, proposal.descripcion.trim(), contentTables, usedTables, imageMapByIndex);
+    laterElements.push(createSectionHeader(titles.section5, '5', getPageBreakForLaterSection()));
+    if (proposal.descripcion?.trim()) {
+      pushTextWithTables(laterElements, proposal.descripcion.trim(), contentTables, usedTables, imageMapByIndex);
+    }
+    appendSubsections(laterElements, proposal, 'descripcion', '5', contentTables, usedTables, imageMapByIndex);
   }
 
   // 6. Índice Análisis Operativo
   const validIndice = (proposal.indiceAnalisisOperativo || []).filter((item) => item && item.trim().length > 0);
   const hasSection6 = !titles.hideSection6 && validIndice.length > 0;
   if (hasSection6) {
-    docElements.push(createSectionHeader(titles.section6, '6', getPageBreakForLaterSection()));
+    laterElements.push(createSectionHeader(titles.section6, '6', getPageBreakForLaterSection()));
     validIndice.forEach((item, idx) => {
-      docElements.push(
+      laterElements.push(
         new Paragraph({
           spacing: { before: 60, after: 60 },
           children: [
@@ -752,14 +1429,14 @@ export async function generateAdvansysDocx(
   const hasSection7 = !titles.hideSection7 && validSteps.length > 0;
 
   if (hasSection7) {
-    docElements.push(createSectionHeader(titles.section7, '7', getPageBreakForLaterSection()));
+    laterElements.push(createSectionHeader(titles.section7, '7', getPageBreakForLaterSection()));
 
     validSteps.forEach((step, originalIdx) => {
       const stepNumber = originalIdx + 1;
       const stepTitle = step.titulo?.trim() || `Paso ${stepNumber}`;
 
       // Step Title
-      docElements.push(
+      laterElements.push(
         new Paragraph({
           spacing: { before: 180, after: 80 },
           children: [
@@ -805,7 +1482,7 @@ export async function generateAdvansysDocx(
       if (linkedImg && linkedImg.bytes && linkedImg.bytes.length > 0 && !explicacionHasSameImage) {
         try {
           const size = fitImageSize(linkedImg.width, linkedImg.height, 500, 320, linkedImg.widthPercent);
-          docElements.push(...createDocxImageBlock(linkedImg.bytes, size, linkedImg, linkedImg.docxType));
+          laterElements.push(...createDocxImageBlock(linkedImg.bytes, size, linkedImg, linkedImg.docxType));
         } catch (e) {
           console.error('Failed to append image to docx:', e);
         }
@@ -813,7 +1490,7 @@ export async function generateAdvansysDocx(
 
       // Step Explanation Text
       if (step.explicacion?.trim()) {
-        pushTextWithTables(docElements, step.explicacion.trim(), contentTables, usedTables, imageMapByIndex);
+        pushTextWithTables(laterElements, step.explicacion.trim(), contentTables, usedTables, imageMapByIndex);
       }
     });
   }
@@ -821,10 +1498,10 @@ export async function generateAdvansysDocx(
   // Tablas no referenciadas con [TABLA_n] — se agregan antes del descargo
   const unusedTables = contentTables.filter((_, idx) => !usedTables.has(idx));
   if (unusedTables.length > 0) {
-    docElements.push(createSectionHeader('Tablas de apoyo', '', getPageBreakForLaterSection()));
+    laterElements.push(createSectionHeader('Tablas de apoyo', '', getPageBreakForLaterSection()));
     unusedTables.forEach((table) => {
       if (table.title?.trim()) {
-        docElements.push(
+        laterElements.push(
           new Paragraph({
             spacing: { before: 120, after: 80 },
             children: [
@@ -839,20 +1516,23 @@ export async function generateAdvansysDocx(
           })
         );
       }
-      docElements.push(createContentTable(table));
-      docElements.push(new Paragraph({ text: '', spacing: { after: 120 } }));
+      laterElements.push(createContentTable(table));
+      laterElements.push(new Paragraph({ text: '', spacing: { after: 120 } }));
     });
   }
 
   // 8. Descargo / Cláusula de Responsabilidad (Only rendered if user provided descargo text)
-  const hasSection8 = !titles.hideSection8 && Boolean(proposal.descargo && proposal.descargo.trim());
+  const hasSection8 =
+    !titles.hideSection8 && sectionHasBodyOrSubs(proposal.descargo, getSubsections(proposal, 'descargo'));
   if (hasSection8) {
-    docElements.push(createSectionHeader(titles.section8, '8', getPageBreakForLaterSection()));
-    pushTextWithTables(docElements, proposal.descargo.trim(), contentTables, usedTables, imageMapByIndex);
+    laterElements.push(createSectionHeader(titles.section8, '8', getPageBreakForLaterSection()));
+    if (proposal.descargo?.trim()) {
+      pushTextWithTables(laterElements, proposal.descargo.trim(), contentTables, usedTables, imageMapByIndex);
+    }
+    appendSubsections(laterElements, proposal, 'descargo', '8', contentTables, usedTables, imageMapByIndex);
   }
 
-  // Word drops the last drawing in the body if nothing follows it.
-  docElements.push(
+  laterElements.push(
     new Paragraph({
       spacing: { after: 0 },
       children: [new TextRun({ text: '\u200B' })],
@@ -973,37 +1653,105 @@ export async function generateAdvansysDocx(
     ],
   });
 
-  // Create full Document instance
-  const doc = new Document({
-    sections: [
-      {
-        properties: {
-          titlePage: true,
-          page: {
-            margin: {
-              top: 1000,
-              bottom: 1000,
-              left: 1200,
-              right: 1200,
-              header: 360,
-              footer: 360,
-            },
-            pageNumbers: {
-              start: 1,
-              formatType: NumberFormat.DECIMAL,
-            },
+  const commercialFooter = new Footer({
+    children: [
+      new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        borders: {
+          top: NO_BORDER,
+          bottom: NO_BORDER,
+          left: NO_BORDER,
+          right: NO_BORDER,
+          insideHorizontal: NO_BORDER,
+          insideVertical: NO_BORDER,
+        },
+        rows: [
+          new TableRow({
+            children: [commercial.footerPhone, commercial.footerEmail, commercial.footerWeb, commercial.footerCity].map(
+              (text) =>
+                new TableCell({
+                  width: { size: 25, type: WidthType.PERCENTAGE },
+                  shading: { fill: COLOR_PRIMARY_BLUE, type: ShadingType.CLEAR },
+                  margins: { top: 80, bottom: 80, left: 40, right: 40 },
+                  verticalAlign: VerticalAlign.CENTER,
+                  children: [
+                    new Paragraph({
+                      alignment: AlignmentType.CENTER,
+                      children: [new TextRun({ text, color: 'FFFFFF', size: 16, font: 'Calibri' })],
+                    }),
+                  ],
+                })
+            ),
+          }),
+        ],
+      }),
+    ],
+  });
+
+  const pageMargins = {
+    top: 1000,
+    bottom: 1000,
+    left: 1200,
+    right: 1200,
+    header: 360,
+    footer: 360,
+  };
+
+  const sections: Array<{
+    properties: object;
+    headers: { first?: Header; default?: Header };
+    footers: { default: Footer };
+    children: (Paragraph | Table)[];
+  }> = [
+    {
+      properties: {
+        titlePage: true,
+        page: {
+          margin: pageMargins,
+          pageNumbers: {
+            start: 1,
+            formatType: NumberFormat.DECIMAL,
           },
         },
-        headers: {
-          first: firstPageHeader || new Header({ children: [] }),
-          default: header,
-        },
-        footers: {
-          default: footer,
-        },
-        children: docElements,
       },
-    ],
+      headers: {
+        first: firstPageHeader || new Header({ children: [] }),
+        default: header,
+      },
+      footers: {
+        default: footer,
+      },
+      children: commercial.hide ? [...docElements, ...laterElements] : docElements,
+    },
+  ];
+
+  if (!commercial.hide) {
+    sections.push({
+      properties: {
+        page: {
+          margin: { ...pageMargins, top: 560, bottom: 1600, left: 400, right: 400, header: 200, footer: 500 },
+        },
+      },
+      headers: {
+        default: new Header({ children: [] }),
+      },
+      footers: {
+        default: commercialFooter,
+      },
+      children: commercialElements.length ? commercialElements : [emptyPara()],
+    });
+    sections.push({
+      properties: {
+        page: { margin: pageMargins },
+      },
+      headers: { default: header },
+      footers: { default: footer },
+      children: laterElements,
+    });
+  }
+
+  const doc = new Document({
+    sections,
   });
 
   // Generate buffer blob

@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs/promises";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
@@ -195,6 +196,64 @@ function fallbackStructuredRequirements(sourceText: string, fileName: string): s
 // API Health Endpoint
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+function defaultBackupDirectory(): string {
+  return path.join(process.cwd(), "backups");
+}
+
+app.get("/api/backup-folder", async (_req, res) => {
+  const directory = defaultBackupDirectory();
+  try {
+    await fs.mkdir(directory, { recursive: true });
+    res.json({ success: true, path: directory });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error?.message || "No se pudo crear la carpeta de copias." });
+  }
+});
+
+app.post("/api/save-backup", async (req, res) => {
+  try {
+    const { directory, filename, content } = req.body || {};
+    if (!directory || !filename || content == null) {
+      return res.status(400).json({
+        success: false,
+        error: "Indica la carpeta, el nombre del archivo y el contenido.",
+      });
+    }
+
+    const safeName = String(filename).replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_");
+    if (!safeName.toLowerCase().endsWith(".json")) {
+      return res.status(400).json({ success: false, error: "Solo se permiten archivos .json." });
+    }
+
+    const dir = path.resolve(String(directory));
+    if (!path.isAbsolute(dir)) {
+      return res.status(400).json({ success: false, error: "La ruta de la carpeta debe ser absoluta (ej. C:\\\\AdvaDocuIA\\\\backups)." });
+    }
+
+    await fs.mkdir(dir, { recursive: true });
+    const fullPath = path.resolve(dir, safeName);
+    const relative = path.relative(dir, fullPath);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+      return res.status(400).json({ success: false, error: "Nombre de archivo inválido." });
+    }
+
+    const json = typeof content === "string" ? content : JSON.stringify(content, null, 2);
+    await fs.writeFile(fullPath, json, "utf8");
+    return res.json({
+      success: true,
+      path: fullPath,
+      folder: dir,
+      filename: safeName,
+    });
+  } catch (error: any) {
+    console.error("Error saving backup to disk:", error);
+    return res.status(500).json({
+      success: false,
+      error: error?.message || "No se pudo escribir el archivo en disco.",
+    });
+  }
 });
 
 app.post("/api/analyze-source-document", async (req, res) => {

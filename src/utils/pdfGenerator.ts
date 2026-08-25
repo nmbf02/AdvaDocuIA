@@ -1,8 +1,10 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { MetadataHeader, ProposalSection, UploadedImage, DocumentTable, getEffectiveTitles, getEffectiveProposalHeaderFooter } from '../types';
+import { MetadataHeader, ProposalSection, UploadedImage, DocumentTable, getEffectiveTitles, getEffectiveProposalHeaderFooter, COVER_SCOPE_MAX_ITEMS, getEffectiveCommercialPage, getSubsections, subsectionHasContent, sectionHasBodyOrSubs, NestedSectionField } from '../types';
 import { getAdvansysBannerSvg } from '../data/banner';
+import { formatFechaEs } from './dateFormat';
 import { fitImageSize, getImageAlign, pdfImageX } from './imageLayout';
+import { renderCommercialPagePng } from './commercialPageRender';
 
 // Advansys Corporate Color Palette (RGB tuples for vector jsPDF)
 const COLOR_PRIMARY: [number, number, number] = [10, 61, 98]; // #0A3D62 Deep Corporate Blue
@@ -32,16 +34,16 @@ async function loadSvgOrImageToCanvasPng(
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    const timer = setTimeout(() => resolve(null), 4000);
+    const timer = setTimeout(() => resolve(null), 20000);
 
     img.onload = () => {
       clearTimeout(timer);
       try {
         const naturalW = img.naturalWidth || img.width || 800;
         const naturalH = img.naturalHeight || img.height || 400;
-        const aspect = naturalH / naturalW;
-        const canvasW = Math.max(targetWidth, naturalW);
-        const canvasH = Math.round(canvasW * aspect);
+        const aspect = naturalH / Math.max(naturalW, 1);
+        const canvasW = Math.min(2000, Math.max(targetWidth, naturalW));
+        const canvasH = Math.max(1, Math.round(canvasW * aspect));
 
         const canvas = document.createElement('canvas');
         canvas.width = canvasW;
@@ -52,6 +54,8 @@ async function loadSvgOrImageToCanvasPng(
           return;
         }
 
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvasW, canvasH);
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, canvasW, canvasH);
@@ -109,8 +113,16 @@ export async function generateAdvansysPdf(
   // =========================================================================
   const bannerSvg = getAdvansysBannerSvg(
     effectiveHF.headerBrandTag,
-    effectiveHF.headerSubtitle,
-    metadata.logoDataUrl
+    titles.coverSubtitle,
+    metadata.logoDataUrl,
+    {
+      coverTitle: titles.mainTitle,
+      cliente: metadata.cliente,
+      fecha: formatFechaEs(metadata.fecha),
+      ticketNo: metadata.ticketNo,
+      propuestaNo: metadata.propuestaNo,
+      showInfoCard: true,
+    }
   );
 
   const bannerPng = await loadSvgOrImageToCanvasPng(bannerSvg, 2400);
@@ -120,10 +132,6 @@ export async function generateAdvansysPdf(
     bannerHeight = (pageWidth * bannerPng.height) / bannerPng.width;
     // Render full bleed banner from edge to edge (x: 0, y: 0, w: pageWidth)
     doc.addImage(bannerPng.dataUrl, 'PNG', 0, 0, pageWidth, bannerHeight);
-
-    // Bottom Emerald border stripe under banner
-    doc.setFillColor(COLOR_ACCENT[0], COLOR_ACCENT[1], COLOR_ACCENT[2]);
-    doc.rect(0, bannerHeight - 1.6, pageWidth, 1.6, 'F');
   } else {
     // Fallback full-bleed banner
     bannerHeight = 32;
@@ -138,71 +146,23 @@ export async function generateAdvansysPdf(
     doc.text(metadata.headerBrandTag || 'ADVANSYS', 12, 14);
   }
 
-  // Start content right below the full-width banner with comfortable padding
-  cursorY = bannerHeight + 7;
+  // Cover SVG already includes the hanging info card; keep a short gap to the project title
+  cursorY = bannerHeight + 3;
 
-  // ==========================================
-  // 2. MAIN DOCUMENT TITLE
-  // ==========================================
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12.5);
+  doc.setFontSize(8);
+  doc.setTextColor(COLOR_ACCENT[0], COLOR_ACCENT[1], COLOR_ACCENT[2]);
+  doc.text('PROYECTO', margin, cursorY);
+  cursorY += 7;
+  doc.setFontSize(16);
   doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-  doc.text(titles.mainTitle, pageWidth / 2, cursorY + 2, {
-    align: 'center',
-  });
-  cursorY += 7.5;
-
-  // ==========================================
-  // 3. METADATA SUMMARY VECTOR TABLE (Matches Word layout 100% without overflow)
-  // ==========================================
-  const colW6 = contentWidth / 6;
-
-  const metaRows = [
-    // Row 1: CLIENTE (50%) | FECHA (50%)
-    [
-      { content: `CLIENTE:  ${metadata.cliente || 'N/A'}`, colSpan: 3 },
-      { content: `FECHA:  ${metadata.fecha || new Date().toISOString().split('T')[0]}`, colSpan: 3 },
-    ],
-    // Row 2: TICKET NO. (33.3%) | GUÍA NO. (33.3%) | PROPUESTA Nº (33.3%)
-    [
-      { content: `TICKET NO.:  ${metadata.ticketNo || 'N/A'}`, colSpan: 2 },
-      { content: `GUÍA NO.:  ${metadata.guiaNo || 'N/A'}`, colSpan: 2 },
-      { content: `PROPUESTA Nº:  ${metadata.propuestaNo || 'N/A'}`, colSpan: 2 },
-    ],
-    // Row 3: PROYECTO (50%) | MÓDULO / APLICACIÓN (50%)
-    [
-      { content: `PROYECTO:  ${metadata.nombreProyecto || 'N/A'}`, colSpan: 3 },
-      { content: `MÓDULO / APLICACIÓN:  ${metadata.moduloAplicacion || 'N/A'}`, colSpan: 3 },
-    ],
-  ];
-
-  autoTable(doc, {
-    startY: cursorY,
-    tableWidth: contentWidth,
-    margin: { left: margin, right: margin },
-    body: metaRows as any,
-    theme: 'grid',
-    styles: {
-      fontSize: 8,
-      cellPadding: 2.2,
-      textColor: COLOR_TEXT_DARK,
-      lineColor: COLOR_BORDER,
-      lineWidth: 0.2,
-      font: 'helvetica',
-      fillColor: COLOR_BG_LIGHT,
-      overflow: 'linebreak',
-    },
-    columnStyles: {
-      0: { cellWidth: colW6 },
-      1: { cellWidth: colW6 },
-      2: { cellWidth: colW6 },
-      3: { cellWidth: colW6 },
-      4: { cellWidth: colW6 },
-      5: { cellWidth: colW6 },
-    },
-  });
-
-  cursorY = (doc as any).lastAutoTable.finalY + 6;
+  const projectLines = doc.splitTextToSize(metadata.nombreProyecto || 'Nombre del análisis', contentWidth - 10);
+  doc.text(projectLines, margin, cursorY);
+  cursorY += projectLines.length * 6.5 + 2;
+  doc.setFontSize(11);
+  doc.setTextColor(COLOR_SECONDARY[0], COLOR_SECONDARY[1], COLOR_SECONDARY[2]);
+  doc.text(metadata.moduloAplicacion || 'Aplicación o módulo', margin, cursorY);
+  cursorY += 8;
 
   // ==========================================
   // HELPER FUNCTIONS FOR VECTOR SECTIONS
@@ -228,6 +188,20 @@ export async function generateAdvansysPdf(
     doc.rect(margin, cursorY + 5.5, contentWidth, 0.7, 'F');
 
     cursorY += 8.5;
+  };
+
+  const renderNestedSubs = async (field: NestedSectionField, sectionNum: string): Promise<void> => {
+    const items = getSubsections(proposal, field).filter(subsectionHasContent);
+    for (let i = 0; i < items.length; i++) {
+      const sub = items[i];
+      checkPageBreak(14);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
+      doc.text(`${sectionNum}.${i + 1}  ${sub.title.trim() || 'Subsección'}`, margin, cursorY + 3);
+      cursorY += 7;
+      if (sub.body?.trim()) await renderRichTextWithTables(sub.body.trim(), docTables);
+    }
   };
 
   const renderParagraph = (text?: string): void => {
@@ -364,18 +338,82 @@ export async function generateAdvansysPdf(
     cursorY = (doc as any).lastAutoTable.finalY + 4;
   };
 
-  const renderRichTextWithTables = (text?: string, tables: DocumentTable[] = []): void => {
+  const renderedImageKeys = new Set<string>();
+
+  const renderEmbeddedImage = async (img: UploadedImage, index1: number): Promise<void> => {
+    if (!img?.dataUrl) return;
+    const key = img.id || `idx-${index1}`;
+    if (renderedImageKeys.has(key)) return;
+    renderedImageKeys.add(key);
+    const loadedImg = await loadSvgOrImageToCanvasPng(img.dataUrl, 1200);
+    const raster = loadedImg?.dataUrl || img.dataUrl;
+    const rasterFmt = loadedImg ? 'PNG' : img.mimeType?.includes('jpeg') || img.mimeType?.includes('jpg') ? 'JPEG' : 'PNG';
+    const srcW = loadedImg?.width || img.width || 800;
+    const srcH = loadedImg?.height || img.height || 400;
+
+    const maxW = Math.min(contentWidth - 8, 160);
+    const maxH = 90;
+    const size = fitImageSize(srcW, srcH, maxW, maxH, img.widthPercent);
+    const dispW = size.width;
+    const dispH = size.height;
+    const hasDesc = Boolean(img.description);
+    const cardHeight = dispH + 11 + (hasDesc ? 4.5 : 0);
+    checkPageBreak(cardHeight + 6);
+
+    const cardX = margin;
+    const cardY = cursorY;
+    doc.setFillColor(COLOR_BG_LIGHT[0], COLOR_BG_LIGHT[1], COLOR_BG_LIGHT[2]);
+    doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
+    doc.setLineWidth(0.2);
+    doc.roundedRect(cardX, cardY, contentWidth, cardHeight, 1.5, 1.5, 'FD');
+
+    const align = getImageAlign(img);
+    const imgX = pdfImageX(cardX, contentWidth, dispW, align);
+    const imgY = cardY + 2.5;
+    try {
+      doc.addImage(raster, rasterFmt, imgX, imgY, dispW, dispH);
+    } catch (err) {
+      console.warn('PDF addImage failed:', err);
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(8);
+      doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+      doc.text(`[IMAGEN_${index1}] no se pudo incrustar`, imgX, imgY + 8);
+    }
+
+    const captionY = imgY + dispH + 4;
+    const captionAlign = align === 'left' ? 'left' : align === 'right' ? 'right' : 'center';
+    const captionX = align === 'left' ? cardX + 4 : align === 'right' ? cardX + contentWidth - 4 : pageWidth / 2;
+    doc.setFont('helvetica', 'bolditalic');
+    doc.setFontSize(8);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`[IMAGEN_${index1}] ${img.title || 'Captura de referencia'}`, captionX, captionY, { align: captionAlign });
+    if (hasDesc && img.description) {
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(7.5);
+      doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+      doc.text(img.description, captionX, captionY + 3.8, { align: captionAlign });
+    }
+    cursorY += cardHeight + 4;
+  };
+
+  const renderRichTextWithTables = async (text?: string, tables: DocumentTable[] = []): Promise<void> => {
     if (!text) return;
-    const parts = text.split(/(\[TABLA_\d+\])/gi);
+    const parts = text.split(/(\[TABLA_\d+\]|\[IMAGEN_\d+\])/gi);
     for (const part of parts) {
-      const match = part.match(/^\[TABLA_(\d+)\]$/i);
-      if (match) {
-        const tableIndex = parseInt(match[1], 10) - 1;
-        const tbl = tables[tableIndex];
-        if (tbl) {
-          renderCustomTable(tbl);
-        }
-      } else if (part.trim()) {
+      const tableMatch = part.match(/^\[TABLA_(\d+)\]$/i);
+      if (tableMatch) {
+        const tbl = tables[parseInt(tableMatch[1], 10) - 1];
+        if (tbl) renderCustomTable(tbl);
+        continue;
+      }
+      const imageMatch = part.match(/^\[IMAGEN_(\d+)\]$/i);
+      if (imageMatch) {
+        const idx = parseInt(imageMatch[1], 10) - 1;
+        const img = images[idx];
+        if (img) await renderEmbeddedImage(img, idx + 1);
+        continue;
+      }
+      if (part.trim()) {
         renderParagraph(part.trim());
       }
     }
@@ -396,29 +434,64 @@ export async function generateAdvansysPdf(
   // ==========================================
   // SECTION 1. RESUMEN EJECUTIVO
   // ==========================================
-  const hasSection1 = !titles.hideSection1 && Boolean(proposal.resumenEjecutivo && proposal.resumenEjecutivo.trim());
-  if (hasSection1) {
-    renderSectionHeader(titles.section1, '1');
-    renderRichTextWithTables(proposal.resumenEjecutivo.trim(), docTables);
-  }
-
-  // ==========================================
-  // SECTION 2. BENEFICIOS DE LA PROPUESTA
-  // ==========================================
-  const validBeneficios = (proposal.beneficios || []).filter((b) => b && b.trim().length > 0);
+  const hasSection1 =
+    !titles.hideSection1 && sectionHasBodyOrSubs(proposal.resumenEjecutivo, getSubsections(proposal, 'resumenEjecutivo'));
+  const validBeneficios = (proposal.beneficios || []).filter((b) => b && b.trim().length > 0).slice(0, COVER_SCOPE_MAX_ITEMS);
   const hasSection2 = !titles.hideSection2 && validBeneficios.length > 0;
-  if (hasSection2) {
-    renderSectionHeader(titles.section2, '2');
-    renderBulletList(validBeneficios);
+  if (hasSection1 || hasSection2) {
+    checkPageBreak(40);
+    autoTable(doc, {
+      startY: cursorY,
+      tableWidth: contentWidth,
+      margin: { left: margin, right: margin },
+      theme: 'plain',
+      styles: { fontSize: 9, textColor: COLOR_TEXT_DARK, font: 'helvetica', overflow: 'linebreak', cellPadding: 2.4, lineColor: [255, 255, 255] },
+      columnStyles: {
+        0: { cellWidth: contentWidth / 2 },
+        1: { cellWidth: contentWidth / 2 },
+      },
+      body: [
+        [
+          hasSection1
+            ? `${titles.section1.toUpperCase()}\n\n${[
+                (proposal.resumenEjecutivo?.trim() || '').replace(/\[IMAGEN_\d+\]/gi, '').trim(),
+                ...getSubsections(proposal, 'resumenEjecutivo')
+                  .filter(subsectionHasContent)
+                  .map((sub, i) =>
+                    `${i + 1}. ${sub.title.trim() || 'Subsección'}\n${sub.body.replace(/\[IMAGEN_\d+\]/gi, '').trim()}`
+                  ),
+              ]
+                .filter(Boolean)
+                .join('\n\n')}`
+            : '',
+          hasSection2
+            ? `${titles.section2.toUpperCase()}\n\n${validBeneficios.map((b) => `• ${b}`).join('\n')}`
+            : '',
+        ],
+      ],
+    });
+    cursorY = (doc as any).lastAutoTable.finalY + 5;
+    if (hasSection1) {
+      const resumenWithImages = [
+        proposal.resumenEjecutivo || '',
+        ...getSubsections(proposal, 'resumenEjecutivo').map((sub) => sub.body || ''),
+      ].join('\n');
+      const resumenImgTags = [...resumenWithImages.matchAll(/\[IMAGEN_(\d+)\]/gi)];
+      const seenResumenImgs = new Set<number>();
+      for (const m of resumenImgTags) {
+        const n = parseInt(m[1], 10);
+        if (seenResumenImgs.has(n)) continue;
+        seenResumenImgs.add(n);
+        const img = images[n - 1];
+        if (img) await renderEmbeddedImage(img, n);
+      }
+    }
   }
 
-  // ==========================================
-  // SECTION 3. ALCANCE, EXCLUSIONES Y ENTREGABLES
-  // ==========================================
   const scope = proposal.alcanceExclusionesEntregables;
-  const validAlcance = (scope?.alcance || []).filter((i) => i && i.trim().length > 0);
-  const validExclusiones = (scope?.exclusiones || []).filter((i) => i && i.trim().length > 0);
-  const validEntregables = (scope?.entregables || []).filter((i) => i && i.trim().length > 0);
+  const validAlcance = (scope?.alcance || []).filter((i) => i && i.trim().length > 0).slice(0, COVER_SCOPE_MAX_ITEMS);
+  const validExclusiones = (scope?.exclusiones || []).filter((i) => i && i.trim().length > 0).slice(0, COVER_SCOPE_MAX_ITEMS);
+  const validEntregables = (scope?.entregables || []).filter((i) => i && i.trim().length > 0).slice(0, COVER_SCOPE_MAX_ITEMS);
   const hasSection3_1 = !titles.hideSection3_1 && validAlcance.length > 0;
   const hasSection3_2 = !titles.hideSection3_2 && validExclusiones.length > 0;
   const hasSection3_3 = !titles.hideSection3_3 && validEntregables.length > 0;
@@ -426,59 +499,112 @@ export async function generateAdvansysPdf(
 
   if (hasSection3) {
     renderSectionHeader(titles.section3, '3');
+    const gap = 4;
+    const colW = (contentWidth - gap * 2) / 3;
+    const pad = 3.2;
+    const cards = [
+      {
+        title: titles.section3_1.replace(/^3\.1\s*/, '').toUpperCase(),
+        items: validAlcance,
+        titleRgb: COLOR_SECONDARY,
+      },
+      {
+        title: titles.section3_2.replace(/^3\.2\s*/, '').toUpperCase(),
+        items: validExclusiones,
+        titleRgb: COLOR_PRIMARY,
+      },
+      {
+        title: titles.section3_3.replace(/^3\.3\s*/, '').toUpperCase(),
+        items: validEntregables,
+        titleRgb: [4, 120, 87] as [number, number, number],
+      },
+    ];
 
-    if (hasSection3_1) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    const innerW = colW - pad * 2;
+    const prepared = cards.map((card) => {
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8.5);
-      doc.setTextColor(COLOR_SECONDARY[0], COLOR_SECONDARY[1], COLOR_SECONDARY[2]);
-      checkPageBreak(8);
-      const s31 = titles.section3_1.startsWith('3.1') ? titles.section3_1 : `3.1 ${titles.section3_1}`;
-      doc.text(s31, margin, cursorY + 2);
-      cursorY += 5;
-      renderBulletList(validAlcance, COLOR_SECONDARY);
-    }
+      const titleLines = doc.splitTextToSize(card.title, innerW);
+      doc.setFont('helvetica', 'normal');
+      const bodyBlocks = card.items.map((item) => doc.splitTextToSize(item, innerW));
+      const bodyH = bodyBlocks.reduce((sum, lines) => sum + lines.length * 4.2 + 2.2, 0);
+      const h = 6 + titleLines.length * 4.8 + 3 + bodyH + pad;
+      return { ...card, titleLines, bodyBlocks, h };
+    });
+    const boxH = Math.max(...prepared.map((c) => c.h), 28);
+    checkPageBreak(boxH + 4);
 
-    if (hasSection3_2) {
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8.5);
-      doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-      checkPageBreak(8);
-      const s32 = titles.section3_2.startsWith('3.2') ? titles.section3_2 : `3.2 ${titles.section3_2}`;
-      doc.text(s32, margin, cursorY + 2);
-      cursorY += 5;
-      renderBulletList(validExclusiones, COLOR_PRIMARY);
-    }
+    prepared.forEach((card, i) => {
+      const x = margin + i * (colW + gap);
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.35);
+      doc.roundedRect(x, cursorY, colW, boxH, 3.2, 3.2, 'FD');
 
-    if (hasSection3_3) {
+      let ty = cursorY + pad + 4;
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8.5);
-      doc.setTextColor(COLOR_ACCENT[0], COLOR_ACCENT[1], COLOR_ACCENT[2]);
-      checkPageBreak(8);
-      const s33 = titles.section3_3.startsWith('3.3') ? titles.section3_3 : `3.3 ${titles.section3_3}`;
-      doc.text(s33, margin, cursorY + 2);
-      cursorY += 5;
-      renderBulletList(validEntregables, COLOR_ACCENT);
-    }
+      doc.setFontSize(9);
+      doc.setTextColor(card.titleRgb[0], card.titleRgb[1], card.titleRgb[2]);
+      doc.text(card.titleLines, x + pad, ty);
+      ty += card.titleLines.length * 4.8 + 2;
+
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(COLOR_TEXT_DARK[0], COLOR_TEXT_DARK[1], COLOR_TEXT_DARK[2]);
+      card.bodyBlocks.forEach((lines) => {
+        doc.text(lines, x + pad, ty);
+        ty += lines.length * 4.2 + 2.2;
+      });
+    });
+    cursorY += boxH + 6;
   }
 
+  if (!titles.hideConfidentiality) {
+    checkPageBreak(18);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(COLOR_ACCENT[0], COLOR_ACCENT[1], COLOR_ACCENT[2]);
+    doc.text(titles.confidentialityTitle.toUpperCase(), margin, cursorY + 2);
+    cursorY += 8;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
+    const confLines = doc.splitTextToSize(titles.confidentialityText, contentWidth);
+    doc.text(confLines, margin, cursorY);
+    cursorY += confLines.length * 3.6 + 4;
+  }
+
+  const commercial = getEffectiveCommercialPage(proposal);
+  let commercialPageNumber = 0;
+  if (!commercial.hide) {
+    doc.addPage();
+    commercialPageNumber = doc.getNumberOfPages();
+    const pageArt = await renderCommercialPagePng(metadata, proposal);
+    if (pageArt?.dataUrl) {
+      doc.addImage(pageArt.dataUrl, 'PNG', 0, 0, pageWidth, pageHeight);
+    }
+  }
   // ==========================================
-  // SECTION 4. OBJETIVO GENERAL Y ESPECÍFICOS (Página 2)
+  // SECTION 4. OBJETIVO (Página 3 si hay página comercial)
   // ==========================================
-  const hasSection4 = !titles.hideSection4 && Boolean(proposal.objetivo && proposal.objetivo.trim());
+  const hasSection4 =
+    !titles.hideSection4 && sectionHasBodyOrSubs(proposal.objetivo, getSubsections(proposal, 'objetivo'));
   if (hasSection4) {
     renderSectionHeader(titles.section4, '4', getPageBreakForLaterSection());
-    renderRichTextWithTables(proposal.objetivo.trim(), docTables);
+    if (proposal.objetivo?.trim()) await renderRichTextWithTables(proposal.objetivo.trim(), docTables);
+    await renderNestedSubs('objetivo', '4');
   }
 
   // ==========================================
   // SECTION 5. DESCRIPCIÓN DE LA SOLUCIÓN PROPUESTA
   // ==========================================
-  const hasSection5 = !titles.hideSection5 && Boolean(proposal.descripcion && proposal.descripcion.trim());
+  const hasSection5 =
+    !titles.hideSection5 && sectionHasBodyOrSubs(proposal.descripcion, getSubsections(proposal, 'descripcion'));
   if (hasSection5) {
     renderSectionHeader(titles.section5, '5', getPageBreakForLaterSection());
-    renderRichTextWithTables(proposal.descripcion.trim(), docTables);
+    if (proposal.descripcion?.trim()) await renderRichTextWithTables(proposal.descripcion.trim(), docTables);
+    await renderNestedSubs('descripcion', '5');
   }
-
   // ==========================================
   // SECTION 6. ÍNDICE DE ANÁLISIS OPERATIVO
   // ==========================================
@@ -488,6 +614,7 @@ export async function generateAdvansysPdf(
     renderSectionHeader(titles.section6, '6', getPageBreakForLaterSection());
     for (let i = 0; i < validIndice.length; i++) {
       const item = validIndice[i];
+
       const numPrefix = `${i + 1}. `;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8.5);
@@ -549,64 +676,17 @@ export async function generateAdvansysPdf(
               return images[targetIndex];
             }
             return undefined;
-          })() : undefined);
+          })() : undefined) ||
+          images[idx];
       if (matchingImg && matchingImg.dataUrl) {
-        const loadedImg = await loadSvgOrImageToCanvasPng(matchingImg.dataUrl, 1200);
-        if (loadedImg) {
-          const maxW = Math.min(contentWidth - 12, 140);
-          const maxH = 75;
-          const size = fitImageSize(loadedImg.width, loadedImg.height, maxW, maxH, matchingImg.widthPercent);
-          const dispW = size.width;
-          const dispH = size.height;
-
-          const hasDesc = Boolean(matchingImg.description);
-          const cardHeight = dispH + 11 + (hasDesc ? 4.5 : 0);
-
-          // Ensure entire image block fits on current page cleanly
-          checkPageBreak(cardHeight + 6);
-
-          const cardX = margin;
-          const cardW = contentWidth;
-          const cardY = cursorY;
-
-          // Card Background
-          doc.setFillColor(COLOR_BG_LIGHT[0], COLOR_BG_LIGHT[1], COLOR_BG_LIGHT[2]);
-          doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
-          doc.setLineWidth(0.2);
-          doc.roundedRect(cardX, cardY, cardW, cardHeight, 1.5, 1.5, 'FD');
-
-          const align = getImageAlign(matchingImg);
-          const imgX = pdfImageX(cardX, cardW, dispW, align);
-          const imgY = cardY + 2.5;
-
-          // Render Image
-          doc.addImage(loadedImg.dataUrl, 'PNG', imgX, imgY, dispW, dispH);
-
-          // Image Caption
-          const captionY = imgY + dispH + 4;
-          const captionAlign = align === 'left' ? 'left' : align === 'right' ? 'right' : 'center';
-          const captionX = align === 'left' ? cardX + 4 : align === 'right' ? cardX + cardW - 4 : pageWidth / 2;
-          doc.setFont('helvetica', 'bolditalic');
-          doc.setFontSize(8);
-          doc.setTextColor(71, 85, 105);
-          const captionText = `[IMAGEN_${idx + 1}] ${matchingImg.title || 'Captura de referencia'}`;
-          doc.text(captionText, captionX, captionY, { align: captionAlign });
-
-          if (hasDesc && matchingImg.description) {
-            doc.setFont('helvetica', 'italic');
-            doc.setFontSize(7.5);
-            doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-            doc.text(matchingImg.description, captionX, captionY + 3.8, { align: captionAlign });
-          }
-
-          // Advance cursor cleanly past image card
-          cursorY += cardHeight + 4;
-        }
+        await renderEmbeddedImage(matchingImg, images.indexOf(matchingImg) + 1 || idx + 1);
       }
 
-      // Step Explanation Text (always rendered below image)
       if (step.explicacion && step.explicacion.trim()) {
-        renderRichTextWithTables(step.explicacion.trim(), docTables);
+        const cleaned = matchingImg
+          ? step.explicacion.replace(/\[IMAGEN_\d+\]/gi, '').trim()
+          : step.explicacion.trim();
+        if (cleaned) await renderRichTextWithTables(cleaned, docTables);
       }
       cursorY += 3;
     }
@@ -620,7 +700,10 @@ export async function generateAdvansysPdf(
     proposal.objetivo || '',
     proposal.descripcion || '',
     proposal.descargo || '',
-    ...(proposal.analisisOperativo || []).map((s) => s.explicacion || ''),
+    ...(proposal.analisisOperativo || []).map((s) => `${s.explicacion || ''} ${s.referenciaImagen || ''} ${s.imagenId || ''}`),
+    ...(['resumenEjecutivo', 'objetivo', 'descripcion', 'descargo'] as NestedSectionField[]).flatMap((field) =>
+      getSubsections(proposal, field).map((sub) => `${sub.title || ''} ${sub.body || ''}`)
+    ),
   ].join('\n').toUpperCase();
 
   const unusedTables = docTables.filter((_, idx) => {
@@ -635,40 +718,30 @@ export async function generateAdvansysPdf(
     }
   }
 
+  const unusedImages = images.filter((img, idx) => {
+    if (!img?.dataUrl) return false;
+    const key = img.id || `idx-${idx + 1}`;
+    return !renderedImageKeys.has(key);
+  });
+  if (unusedImages.length > 0) {
+    renderSectionHeader('Imágenes de Apoyo', '', getPageBreakForLaterSection());
+    for (const img of unusedImages) {
+      await renderEmbeddedImage(img, images.indexOf(img) + 1);
+    }
+  }
+
   // ==========================================
   // SECTION 8. DESCARGO Y CLÁUSULA ESTÁNDAR (Only if user provided descargo text)
   // ==========================================
-  const hasSection8 = !titles.hideSection8 && Boolean(proposal.descargo && proposal.descargo.trim());
+  const hasSection8 =
+    !titles.hideSection8 && sectionHasBodyOrSubs(proposal.descargo, getSubsections(proposal, 'descargo'));
   if (hasSection8) {
-    const descargoText = proposal.descargo!.trim();
-
     renderSectionHeader(titles.section8, '8', getPageBreakForLaterSection());
-
-    // Render descargo card with exact same styling as Web Preview and Word:
-    // Background: slate-50 (COLOR_BG_LIGHT), border: slate-200 (COLOR_BORDER), font: italic slate-500 (COLOR_MUTED)
-    const paddingX = 4.5;
-    const paddingY = 3.5;
-    const innerWidth = contentWidth - paddingX * 2;
-
-    doc.setFont('helvetica', 'italic');
-    doc.setFontSize(8);
-    doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
-
-    const descargoLines = doc.splitTextToSize(descargoText, innerWidth);
-    const textBlockHeight = descargoLines.length * 3.8;
-    const cardHeight = textBlockHeight + paddingY * 2 + 1;
-
-    checkPageBreak(cardHeight + 4);
-
-    // Background card box
-    doc.setFillColor(COLOR_BG_LIGHT[0], COLOR_BG_LIGHT[1], COLOR_BG_LIGHT[2]);
-    doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
-    doc.setLineWidth(0.2);
-    doc.roundedRect(margin, cursorY, contentWidth, cardHeight, 1.5, 1.5, 'FD');
-
-    // Text inside card
-    doc.text(descargoLines, margin + paddingX, cursorY + paddingY + 3.2);
-    cursorY += cardHeight + 6;
+    const descargoText = proposal.descargo?.trim() || '';
+    if (descargoText) {
+      await renderRichTextWithTables(descargoText, docTables);
+    }
+    await renderNestedSubs('descargo', '8');
   }
 
   // ==========================================
@@ -680,7 +753,7 @@ export async function generateAdvansysPdf(
     doc.setPage(p);
 
     // Running Header on pages 2+
-    if (p > 1) {
+    if (p > 1 && p !== commercialPageNumber) {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7.5);
       doc.setTextColor(COLOR_MUTED[0], COLOR_MUTED[1], COLOR_MUTED[2]);
@@ -696,7 +769,7 @@ export async function generateAdvansysPdf(
       doc.line(margin, 12, pageWidth - margin, 12);
     }
 
-    // Running Footer on all pages
+    if (p === commercialPageNumber) continue;
     const footerY = pageHeight - 8;
     doc.setDrawColor(COLOR_BORDER[0], COLOR_BORDER[1], COLOR_BORDER[2]);
     doc.setLineWidth(0.2);

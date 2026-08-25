@@ -33,7 +33,8 @@ import {
   shouldRunDailyBackup,
   getTodayDateString,
   exportAppBackup,
-  saveBackupToDiskFolderOrDownload
+  persistBackupToPc,
+  fetchDefaultBackupFolder
 } from './utils/backupManager';
 import { AutoBackupConfig, DEFAULT_BACKUP_CONFIG, BackupSnapshot } from './types';
 import { Sparkles, Loader2, FileText, AlertCircle, Cpu, Columns2, ClipboardList, Maximize2, Image as ImageIcon, PenLine, NotebookPen, Layers, X, Check, Database, BellRing } from 'lucide-react';
@@ -49,6 +50,12 @@ const extractBranding = (source?: Partial<BrandingSettings> | null): BrandingSet
   logoFileName: source?.logoFileName,
   logoWidth: source?.logoWidth,
   logoHeight: source?.logoHeight,
+  page2LogoDataUrl: source?.page2LogoDataUrl,
+  page2LogoMimeType: source?.page2LogoMimeType,
+  page2LogoFileName: source?.page2LogoFileName,
+  page2LogoWidth: source?.page2LogoWidth,
+  page2LogoHeight: source?.page2LogoHeight,
+  page2LogoMode: source?.page2LogoMode,
   customTitles: source?.customTitles,
 });
 
@@ -230,6 +237,26 @@ export default function App() {
     } finally {
       setNotesReady(true);
     }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchDefaultBackupFolder().then((folder) => {
+      if (cancelled || !folder) return;
+      setBackupConfig((prev) => {
+        if (prev.targetDirectoryPath) return prev;
+        const next = {
+          ...prev,
+          targetDirectoryPath: folder,
+          targetDirectoryName: prev.targetDirectoryName || folder,
+        };
+        saveBackupConfig(next);
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -429,9 +456,8 @@ export default function App() {
     const intervalMs = frequencyToMilliseconds(backupConfig.frequency);
     if (intervalMs <= 0) return;
 
-    const intervalTimer = setInterval(() => {
+    const runIntervalBackup = async () => {
       const s = latestStateRef.current;
-      // Only take auto-backup if there are documents, active draft or free notes
       if (s.history.length === 0 && !s.proposal && !s.rawRequirements.trim() && s.freeNotes.length === 0) return;
 
       const payload = getFullBackupPayload(s);
@@ -442,19 +468,44 @@ export default function App() {
         s.backupConfig.maxSnapshots
       );
 
-      if (snap) {
-        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        setLastAutoBackupTime(timeStr);
-        if (s.backupConfig.showNotificationToast) {
-          setBackupToastMessage(`Copia de seguridad automática (${timeStr})`);
-          setShowBackupToast(true);
-          setTimeout(() => setShowBackupToast(false), 2500);
-        }
-      }
-    }, intervalMs);
+      if (!snap) return;
 
-    return () => clearInterval(intervalTimer);
-  }, [backupConfig.enabled, backupConfig.frequency, backupConfig.maxSnapshots]);
+      const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      setLastAutoBackupTime(timeStr);
+
+      let diskNotice = '';
+      const disk = await persistBackupToPc(
+        payload,
+        `Advansys_Backup_Auto_${s.backupConfig.frequency}`,
+        {
+          directoryPath: s.backupConfig.targetDirectoryPath || s.backupConfig.targetDirectoryName,
+          allowBrowserDownload: false,
+        }
+      );
+      if (disk.success) {
+        diskNotice = disk.fullPath ? ` en ${disk.fullPath}` : ` en "${disk.folderName}"`;
+      } else if (disk.error && s.backupConfig.showNotificationToast) {
+        setBackupToastMessage(`Autoguardado en el navegador. Disco: ${disk.error}`);
+        setShowBackupToast(true);
+        setTimeout(() => setShowBackupToast(false), 4000);
+        return;
+      }
+
+      if (s.backupConfig.showNotificationToast) {
+        setBackupToastMessage(`Copia de seguridad automática${diskNotice} (${timeStr})`);
+        setShowBackupToast(true);
+        setTimeout(() => setShowBackupToast(false), 2500);
+      }
+    };
+
+    const startupTimer = window.setTimeout(runIntervalBackup, 1500);
+    const intervalTimer = window.setInterval(runIntervalBackup, intervalMs);
+
+    return () => {
+      window.clearTimeout(startupTimer);
+      window.clearInterval(intervalTimer);
+    };
+  }, [backupConfig.enabled, backupConfig.frequency, backupConfig.maxSnapshots, backupConfig.targetDirectoryPath]);
 
   // 3. Automated Daily Scheduled Backup Runner
   useEffect(() => {
@@ -464,9 +515,6 @@ export default function App() {
       const s = latestStateRef.current;
       const currentConfig = s.backupConfig;
       if (!currentConfig.dailyScheduleEnabled || !currentConfig.dailyScheduleTime) return;
-
-      // Don't backup if empty application state
-      if (s.history.length === 0 && !s.proposal && !s.rawRequirements.trim() && s.freeNotes.length === 0) return;
 
       if (shouldRunDailyBackup(currentConfig)) {
         const todayStr = getTodayDateString();
@@ -479,31 +527,46 @@ export default function App() {
         );
 
         if (snap) {
-          const updatedConfig = { ...currentConfig, lastDailyBackupDate: todayStr };
-          setBackupConfig(updatedConfig);
-          saveBackupConfig(updatedConfig);
-
           const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           setLastAutoBackupTime(timeStr);
 
-          // Save directly to selected disk folder or trigger automatic browser download
           let diskSavedNotice = '';
-          if (currentConfig.dailyAutoDownloadJson || currentConfig.autoDownloadDailyToDisk) {
-            try {
-              const res = await saveBackupToDiskFolderOrDownload(
-                payload,
-                `Advansys_Backup_Diario_${currentConfig.dailyScheduleTime.replace(':', '')}`
-              );
-              if (res.success && res.method === 'direct_folder') {
-                diskSavedNotice = ` en "${res.folderName}"`;
+          let diskOk = true;
+          try {
+            const res = await persistBackupToPc(
+              payload,
+              `Advansys_Backup_Diario_${currentConfig.dailyScheduleTime.replace(':', '')}`,
+              {
+                directoryPath: currentConfig.targetDirectoryPath || currentConfig.targetDirectoryName,
+                allowBrowserDownload: false,
               }
-            } catch (err) {
-              console.warn('Error saving daily backup to disk folder:', err);
+            );
+            if (res.success) {
+              diskSavedNotice = res.fullPath ? ` en ${res.fullPath}` : ` en "${res.folderName}"`;
+            } else {
+              diskOk = false;
             }
+          } catch (err) {
+            diskOk = false;
+            console.warn('Error saving daily backup to disk folder:', err);
+          }
+
+          if (diskOk) {
+            const updatedConfig = {
+              ...currentConfig,
+              lastDailyBackupDate: todayStr,
+              lastDailyBackupClock: timeStr,
+            };
+            setBackupConfig(updatedConfig);
+            saveBackupConfig(updatedConfig);
           }
 
           if (currentConfig.showNotificationToast) {
-            setBackupToastMessage(`Copia diaria programada guardada${diskSavedNotice} (${currentConfig.dailyScheduleTime})`);
+            setBackupToastMessage(
+              diskOk
+                ? `Copia diaria programada guardada${diskSavedNotice} (${currentConfig.dailyScheduleTime})`
+                : 'Copia diaria lista en el navegador. Abre Copias / Backup para confirmar la carpeta del PC.'
+            );
             setShowBackupToast(true);
             setTimeout(() => setShowBackupToast(false), 4000);
           }
@@ -521,6 +584,7 @@ export default function App() {
   }, [
     backupConfig.dailyScheduleEnabled,
     backupConfig.dailyScheduleTime,
+    backupConfig.targetDirectoryPath,
     backupConfig.maxSnapshots,
     backupConfig.lastDailyBackupDate,
     backupConfig.dailyAutoDownloadJson,
@@ -1397,6 +1461,14 @@ export default function App() {
   );
   const hasNotas = Boolean(rawRequirements.trim());
 
+  const backupToastEl = showBackupToast ? (
+    <div className="fixed bottom-4 right-4 z-[70] bg-[#0A3D62] text-white px-3.5 py-2 rounded-xl shadow-lg border border-emerald-400/40 flex items-center gap-2.5 text-xs font-semibold animate-in fade-in slide-in-from-bottom-3 duration-200">
+      <span className="w-2 h-2 rounded-full bg-[#2ECC71] animate-pulse"></span>
+      <Database className="w-4 h-4 text-[#2ECC71]" />
+      <span>{backupToastMessage || 'Copia de seguridad guardada'}</span>
+    </div>
+  ) : null;
+
   // Render Welcome Intro screen first if active
   if (showWelcome) {
     return (
@@ -1531,6 +1603,7 @@ export default function App() {
           </div>
         )}
         <ScrollToTopBubble />
+        {backupToastEl}
       </>
     );
   }
@@ -1573,6 +1646,7 @@ export default function App() {
           </div>
         )}
         <ScrollToTopBubble />
+        {backupToastEl}
       </>
     );
   }
@@ -2030,14 +2104,7 @@ export default function App() {
         lastAutoBackupTime={lastAutoBackupTime}
       />
 
-      {/* Auto-Backup Notification Toast */}
-      {showBackupToast && (
-        <div className="fixed bottom-4 right-4 z-50 bg-[#0A3D62] text-white px-3.5 py-2 rounded-xl shadow-lg border border-emerald-400/40 flex items-center gap-2.5 text-xs font-semibold animate-in fade-in slide-in-from-bottom-3 duration-200">
-          <span className="w-2 h-2 rounded-full bg-[#2ECC71] animate-pulse"></span>
-          <Database className="w-4 h-4 text-[#2ECC71]" />
-          <span>{backupToastMessage || 'Copia de seguridad guardada'}</span>
-        </div>
-      )}
+      {backupToastEl}
 
       {reminderAlert && (
         <div className="fixed bottom-4 right-4 z-[60] max-w-sm bg-amber-50 text-slate-900 px-3.5 py-3 rounded-2xl shadow-lg border border-amber-300 flex items-start gap-2.5">

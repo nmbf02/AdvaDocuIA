@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ProposalSection, MetadataHeader, UploadedImage, DocumentTable, getEffectiveTitles, SlideDeck, DocumentStatus, SavedProposal, DEFAULT_DESCARGO_TEXT } from '../types';
+import { ProposalSection, MetadataHeader, UploadedImage, DocumentTable, getEffectiveTitles, SlideDeck, DocumentStatus, SavedProposal, DEFAULT_DESCARGO_TEXT, COVER_SCOPE_MAX_ITEMS, getEffectiveCommercialPage, getPage2LogoMode, Page2LogoMode, DEFAULT_COMMERCIAL_PAGE, NestedSectionField, getSubsections, createEmptySubsection } from '../types';
 import { FileDown, FileText, Edit3, Eye, Plus, Trash2, Sparkles, Wand2, Loader2, Cpu, Save, Check, GitBranch, Tag, X, Layers, CheckCircle2, CheckCheck, Presentation, Bold, ArrowRight, ArrowRightLeft, RotateCcw, Terminal, ChevronDown, ChevronUp, ChevronsUpDown, ChevronsDownUp, Table2, Image as ImageIcon, Upload, Paperclip, ExternalLink } from 'lucide-react';
 import { generateAdvansysDocx } from '../utils/docxGenerator';
 import { downloadAdvansysPdf } from '../utils/pdfGenerator';
@@ -69,7 +69,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
     setActiveTab(initialTab);
   }, [initialTab]);
   const [activeSectionFilter, setActiveSectionFilter] = useState<string>('all');
-  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({ comercial: true });
   const [isExporting, setIsExporting] = useState<'docx' | 'pdf' | 'pptx' | null>(null);
 
   const toggleSectionCollapse = (sectionKey: string) => {
@@ -79,7 +79,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
     }));
   };
 
-  const allProposalSectionKeys = ['resumen', 'beneficios', 'alcance', 'objetivo', 'descripcion', 'operativo', 'tablas', 'imagenes', 'descargo'];
+  const allProposalSectionKeys = ['resumen', 'beneficios', 'alcance', 'comercial', 'objetivo', 'descripcion', 'operativo', 'tablas', 'imagenes', 'descargo'];
   const areAllSectionsCollapsed = allProposalSectionKeys.every((k) => !!collapsedSections[k]);
 
   const handleToggleAllSections = () => {
@@ -376,6 +376,66 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
     });
   };
 
+  const updateSubsections = (field: NestedSectionField, next: ReturnType<typeof getSubsections>) => {
+    onChange({
+      ...proposal,
+      subsections: { ...proposal.subsections, [field]: next },
+    });
+  };
+
+  const renderSubsectionEditor = (field: NestedSectionField, sectionNum: string) => {
+    const items = getSubsections(proposal, field);
+    return (
+      <div className="mt-3 space-y-2 border-t border-slate-200 pt-3">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Subsecciones</p>
+          <button
+            type="button"
+            className="text-[11px] font-semibold text-[#1E5F8A]"
+            onClick={() => updateSubsections(field, [...items, createEmptySubsection()])}
+          >
+            + Agregar subsección
+          </button>
+        </div>
+        {items.map((sub, idx) => (
+          <div key={sub.id} className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-1.5">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black text-[#0A3D62] shrink-0">{sectionNum}.{idx + 1}</span>
+              <input
+                className="flex-1 min-w-0 px-2 py-1 text-sm font-semibold border border-slate-200 rounded-md"
+                placeholder="Título de la subsección"
+                value={sub.title}
+                onChange={(e) => {
+                  const next = [...items];
+                  next[idx] = { ...sub, title: e.target.value };
+                  updateSubsections(field, next);
+                }}
+              />
+              <button
+                type="button"
+                className="text-slate-400 hover:text-rose-600 p-1"
+                title="Quitar subsección"
+                onClick={() => updateSubsections(field, items.filter((s) => s.id !== sub.id))}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <textarea
+              className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded-md min-h-[64px]"
+              placeholder="Contenido de la subsección"
+              value={sub.body}
+              onChange={(e) => {
+                const next = [...items];
+                next[idx] = { ...sub, body: e.target.value };
+                updateSubsections(field, next);
+              }}
+            />
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   // AI Refine Handler
   const handleAIRefine = async (action: 'polish_all' | 'complete_missing' | 'refine_section', sectionKey?: string) => {
     try {
@@ -495,7 +555,9 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
   };
 
   const handleAddScopeItem = (subfield: 'alcance' | 'exclusiones' | 'entregables') => {
-    const current = [...(proposal.alcanceExclusionesEntregables?.[subfield] || []), "Nuevo ítem..."];
+    const existing = proposal.alcanceExclusionesEntregables?.[subfield] || [];
+    if (existing.length >= COVER_SCOPE_MAX_ITEMS) return;
+    const current = [...existing, 'Nuevo ítem...'];
     onChange({
       ...proposal,
       alcanceExclusionesEntregables: {
@@ -877,6 +939,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
               { id: 'resumen', label: '1. Resumen' },
               { id: 'beneficios', label: '2. Beneficios' },
               { id: 'alcance', label: '3. Alcance' },
+              { id: 'comercial', label: titles.sectionPage2 },
               { id: 'objetivo', label: '4. Objetivo' },
               { id: 'descripcion', label: '5. Solución' },
               { id: 'operativo', label: '6-7. Pasos' },
@@ -1053,6 +1116,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                   />
                   {renderInlineTables(proposal.resumenEjecutivo)}
                   {renderInlineImages(proposal.resumenEjecutivo)}
+                  {renderSubsectionEditor('resumenEjecutivo', '1')}
                 </div>
               )}
             </div>
@@ -1251,9 +1315,10 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                       </span>
                       <button
                         onClick={() => handleAddScopeItem('alcance')}
-                        className="text-[11px] font-semibold text-blue-600 hover:underline"
+                        disabled={(proposal.alcanceExclusionesEntregables?.alcance?.length || 0) >= COVER_SCOPE_MAX_ITEMS}
+                        className="text-[11px] font-semibold text-blue-600 hover:underline disabled:opacity-40 disabled:no-underline"
                       >
-                        + Agregar punto
+                        {(proposal.alcanceExclusionesEntregables?.alcance?.length || 0) >= COVER_SCOPE_MAX_ITEMS ? 'Máximo 3' : '+ Agregar punto'}
                       </button>
                     </div>
                     <div className="space-y-1.5">
@@ -1327,9 +1392,10 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                       </span>
                       <button
                         onClick={() => handleAddScopeItem('exclusiones')}
-                        className="text-[11px] font-semibold text-[#0A3D62] hover:underline"
+                        disabled={(proposal.alcanceExclusionesEntregables?.exclusiones?.length || 0) >= COVER_SCOPE_MAX_ITEMS}
+                        className="text-[11px] font-semibold text-[#0A3D62] hover:underline disabled:opacity-40 disabled:no-underline"
                       >
-                        + Agregar exclusión
+                        {(proposal.alcanceExclusionesEntregables?.exclusiones?.length || 0) >= COVER_SCOPE_MAX_ITEMS ? 'Máximo 3' : '+ Agregar exclusión'}
                       </button>
                     </div>
                     <div className="space-y-1.5">
@@ -1403,9 +1469,10 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                       </span>
                       <button
                         onClick={() => handleAddScopeItem('entregables')}
-                        className="text-[11px] font-semibold text-emerald-700 hover:underline"
+                        disabled={(proposal.alcanceExclusionesEntregables?.entregables?.length || 0) >= COVER_SCOPE_MAX_ITEMS}
+                        className="text-[11px] font-semibold text-emerald-700 hover:underline disabled:opacity-40 disabled:no-underline"
                       >
-                        + Agregar entregable
+                        {(proposal.alcanceExclusionesEntregables?.entregables?.length || 0) >= COVER_SCOPE_MAX_ITEMS ? 'Máximo 3' : '+ Agregar entregable'}
                       </button>
                     </div>
                     <div className="space-y-1.5">
@@ -1470,6 +1537,172 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                       ))}
                     </div>
                   </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {(activeSectionFilter === 'all' || activeSectionFilter === 'comercial') && (
+            <div className="bg-slate-50 p-3 sm:p-4 rounded-xl border border-slate-200 min-w-0">
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-2">
+                <button type="button" onClick={() => toggleSectionCollapse('comercial')} className="flex items-center gap-2 text-left">
+                  <span className="p-1 rounded-md bg-white border border-slate-200">
+                    {collapsedSections['comercial'] ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+                  </span>
+                  <label className="text-sm font-bold text-[#0A3D62] uppercase tracking-wide cursor-pointer">{titles.sectionPage2}</label>
+                </button>
+                <label className="text-xs font-semibold text-slate-600 inline-flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={!proposal.commercial?.hide}
+                    onChange={(e) => onChange({ ...proposal, commercial: { ...proposal.commercial, hide: !e.target.checked } })}
+                  />
+                  Incluir en el documento
+                </label>
+              </div>
+              {!collapsedSections['comercial'] && (
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Logo de esta página</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(
+                        [
+                          { id: 'off' as Page2LogoMode, label: 'Ocultar' },
+                          { id: 'main' as Page2LogoMode, label: 'Logo general' },
+                          { id: 'page2' as Page2LogoMode, label: 'Logo página 2' },
+                        ]
+                      ).map((opt) => {
+                        const current = getPage2LogoMode(metadata, proposal.commercial);
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => onChange({ ...proposal, commercial: { ...proposal.commercial, logoMode: opt.id } })}
+                            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border ${
+                              current === opt.id
+                                ? 'bg-[#0A3D62] text-white border-[#0A3D62]'
+                                : 'bg-white text-slate-600 border-slate-200'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-1">El archivo de “Logo página 2” se carga en Ajustes → Marca. No cambia el logo de la carátula.</p>
+                  </div>
+                  {(getEffectiveCommercialPage(proposal).lineItems).map((item, idx) => (
+                    <div key={idx} className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                      <input
+                        className="sm:col-span-2 px-2 py-1.5 text-sm border border-slate-200 rounded-lg"
+                        placeholder="Descripción / partida"
+                        value={item.description}
+                        onChange={(e) => {
+                          const lineItems = [...getEffectiveCommercialPage(proposal).lineItems];
+                          lineItems[idx] = { ...lineItems[idx], description: e.target.value };
+                          onChange({ ...proposal, commercial: { ...proposal.commercial, lineItems } });
+                        }}
+                      />
+                      <input
+                        className="px-2 py-1.5 text-sm border border-slate-200 rounded-lg"
+                        placeholder="Horas"
+                        value={item.hours}
+                        onChange={(e) => {
+                          const lineItems = [...getEffectiveCommercialPage(proposal).lineItems];
+                          lineItems[idx] = { ...lineItems[idx], hours: e.target.value };
+                          onChange({ ...proposal, commercial: { ...proposal.commercial, lineItems } });
+                        }}
+                      />
+                      <input
+                        className="px-2 py-1.5 text-sm border border-slate-200 rounded-lg"
+                        placeholder="Valor unitario USD"
+                        value={item.unitValue}
+                        onChange={(e) => {
+                          const lineItems = [...getEffectiveCommercialPage(proposal).lineItems];
+                          lineItems[idx] = { ...lineItems[idx], unitValue: e.target.value };
+                          onChange({ ...proposal, commercial: { ...proposal.commercial, lineItems } });
+                        }}
+                      />
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="text-xs font-semibold text-[#1E5F8A]"
+                    onClick={() => {
+                      const lineItems = [...getEffectiveCommercialPage(proposal).lineItems, { description: '', hours: '', unitValue: '' }];
+                      onChange({ ...proposal, commercial: { ...proposal.commercial, lineItems } });
+                    }}
+                  >
+                    + Agregar partida
+                  </button>
+                  <input
+                    className="w-full px-2 py-1.5 text-sm font-bold border border-slate-200 rounded-lg uppercase tracking-wide"
+                    placeholder={DEFAULT_COMMERCIAL_PAGE.conditionsTitle}
+                    value={getEffectiveCommercialPage(proposal).conditionsTitle}
+                    onChange={(e) => onChange({ ...proposal, commercial: { ...proposal.commercial, conditionsTitle: e.target.value } })}
+                  />
+                  {getEffectiveCommercialPage(proposal).conditions.map((cond, idx) => (
+                    <div key={idx} className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <input
+                        className="px-2 py-1.5 text-sm border border-slate-200 rounded-lg font-semibold"
+                        placeholder="Título"
+                        value={cond.title}
+                        onChange={(e) => {
+                          const conditions = [...getEffectiveCommercialPage(proposal).conditions];
+                          conditions[idx] = { ...conditions[idx], title: e.target.value };
+                          onChange({ ...proposal, commercial: { ...proposal.commercial, conditions } });
+                        }}
+                      />
+                      <input
+                        className="sm:col-span-2 px-2 py-1.5 text-sm border border-slate-200 rounded-lg"
+                        placeholder="Texto"
+                        value={cond.text}
+                        onChange={(e) => {
+                          const conditions = [...getEffectiveCommercialPage(proposal).conditions];
+                          conditions[idx] = { ...conditions[idx], text: e.target.value };
+                          onChange({ ...proposal, commercial: { ...proposal.commercial, conditions } });
+                        }}
+                      />
+                    </div>
+                  ))}
+                  <input
+                    className="w-full px-2 py-1.5 text-sm font-bold border border-slate-200 rounded-lg uppercase tracking-wide"
+                    placeholder={DEFAULT_COMMERCIAL_PAGE.nextStepsTitle}
+                    value={getEffectiveCommercialPage(proposal).nextStepsTitle}
+                    onChange={(e) => onChange({ ...proposal, commercial: { ...proposal.commercial, nextStepsTitle: e.target.value } })}
+                  />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {getEffectiveCommercialPage(proposal).nextSteps.map((step, idx) => (
+                      <input
+                        key={idx}
+                        className="px-2 py-1.5 text-sm border border-slate-200 rounded-lg"
+                        value={step}
+                        onChange={(e) => {
+                          const nextSteps = [...getEffectiveCommercialPage(proposal).nextSteps];
+                          nextSteps[idx] = e.target.value;
+                          onChange({ ...proposal, commercial: { ...proposal.commercial, nextSteps } });
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <input
+                    className="w-full px-2 py-1.5 text-sm font-bold border border-slate-200 rounded-lg uppercase tracking-wide"
+                    placeholder={DEFAULT_COMMERCIAL_PAGE.notesTitle}
+                    value={getEffectiveCommercialPage(proposal).notesTitle}
+                    onChange={(e) => onChange({ ...proposal, commercial: { ...proposal.commercial, notesTitle: e.target.value } })}
+                  />
+                  <textarea
+                    className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded-lg min-h-[70px]"
+                    placeholder="Notas importantes"
+                    value={proposal.commercial?.notes ?? getEffectiveCommercialPage(proposal).notes}
+                    onChange={(e) => onChange({ ...proposal, commercial: { ...proposal.commercial, notes: e.target.value } })}
+                  />
+                  <input
+                    className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded-lg"
+                    placeholder="Revisado por"
+                    value={proposal.commercial?.reviewedBy ?? ''}
+                    onChange={(e) => onChange({ ...proposal, commercial: { ...proposal.commercial, reviewedBy: e.target.value } })}
+                  />
                 </div>
               )}
             </div>
@@ -1556,6 +1789,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                   />
                   {renderInlineTables(proposal.objetivo)}
                   {renderInlineImages(proposal.objetivo)}
+                  {renderSubsectionEditor('objetivo', '4')}
                 </div>
               )}
             </div>
@@ -1642,6 +1876,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                   />
                   {renderInlineTables(proposal.descripcion)}
                   {renderInlineImages(proposal.descripcion)}
+                  {renderSubsectionEditor('descripcion', '5')}
                 </div>
               )}
             </div>
@@ -2115,6 +2350,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                   />
                   {renderInlineTables(proposal.descargo)}
                   {renderInlineImages(proposal.descargo)}
+                  {renderSubsectionEditor('descargo', '8')}
                 </div>
               )}
             </div>

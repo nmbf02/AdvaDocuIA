@@ -173,7 +173,7 @@ select {
   max-width: 100%;
   min-width: 0;
 }
-.history-modal select {
+.history-modal .history-filters select {
   width: 100%;
   max-width: 100%;
   min-width: 0;

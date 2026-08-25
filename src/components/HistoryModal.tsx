@@ -299,7 +299,7 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-[2px] flex items-center justify-center p-3 sm:p-6 overflow-hidden">
-      <div className="history-modal bg-white w-full max-w-3xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[min(82dvh,720px)] min-w-0">
+      <div className="history-modal bg-white w-full max-w-5xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[min(86dvh,800px)] min-w-0">
         
         {/* Modal Header */}
         <div className="bg-[#0A3D62] text-white p-3 sm:p-4 px-3 sm:px-6 flex items-center justify-between gap-2 border-b border-[#1E5F8A] shrink-0 min-w-0">
@@ -420,7 +420,7 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
           </div>
 
           {showFilters && (
-          <div className="space-y-2.5">
+          <div className="history-filters space-y-2.5">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-semibold text-slate-600">
               {filteredProposals.length} de {proposals.length}
@@ -633,105 +633,98 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
               return (
                 <div
                   key={item.id}
-                  className={`p-3 sm:p-4 rounded-xl border transition-all flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 sm:gap-4 group min-w-0 max-w-full overflow-hidden ${
+                  className={`p-3 sm:p-3.5 rounded-xl border transition-all flex flex-col gap-2 min-w-0 ${
                     isFinished
                       ? 'bg-emerald-50/40 hover:bg-emerald-50/80 border-emerald-200 hover:border-emerald-400 shadow-2xs'
                       : 'bg-slate-50 hover:bg-blue-50/50 border-slate-200 hover:border-[#0A3D62]'
                   }`}
                 >
-                  <div className="space-y-2 flex-1 min-w-0">
-                    <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-                      {/* Version Badge */}
-                      <span className="inline-flex items-center px-2.5 py-0.5 text-xs font-bold bg-[#2ECC71] text-slate-950 rounded-full border border-emerald-500/40 shadow-2xs">
-                        <Tag className="w-3 h-3 mr-1 text-slate-900" />
-                        {versionLabel}
-                      </span>
-
-                      {/* Status Badge */}
-                      {getStatusBadge(item.status)}
-
-                      {(item.documentType === 'technical' || item.content?.technicalDoc?.isStandalone) && (
-                        <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-800 rounded-full border border-emerald-200">
-                          <Terminal className="w-3 h-3 mr-1" />
-                          Doc. Técnica
+                  <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3 min-w-0">
+                    <div className="flex-1 min-w-0 space-y-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="inline-flex items-center px-2 py-0.5 text-[11px] font-bold bg-[#2ECC71] text-slate-950 rounded-full border border-emerald-500/40">
+                          <Tag className="w-3 h-3 mr-1 text-slate-900" />
+                          {versionLabel}
                         </span>
-                      )}
-                      {item.documentType === 'slides' && (
-                        <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-bold bg-blue-50 text-[#0A3D62] rounded-full border border-blue-200">
-                          <Layers className="w-3 h-3 mr-1" />
-                          Diapositivas
+                        {getStatusBadge(item.status)}
+                        {(item.documentType === 'technical' || item.content?.technicalDoc?.isStandalone) && (
+                          <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-800 rounded-full border border-emerald-200">
+                            <Terminal className="w-3 h-3 mr-1" />
+                            Doc. Técnica
+                          </span>
+                        )}
+                        {item.documentType === 'slides' && (
+                          <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-bold bg-blue-50 text-[#0A3D62] rounded-full border border-blue-200">
+                            <Layers className="w-3 h-3 mr-1" />
+                            Diapositivas
+                          </span>
+                        )}
+                        {item.linkedProposalName && (
+                          <span className="text-[10px] font-semibold text-emerald-800 bg-white px-2 py-0.5 rounded border border-emerald-200 truncate max-w-[180px]" title={item.linkedProposalName}>
+                            Atada: {item.linkedProposalName}
+                          </span>
+                        )}
+                        {((item.linkedTechnicalDocId && !isTechnicalHistoryItem(item)) || hasEmbeddedTechnicalDoc(item)) && (
+                          <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-bold bg-white text-emerald-800 rounded border border-emerald-200">
+                            <Link className="w-3 h-3 mr-1" />
+                            Con Doc. Técnica
+                          </span>
+                        )}
+                        <span className="text-[11px] font-bold px-2 py-0.5 bg-[#0A3D62] text-white rounded">
+                          {item.metadata.ticketNo || item.metadata.propuestaNo || 'S/N'}
                         </span>
-                      )}
-                      {item.linkedProposalName && (
-                        <span className="text-[10px] font-semibold text-emerald-800 bg-white px-2 py-0.5 rounded border border-emerald-200 truncate max-w-[180px]" title={item.linkedProposalName}>
-                          Atada: {item.linkedProposalName}
-                        </span>
-                      )}
-                      {((item.linkedTechnicalDocId && !isTechnicalHistoryItem(item)) || hasEmbeddedTechnicalDoc(item)) && (
-                        <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-bold bg-white text-emerald-800 rounded border border-emerald-200">
-                          <Link className="w-3 h-3 mr-1" />
-                          Con Doc. Técnica
-                        </span>
-                      )}
+                      </div>
 
-                      {/* Ticket Badge */}
-                      <span className="text-xs font-bold px-2 py-0.5 bg-[#0A3D62] text-white rounded">
-                        {item.metadata.ticketNo || item.metadata.propuestaNo || 'S/N'}
-                      </span>
-
-                      <h3 className="text-sm font-bold text-slate-900 group-hover:text-[#0A3D62] min-w-0 max-w-full break-words">
+                      <h3 className="text-sm font-bold text-slate-900 group-hover:text-[#0A3D62] leading-snug break-words">
                         {item.metadata.nombreProyecto || 'Proyecto sin título'}
                       </h3>
-                    </div>
 
-                    {/* Version Note if exists */}
-                    {item.versionNote && (
-                      <p className="text-xs text-slate-600 italic bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 flex items-start gap-1.5">
-                        <FileText className="w-3.5 h-3.5 mt-0.5 text-slate-400 shrink-0" />
-                        <span>Nota de versión: {item.versionNote}</span>
-                      </p>
-                    )}
+                      {item.versionNote && (
+                        <p className="text-xs text-slate-600 italic bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 flex items-start gap-1.5">
+                          <FileText className="w-3.5 h-3.5 mt-0.5 text-slate-400 shrink-0" />
+                          <span>Nota de versión: {item.versionNote}</span>
+                        </p>
+                      )}
 
-                    <div className="flex flex-wrap items-center text-xs text-slate-500 gap-x-4 gap-y-1">
-                      <span className="flex items-center">
-                        <Building2 className="w-3.5 h-3.5 mr-1 text-slate-400" />
-                        {item.metadata.cliente || 'Sin Cliente'}
-                      </span>
-                      <span className="flex items-center">
-                        <Calendar className="w-3.5 h-3.5 mr-1 text-slate-400" />
-                        {new Date(item.timestamp).toLocaleDateString('es-ES', {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </span>
-                      {isFinished && item.statusChangedAt && (
-                        <span className="flex items-center text-emerald-700 font-medium">
-                          <Check className="w-3.5 h-3.5 mr-1 text-emerald-600" />
-                          Marcado {currentStatus} el {new Date(item.statusChangedAt).toLocaleDateString('es-ES', {
-                            day: 'numeric',
+                      <div className="flex flex-wrap items-center text-xs text-slate-500 gap-x-3 gap-y-0.5">
+                        <span className="flex items-center">
+                          <Building2 className="w-3.5 h-3.5 mr-1 text-slate-400" />
+                          {item.metadata.cliente || 'Sin Cliente'}
+                        </span>
+                        <span className="flex items-center">
+                          <Calendar className="w-3.5 h-3.5 mr-1 text-slate-400" />
+                          {new Date(item.timestamp).toLocaleDateString('es-ES', {
+                            year: 'numeric',
                             month: 'short',
+                            day: 'numeric',
                             hour: '2-digit',
                             minute: '2-digit'
                           })}
                         </span>
-                      )}
+                        {isFinished && item.statusChangedAt && (
+                          <span className="flex items-center text-emerald-700 font-medium">
+                            <Check className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                            Marcado {currentStatus} el {new Date(item.statusChangedAt).toLocaleDateString('es-ES', {
+                              day: 'numeric',
+                              month: 'short',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Actions & Status Control Bar */}
-                  <div className="flex flex-wrap items-center gap-2 min-w-0 max-w-full self-stretch lg:self-center justify-end">
+                    <div className="flex flex-wrap items-center gap-1.5 shrink-0 sm:justify-end">
                     
                     {/* Status Changer Selector */}
                     {onUpdateStatus && (
-                      <div className="flex flex-wrap items-center gap-1 bg-white p-1 rounded-lg border border-slate-200 shadow-2xs max-w-full min-w-0">
+                      <div className="flex flex-nowrap items-center gap-1 bg-white p-1 rounded-lg border border-slate-200 shadow-2xs shrink-0">
                         <span className="text-[10px] font-bold text-slate-500 px-1 hidden sm:inline">Estado:</span>
                         <select
                           value={currentStatus}
                           onChange={(e) => onUpdateStatus(item.id, e.target.value as DocumentStatus)}
-                          className={`text-xs font-bold rounded-md px-2 py-1 border max-w-[8.5rem] min-w-0 transition-colors focus:ring-2 focus:ring-[#0A3D62] ${
+                          className={`text-xs font-bold rounded-md px-2 py-1 border w-auto max-w-[8.5rem] shrink-0 transition-colors focus:ring-2 focus:ring-[#0A3D62] ${
                             isFinished
                               ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
                               : currentStatus === 'en_revision'
@@ -828,7 +821,7 @@ ${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacio
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
-
+                  </div>
                 </div>
               );
             })

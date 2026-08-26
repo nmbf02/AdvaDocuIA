@@ -2124,6 +2124,14 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                       </div>
                     );
                   })}
+                  <button
+                    type="button"
+                    onClick={handleAddStep}
+                    className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-dashed border-emerald-300 rounded-lg transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Añadir otro paso (7.{(proposal.analisisOperativo?.length || 0) + 1})
+                  </button>
                 </div>
               )}
             </div>

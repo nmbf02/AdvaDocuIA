@@ -1,0 +1,40 @@
+{
+  "version": "1.0",
+  "exportDate": "2026-08-26T17:28:53.510Z",
+  "appName": "ADVANSYS Document Generator",
+  "stats": {
+    "totalHistoryItems": 0,
+    "hasDraft": false,
+    "hasBranding": false
+  },
+  "history": [],
+  "draft": null,
+  "settings": {},
+  "theme": "dark",
+  "freeNotes": [
+    {
+      "id": "idea_1787596254129_qk6rs",
+      "title": "",
+      "body": "",
+      "color": "amber",
+      "pinned": false,
+      "createdAt": "2026-08-24T18:30:54.129Z",
+      "updatedAt": "2026-08-24T18:30:54.129Z",
+      "reminderAt": null,
+      "reminderDone": false,
+      "reminderFiredAt": null
+    },
+    {
+      "id": "idea_1787596159049_4yfei",
+      "title": "Ideas para la propuesta ACME",
+      "body": "Alcance inicial, pendientes de reunión y recordatorio para el viernes.",
+      "color": "amber",
+      "pinned": false,
+      "createdAt": "2026-08-24T18:29:19.049Z",
+      "updatedAt": "2026-08-24T18:30:44.372Z",
+      "reminderAt": null,
+      "reminderDone": false,
+      "reminderFiredAt": null
+    }
+  ]
+}

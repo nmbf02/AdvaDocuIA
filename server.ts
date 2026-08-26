@@ -35,6 +35,13 @@ function getGeminiClient(): GoogleGenAI {
   return aiClient;
 }
 
+function agentPersonaBlock(agent: any): string {
+  const rol = typeof agent?.rol === 'string' ? agent.rol.trim() : '';
+  if (!rol) return '';
+  const idioma = agent?.idioma === 'en' ? 'English' : 'español formal';
+  return `\n\nACTITUD E INSTRUCCIONES CONFIGURADAS EN LA APLICACIÓN (prioridad de tono y enfoque de negocio):\nIdioma de salida: ${idioma}.\n${rol}\nLa estructura JSON y las secciones del documento de Advansys se mantienen. El estilo de redacción sigue estas instrucciones.\n`;
+}
+
 function clampLevel(value: unknown, fallback: number): number {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
@@ -48,7 +55,7 @@ function getDetailLevelGuidance(level: number): string {
 - Resumen ejecutivo: 1 párrafo corto (4 a 6 líneas).
 - Beneficios: 3 a 4 puntos, una frase cada uno.
 - Alcance, exclusiones y entregables: 3 a 5 ítems por lista, redactados de forma directa.
-- Análisis operativo: 3 a 5 pasos. Cada explicación: 2 a 4 oraciones.
+- Análisis operativo: 3 a 5 pasos de un solo nivel (7.1, 7.2…). Sin subpasos. Cada explicación: 2 a 4 oraciones.
 - Describe solo lo esencial para entender y aprobar el cambio.`;
   }
   if (level <= 7) {
@@ -57,7 +64,7 @@ function getDetailLevelGuidance(level: number): string {
 - Resumen ejecutivo: 1 a 2 párrafos.
 - Beneficios: 5 a 7 puntos con justificación breve.
 - Alcance, exclusiones y entregables: 5 a 8 ítems por lista.
-- Análisis operativo: 6 a 10 pasos. Cada paso con un párrafo claro (ubicación, componente y comportamiento).
+- Análisis operativo: 6 a 10 pasos de un solo nivel (7.1, 7.2…). Sin subpasos 7.1.1. Cada paso con un párrafo claro (ubicación, componente y comportamiento).
 - Incluye el contexto suficiente para ejecutar el cambio.`;
   }
   return `FILTRO DE NIVEL DE DETALLE (Nivel ${level} de 10) — EXHAUSTIVO / PROFUNDO:
@@ -65,7 +72,7 @@ function getDetailLevelGuidance(level: number): string {
 - Resumen ejecutivo: 2 a 3 párrafos densos.
 - Beneficios: 8 a 12 puntos con justificación.
 - Alcance, exclusiones y entregables: 8 a 12 ítems detallados por lista.
-- Análisis operativo: 10 a 16 pasos. Cada paso con 2 a 4 párrafos (ubicación, componente, etiqueta, comportamiento, validaciones, excepciones y riesgos).
+- Análisis operativo: 10 a 16 pasos de un solo nivel. Sin subpasos ni subpasos de subpasos. Cada paso con 2 a 4 párrafos (ubicación, componente, etiqueta, comportamiento, validaciones, excepciones y riesgos).
 - Cruza cada imagen adjunta con explicación profunda y referencias explícitas [IMAGEN_n].
 - No omitas trazabilidad ni riesgos residuales relevantes.`;
 }
@@ -368,10 +375,98 @@ No inventes tickets, cifras ni nombres que no estén en el documento. Si falta u
   }
 });
 
+async function handleAgentInterview(req: express.Request, res: express.Response) {
+  try {
+    const { stage, rawRequirements, metadata, agentConfig, answers } = req.body;
+    if (!rawRequirements || typeof rawRequirements !== "string") {
+      return res.status(400).json({ success: false, error: "Las notas o requerimientos son obligatorios." });
+    }
+
+    const ai = getGeminiClient();
+    const persona = agentPersonaBlock(agentConfig);
+    const idioma = agentConfig?.idioma === "en" ? "English" : "español formal";
+    const metaLine = `Cliente: ${metadata?.cliente || "N/A"}. Proyecto: ${metadata?.nombreProyecto || "N/A"}. Ticket: ${metadata?.ticketNo || "N/A"}.`;
+
+    if (stage === "understand") {
+      const qa = Array.isArray(answers)
+        ? answers.map((a: any) => `P: ${a?.question || ""}\nR: ${a?.answer || ""}`).join("\n\n")
+        : "";
+      const response = await ai.models.generateContent({
+        model: "gemini-3.6-flash",
+        contents: `${metaLine}\n\nREQUERIMIENTOS:\n${rawRequirements}\n\nRESPUESTAS DE LA ENTREVISTA:\n${qa}`,
+        config: {
+          systemInstruction: `Resume lo entendido para que el analista lo confirme antes de redactar el documento. Idioma: ${idioma}.${persona}
+No inventes alcance. Si falta dato, ponlo en pendientes.`,
+          temperature: 0.2,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              objetivo: { type: Type.STRING },
+              alcance: { type: Type.STRING },
+              reglas: { type: Type.STRING },
+              supuestos: { type: Type.STRING },
+              pendientes: { type: Type.STRING },
+            },
+            required: ["objetivo", "alcance", "reglas", "supuestos", "pendientes"],
+          },
+        },
+      });
+      const textOutput = response.text;
+      if (!textOutput) throw new Error("No se obtuvo el resumen.");
+      let understanding;
+      try {
+        understanding = JSON.parse(textOutput);
+      } catch {
+        throw new Error("Gemini devolvió un resumen inválido. Reintenta.");
+      }
+      return res.json({ success: true, understanding });
+    }
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.6-flash",
+      contents: `${metaLine}\n\nREQUERIMIENTOS:\n${rawRequirements}`,
+      config: {
+        systemInstruction: `Eres un analista que entrevista al usuario ANTES de redactar. Idioma: ${idioma}.${persona}
+Haz 5 a 8 preguntas concretas sobre alcance, excepciones, reglas de negocio, validaciones, impactos y criterios de aceptación.
+No propongas la solución ni redactes el documento.`,
+        temperature: 0.3,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            questions: { type: Type.ARRAY, items: { type: Type.STRING } },
+          },
+          required: ["questions"],
+        },
+      },
+    });
+    const textOutput = response.text;
+    if (!textOutput) throw new Error("No se obtuvieron preguntas.");
+    let parsed: { questions?: string[] };
+    try {
+      parsed = JSON.parse(textOutput);
+    } catch {
+      throw new Error("Gemini devolvió preguntas inválidas. Reintenta.");
+    }
+    return res.json({ success: true, questions: parsed.questions || [] });
+  } catch (error: any) {
+    console.error("Error in agent interview:", error);
+    return res.status(500).json({
+      success: false,
+      error: error?.message || "Error al ejecutar la entrevista.",
+    });
+  }
+}
+
 // API Route: Generate Technical Proposal with Gemini 1.5 Pro / 3.6 Flash
 app.post("/api/generate-proposal", async (req, res) => {
+  if (req.body?.stage === "questions" || req.body?.stage === "understand") {
+    return handleAgentInterview(req, res);
+  }
+
   try {
-    const { metadata, rawRequirements, images } = req.body;
+    const { metadata, rawRequirements, images, agentConfig, clarifications } = req.body;
 
     if (!rawRequirements || typeof rawRequirements !== 'string') {
       return res.status(400).json({ error: "Las notas o requerimientos son obligatorios." });
@@ -401,6 +496,7 @@ METADATOS DEL PROYECTO ADVANSYS:
 
 PLANTEAMIENTO Y REQUERIMIENTOS DEL CLIENTE (PREMISA, INCIDENCIA, CUESTIONANTES, FLUJO ACTUAL):
 ${rawRequirements}
+${typeof clarifications === 'string' && clarifications.trim() ? `\n${clarifications.trim()}\n` : ''}
 `;
 
     if (images && Array.isArray(images) && images.length > 0) {
@@ -442,6 +538,7 @@ ${rawRequirements}
 
     const systemInstruction = `Eres un Arquitecto de Software Senior y Líder del Departamento de Análisis & Riesgo de Advansys.
 Tu trabajo es redactar análisis técnicos formales, guías operativas y propuestas de desarrollo profesionales siguiendo el formato y estilo corporativo de Advansys (referencia Guía Ticket 0000039443).
+${agentPersonaBlock(agentConfig)}
 
 PROHIBICIÓN ESTRICTA DE EMOJIS:
 NO utilices emojis, emoticonos ni caracteres gráficos informales en ninguna parte de la propuesta (ni en títulos, ni en viñetas, ni en descripciones, ni en descargos). El formato debe ser estrictamente corporativo, sobrio y profesional.
@@ -471,7 +568,7 @@ ESTRUCTURA DEL DOCUMENTO:
 4. Objetivo
 5. Descripción
 6. Índice Análisis Operativo
-7. Análisis Operativo (Paso a paso. Ajusta cantidad de pasos y profundidad de cada explicación al nivel de detalle. Para cada imagen adjunta, genera una explicación acorde al detalle solicitado y referencia explícitamente a [IMAGEN_1], [IMAGEN_2], etc.)
+7. Análisis Operativo (Solo pasos de un nivel: 7.1, 7.2, 7.3. NO uses subpasos 7.1.1 ni subpasos de subpasos 7.1.1.1. Cada ítem es un paso independiente en analisisOperativo. Ajusta cantidad de pasos y profundidad de cada explicación al nivel de detalle. Para cada imagen adjunta, genera una explicación acorde al detalle solicitado y referencia explícitamente a [IMAGEN_1], [IMAGEN_2], etc.)
 ${descargoInstruction}
 
 Retorna la información estrictamente en formato JSON según el schema especificado.`;
@@ -503,6 +600,8 @@ Retorna la información estrictamente en formato JSON según el schema especific
     });
   }
 });
+
+app.post("/api/agent-interview", handleAgentInterview);
 
 // API Route: Refine / Enhance Manual Proposal Draft with Gemini
 app.post("/api/refine-proposal", async (req, res) => {

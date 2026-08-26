@@ -459,7 +459,7 @@ function pushTextWithTables(
 
       if (bulletMatch) {
         flushCurrentParagraph();
-        const indentLevel = bulletMatch[1].length >= 4 ? 1 : 0;
+        const indentLevel = 0;
         docElements.push(
           new Paragraph({
             bullet: { level: indentLevel },
@@ -1542,15 +1542,34 @@ export async function generateAdvansysDocx(
     })
   );
 
-  // Build Advansys Header Banner
+  const PAGE_WIDTH_DXA = 12240;
+  const pageMargins = {
+    top: 1000,
+    bottom: 1000,
+    left: 1200,
+    right: 1200,
+    header: 0,
+    footer: 360,
+  };
+
+  // Build Advansys Header Banner (full page width, edge to edge)
   const headerLogo = logoBytes
-    ? fitLogoSize(metadata.logoWidth, metadata.logoHeight, 78, 28)
+    ? fitLogoSize(metadata.logoWidth, metadata.logoHeight, 64, 22)
     : null;
+  const headerLeftInset = pageMargins.left;
+  const headerLogoCol = logoBytes && headerLogo ? 1680 : 0;
+  const headerTextCol = PAGE_WIDTH_DXA - headerLeftInset - headerLogoCol;
+
+  const headerBarFill = { fill: COLOR_PRIMARY_BLUE, type: ShadingType.CLEAR };
 
   const header = new Header({
     children: [
       new Table({
-        width: { size: 100, type: WidthType.PERCENTAGE },
+        width: { size: PAGE_WIDTH_DXA, type: WidthType.DXA },
+        indent: { size: -pageMargins.left, type: WidthType.DXA },
+        columnWidths: headerLogoCol
+          ? [headerLeftInset, headerLogoCol, headerTextCol]
+          : [headerLeftInset, PAGE_WIDTH_DXA - headerLeftInset],
         borders: {
           top: { style: BorderStyle.NONE },
           bottom: { style: BorderStyle.SINGLE, size: 8, color: COLOR_ACCENT_GREEN },
@@ -1562,12 +1581,18 @@ export async function generateAdvansysDocx(
         rows: [
           new TableRow({
             children: [
+              new TableCell({
+                width: { size: headerLeftInset, type: WidthType.DXA },
+                shading: headerBarFill,
+                margins: { top: 60, bottom: 60, left: 0, right: 0 },
+                children: [new Paragraph({ children: [] })],
+              }),
               ...(logoBytes && headerLogo
                 ? [
                     new TableCell({
-                      width: { size: 18, type: WidthType.PERCENTAGE },
-                      shading: { fill: COLOR_PRIMARY_BLUE, type: ShadingType.CLEAR },
-                      margins: { top: 60, bottom: 60, left: 120, right: 80 },
+                      width: { size: headerLogoCol, type: WidthType.DXA },
+                      shading: headerBarFill,
+                      margins: { top: 60, bottom: 60, left: 0, right: 80 },
                       verticalAlign: 'center' as any,
                       children: [
                         new Paragraph({
@@ -1587,9 +1612,9 @@ export async function generateAdvansysDocx(
                   ]
                 : []),
               new TableCell({
-                width: { size: logoBytes ? 82 : 100, type: WidthType.PERCENTAGE },
-                shading: { fill: COLOR_PRIMARY_BLUE, type: ShadingType.CLEAR },
-                margins: { top: 100, bottom: 100, left: 160, right: 160 },
+                width: { size: headerTextCol, type: WidthType.DXA },
+                shading: headerBarFill,
+                margins: { top: 100, bottom: 100, left: 80, right: 200 },
                 children: [
                   new Paragraph({
                     children: [
@@ -1659,7 +1684,9 @@ export async function generateAdvansysDocx(
   const commercialFooter = new Footer({
     children: [
       new Table({
-        width: { size: 100, type: WidthType.PERCENTAGE },
+        width: { size: PAGE_WIDTH_DXA, type: WidthType.DXA },
+        indent: { size: -400, type: WidthType.DXA },
+        columnWidths: [PAGE_WIDTH_DXA / 4, PAGE_WIDTH_DXA / 4, PAGE_WIDTH_DXA / 4, PAGE_WIDTH_DXA / 4],
         borders: {
           top: NO_BORDER,
           bottom: NO_BORDER,
@@ -1673,7 +1700,7 @@ export async function generateAdvansysDocx(
             children: [commercial.footerPhone, commercial.footerEmail, commercial.footerWeb, commercial.footerCity].map(
               (text) =>
                 new TableCell({
-                  width: { size: 25, type: WidthType.PERCENTAGE },
+                  width: { size: PAGE_WIDTH_DXA / 4, type: WidthType.DXA },
                   shading: { fill: COLOR_PRIMARY_BLUE, type: ShadingType.CLEAR },
                   margins: { top: 80, bottom: 80, left: 40, right: 40 },
                   verticalAlign: VerticalAlign.CENTER,
@@ -1691,15 +1718,6 @@ export async function generateAdvansysDocx(
     ],
   });
 
-  const pageMargins = {
-    top: 1000,
-    bottom: 1000,
-    left: 1200,
-    right: 1200,
-    header: 360,
-    footer: 360,
-  };
-
   const sections: Array<{
     properties: object;
     headers: { first?: Header; default?: Header };
@@ -1710,6 +1728,7 @@ export async function generateAdvansysDocx(
       properties: {
         titlePage: true,
         page: {
+          size: { width: PAGE_WIDTH_DXA, height: 15840 },
           margin: pageMargins,
           pageNumbers: {
             start: 1,
@@ -1732,7 +1751,8 @@ export async function generateAdvansysDocx(
     sections.push({
       properties: {
         page: {
-          margin: { ...pageMargins, top: 560, bottom: 1600, left: 400, right: 400, header: 200, footer: 500 },
+          size: { width: PAGE_WIDTH_DXA, height: 15840 },
+          margin: { ...pageMargins, top: 560, bottom: 1600, left: 400, right: 400, header: 200, footer: 0 },
         },
       },
       headers: {
@@ -1745,7 +1765,7 @@ export async function generateAdvansysDocx(
     });
     sections.push({
       properties: {
-        page: { margin: pageMargins },
+        page: { size: { width: PAGE_WIDTH_DXA, height: 15840 }, margin: pageMargins },
       },
       headers: { default: header },
       footers: { default: footer },

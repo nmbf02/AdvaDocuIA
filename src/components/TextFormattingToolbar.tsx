@@ -185,7 +185,7 @@ export const handleFormattingKeyDown = (
 
       // Otherwise continue the bullet
       e.preventDefault();
-      const insert = `\n${indent}${bulletChar} `;
+      const insert = `\n${bulletChar} `;
       const newText = textBefore + insert + textAfter;
       onChange(newText);
       setTimeout(() => {
@@ -213,7 +213,7 @@ export const handleFormattingKeyDown = (
       }
 
       e.preventDefault();
-      const insert = `\n${indent}${num + 1}. `;
+      const insert = `\n${num + 1}. `;
       const newText = textBefore + insert + textAfter;
       onChange(newText);
       setTimeout(() => {
@@ -318,17 +318,6 @@ export const TextFormattingToolbar: React.FC<TextFormattingToolbarProps> = ({
         >
           <Minus className="w-3 h-3 text-slate-500" />
           <span>- Guión</span>
-        </button>
-
-        {/* 5. Sub-viñeta / Indentada */}
-        <button
-          type="button"
-          onClick={() => applyFormatting('    • ', '', 'Sub-punto indentado')}
-          className="hidden md:inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-600 text-[11px] transition-colors shadow-2xs cursor-pointer"
-          title="Insertar sub-viñeta con sangría"
-        >
-          <span className="font-mono text-[10px] text-slate-400">»</span>
-          <span>Sub-viñeta</span>
         </button>
       </div>
 

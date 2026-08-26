@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MetadataHeader, UploadedImage, ProposalSection, SavedProposal, BrandingSettings, DocumentStatus, TechnicalDoc, DEFAULT_DESCARGO_TEXT, FreeNote } from './types';
+import { MetadataHeader, UploadedImage, ProposalSection, SavedProposal, BrandingSettings, DocumentStatus, TechnicalDoc, DEFAULT_DESCARGO_TEXT, FreeNote, getEffectiveAgentConfig } from './types';
 import { Header } from './components/Header';
 import { MetadataForm } from './components/MetadataForm';
 import { RequirementsInput } from './components/RequirementsInput';
@@ -9,6 +9,8 @@ import { TechnicalDocEditor } from './components/TechnicalDocEditor';
 import { HistoryModal } from './components/HistoryModal';
 import { ConfirmModal } from './components/ConfirmModal';
 import { SettingsModal } from './components/SettingsModal';
+import { AgentInterviewModal, InterviewDocType } from './components/AgentInterviewModal';
+import { readApiJson } from './utils/apiJson';
 import { BackupModal } from './components/BackupModal';
 import { NewDocumentModal, NewDocumentType } from './components/NewDocumentModal';
 import { WelcomeIntro } from './components/WelcomeIntro';
@@ -143,6 +145,8 @@ export default function App() {
   // Branding / Settings (logo global para todos los documentos)
   const [branding, setBranding] = useState<BrandingSettings>({});
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [isInterviewOpen, setIsInterviewOpen] = useState<boolean>(false);
+  const [interviewDocType, setInterviewDocType] = useState<InterviewDocType>('proposal');
 
   // Confirm Reset Modal State
   const [isConfirmResetOpen, setIsConfirmResetOpen] = useState<boolean>(false);
@@ -1067,7 +1071,7 @@ export default function App() {
   };
 
   // Generate Proposal API Handler
-  const handleGenerateProposal = async () => {
+  const handleGenerateProposal = async (clarifications?: string) => {
     if (!rawRequirements.trim()) {
       setError("Por favor ingresa los requerimientos en bruto o notas del cliente antes de generar la propuesta.");
       return;
@@ -1086,11 +1090,13 @@ export default function App() {
         body: JSON.stringify({
           metadata,
           rawRequirements,
-          images
+          images,
+          agentConfig: getEffectiveAgentConfig(branding.agent),
+          clarifications: clarifications || '',
         }),
       });
 
-      const data = await response.json();
+      const data = await readApiJson(response);
 
       if (!response.ok || !data.success) {
         throw new Error(data.error || "No se pudo generar la propuesta. Revisa la clave GEMINI_API_KEY.");
@@ -1148,22 +1154,25 @@ export default function App() {
     setIsNewDocModalOpen(true);
   };
 
-  const handleConfirmNewDocument = (docType: NewDocumentType, shouldSaveCurrent: boolean) => {
-    if (shouldSaveCurrent && proposal) {
-      handleSaveChanges();
-    }
+  const startBlankDocument = (docType: NewDocumentType, notes?: string, answers?: string[]) => {
+    const emptyMeta = createEmptyMetadata();
+    const first = answers?.[0]?.trim();
+    if (first) emptyMeta.nombreProyecto = first.slice(0, 160);
 
     if (docType === 'technical') {
-      const emptyMeta = createEmptyMetadata();
-      setMetadata(emptyMeta);
-      setRawRequirements('');
-      setImages([]);
       const defaultTech = {
         ...createDefaultTechnicalDoc(emptyMeta, null),
         isStandalone: true,
+        ruta: answers?.[1]?.trim() || '',
+        flujoOperativo: answers?.[2]?.trim() || '',
+        diseno: answers?.[3]?.trim() || '',
+        consideracionesTecnicas: answers?.[4]?.trim() || '',
       };
       const docId = `tech_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       setCurrentDocumentId(docId);
+      setMetadata(emptyMeta);
+      setRawRequirements(notes || '');
+      setImages([]);
       setCurrentVersion('v1.0');
       setCurrentVersionNote('');
       setCurrentStatus('borrador');
@@ -1176,10 +1185,12 @@ export default function App() {
       setLayoutMode('editor');
       setError(null);
       setShowWelcome(false);
-    } else if (docType === 'slides') {
-      const emptyMeta = createEmptyMetadata();
+      return;
+    }
+
+    if (docType === 'slides') {
       setMetadata(emptyMeta);
-      setRawRequirements('');
+      setRawRequirements(notes || '');
       setImages([]);
       setCurrentVersion('v1.0');
       setCurrentVersionNote('');
@@ -1196,32 +1207,12 @@ export default function App() {
       });
       setError(null);
       setShowWelcome(false);
-    } else {
-      // Standard proposal
-      setCurrentDocumentId(null);
-      setMetadata(createEmptyMetadata());
-      setRawRequirements('');
-      setImages([]);
-      setProposal(null);
-      setCurrentVersion('v1.0');
-      setCurrentVersionNote('');
-      setCurrentStatus('borrador');
-      setWorkspaceMode('proposal');
-      setEditorTab('editor');
-      setLayoutMode('split');
-      setError(null);
-      setShowWelcome(false);
+      return;
     }
 
-    setIsNewDocModalOpen(false);
-  };
-
-  // Welcome Screen Action Handlers
-  const handleStartNewFromWelcome = () => {
-    persistCurrentDocumentIfNeeded();
     setCurrentDocumentId(null);
-    setMetadata(createEmptyMetadata());
-    setRawRequirements('');
+    setMetadata(emptyMeta);
+    setRawRequirements(notes || '');
     setImages([]);
     setProposal(null);
     setCurrentVersion('v1.0');
@@ -1234,30 +1225,53 @@ export default function App() {
     setShowWelcome(false);
   };
 
+  const openCreateInterview = (docType: InterviewDocType) => {
+    setInterviewDocType(docType);
+    setIsInterviewOpen(true);
+  };
+
+  const beginNewDocument = (docType: NewDocumentType) => {
+    if (getEffectiveAgentConfig(branding.agent).interviewEnabled) {
+      openCreateInterview(docType);
+      return;
+    }
+    startBlankDocument(docType);
+  };
+
+  const handleConfirmNewDocument = (docType: NewDocumentType, shouldSaveCurrent: boolean) => {
+    if (shouldSaveCurrent && proposal) {
+      handleSaveChanges();
+    }
+    setIsNewDocModalOpen(false);
+    beginNewDocument(docType);
+  };
+
+  const handleInterviewProceed = (payload: {
+    notes: string;
+    answers: string[];
+    questions: string[];
+    understanding: { objetivo: string; alcance: string; reglas: string; supuestos: string; pendientes: string } | null;
+  }) => {
+    setIsInterviewOpen(false);
+    startBlankDocument(interviewDocType, payload.notes, payload.answers);
+  };
+
+  const handleStartNewFromWelcome = () => {
+    persistCurrentDocumentIfNeeded();
+    beginNewDocument('proposal');
+  };
+
   const handleStartSlidesFromWelcome = () => {
     persistCurrentDocumentIfNeeded();
-    setMetadata(createEmptyMetadata());
-    setRawRequirements('');
-    setImages([]);
-    setCurrentVersion('v1.0');
-    setCurrentVersionNote('');
-    setCurrentStatus('borrador');
-    setWorkspaceMode('proposal');
-    setEditorTab('slides');
-    setLayoutMode('split');
-    const initialDeck = createDefaultSlideDeck(createEmptyMetadata(), []);
-    const docId = `prop-${Date.now()}`;
-    setCurrentDocumentId(docId);
-    setProposal({
-      ...EMPTY_MANUAL_PROPOSAL,
-      slideDeck: initialDeck,
-    });
-    setError(null);
-    setShowWelcome(false);
+    beginNewDocument('slides');
   };
 
   const handleStartStandaloneTechnicalDoc = (options?: { resetFields?: boolean }) => {
     persistCurrentDocumentIfNeeded();
+    if (options?.resetFields) {
+      beginNewDocument('technical');
+      return;
+    }
     const emptyMeta = createEmptyMetadata();
     const meta = options?.resetFields ? emptyMeta : metadata;
     if (options?.resetFields) {
@@ -1503,6 +1517,7 @@ export default function App() {
             setShowWelcome(false);
             setIsHistoryOpen(true);
           }}
+          onOpenSettings={() => setIsSettingsOpen(true)}
           onOpenBackup={() => setIsBackupOpen(true)}
           freeNotes={freeNotes}
           onOpenFreeWrite={handleOpenFreeWrite}
@@ -1532,6 +1547,14 @@ export default function App() {
           onChange={handleBrandingChange}
           onClose={() => setIsSettingsOpen(false)}
           onOpenBackup={() => setIsBackupOpen(true)}
+        />
+
+        <AgentInterviewModal
+          isOpen={isInterviewOpen}
+          documentType={interviewDocType}
+          agentConfig={getEffectiveAgentConfig(branding.agent)}
+          onClose={() => setIsInterviewOpen(false)}
+          onProceed={handleInterviewProceed}
         />
 
         {/* Backup & Restore Modal */}
@@ -1895,6 +1918,10 @@ export default function App() {
                 <button
                   type="button"
                   onClick={async () => {
+                    if (!rawRequirements.trim()) {
+                      setError("Por favor ingresa los requerimientos en bruto o notas del cliente antes de generar la propuesta.");
+                      return;
+                    }
                     await handleGenerateProposal();
                     if (layoutMode === 'inputs') setLayoutMode('split');
                   }}
@@ -2071,6 +2098,14 @@ export default function App() {
         onChange={handleBrandingChange}
         onClose={() => setIsSettingsOpen(false)}
         onOpenBackup={() => setIsBackupOpen(true)}
+      />
+
+      <AgentInterviewModal
+        isOpen={isInterviewOpen}
+        documentType={interviewDocType}
+        agentConfig={getEffectiveAgentConfig(branding.agent)}
+        onClose={() => setIsInterviewOpen(false)}
+        onProceed={handleInterviewProceed}
       />
 
       {/* Backup & Restore Modal */}

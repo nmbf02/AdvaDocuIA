@@ -217,7 +217,7 @@ export async function generateAdvansysPdf(
       const numberMatch = rawLine.match(/^(\s*)(\d+)[\.\)]\s+(.*)$/);
 
       if (bulletMatch) {
-        const indentExtra = bulletMatch[1].length >= 4 ? 4.0 : 0;
+        const indentExtra = 0;
         const bulletIndent = 4.5 + indentExtra;
         const contentStr = bulletMatch[3].replace(/\*\*/g, '');
         const textWidth = contentWidth - bulletIndent;
@@ -234,7 +234,7 @@ export async function generateAdvansysPdf(
         doc.text(lines, margin + bulletIndent, cursorY);
         cursorY += needed;
       } else if (numberMatch) {
-        const indentExtra = numberMatch[1].length >= 4 ? 4.0 : 0;
+        const indentExtra = 0;
         const numStr = `${numberMatch[2]}.`;
         const contentStr = numberMatch[3].replace(/\*\*/g, '');
         const numberIndent = 5.5 + indentExtra;

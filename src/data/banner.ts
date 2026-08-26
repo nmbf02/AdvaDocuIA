@@ -11,6 +11,40 @@ function escapeSvgText(str: string): string {
     .replace(/'/g, '&apos;');
 }
 
+function wrapWords(text: string, maxChars: number, maxLines = 3): string[] {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  const lines: string[] = [];
+  let line = '';
+  for (const word of words) {
+    const trial = line ? `${line} ${word}` : word;
+    if (trial.length > maxChars && line) {
+      lines.push(line);
+      line = word;
+      if (lines.length >= maxLines) break;
+    } else {
+      line = trial;
+    }
+  }
+  if (line && lines.length < maxLines) lines.push(line);
+  else if (line && lines.length) lines[lines.length - 1] = `${lines[lines.length - 1]}…`;
+  return lines;
+}
+
+function svgMultilineText(
+  lines: string[],
+  x: number,
+  y: number,
+  lineHeight: number,
+  attrs: string
+): string {
+  if (!lines.length) return '';
+  const tspans = lines
+    .map((line, i) => `<tspan x="${x}" dy="${i === 0 ? 0 : lineHeight}">${line}</tspan>`)
+    .join('');
+  return `<text x="${x}" y="${y}" ${attrs}>${tspans}</text>`;
+}
+
 export type CoverBannerOptions = {
   coverTitle?: string;
   cliente?: string;
@@ -31,26 +65,61 @@ export function getAdvansysBannerSvg(
   options?: CoverBannerOptions
 ): string {
   const safeBrandTag = escapeSvgText(brandTag || 'ADVANSYS');
-  const coverTitle = escapeSvgText(options?.coverTitle?.trim() || 'PROPUESTA DE DESARROLLO');
-  const safeSubtitle = subtitle ? escapeSvgText(subtitle) : '';
+  const coverTitleRaw = options?.coverTitle?.trim() || 'PROPUESTA DE DESARROLLO';
+  const titleLines = wrapWords(coverTitleRaw, 32, 3).map(escapeSvgText);
+  const subtitleLines = subtitle.trim()
+    ? wrapWords(subtitle.trim(), 48, 2).map(escapeSvgText)
+    : [];
+
+  const groupY = 20;
+  const logoBlockH = 64;
+  const titleY = logoBlockH + 28;
+  const titleLineH = 34;
+  const subtitleLineH = 20;
+  const lastTitleY = titleY + Math.max(0, titleLines.length - 1) * titleLineH;
+  const subtitleY = subtitleLines.length ? lastTitleY + 26 : lastTitleY;
+  const lastSubtitleY = subtitleLines.length
+    ? subtitleY + (subtitleLines.length - 1) * subtitleLineH
+    : lastTitleY;
+  const barY = lastSubtitleY + 18;
+  const barBottomAbs = groupY + barY + 8;
   const showInfoCard = Boolean(options?.showInfoCard);
-  const darkH = showInfoCard ? 292 : 300;
-  const canvasH = showInfoCard ? 396 : 300;
+  const cardH = 136;
+  const cardOverlap = 48;
+  const gapAboveCard = 28;
+  const darkH = showInfoCard
+    ? barBottomAbs + gapAboveCard + cardOverlap
+    : barBottomAbs + 28;
+  const canvasH = showInfoCard ? darkH + (cardH - cardOverlap) + 18 : darkH;
+  const cardY = darkH - cardOverlap;
   const fechaLabel = escapeSvgText(formatFechaEs(options?.fecha));
 
-  const subtitleElement = safeSubtitle
-    ? `<text x="0" y="148" font-family="'Segoe UI', Roboto, Helvetica, sans-serif" font-size="16" font-weight="600" fill="#D1FAE5" letter-spacing="0.35">${safeSubtitle}</text>`
+  const titleElement = svgMultilineText(
+    titleLines,
+    0,
+    titleY,
+    titleLineH,
+    `font-family="'Segoe UI', Roboto, Helvetica, sans-serif" font-size="28" font-weight="900" fill="#FFFFFF" letter-spacing="0.2"`
+  );
+  const subtitleElement = subtitleLines.length
+    ? svgMultilineText(
+        subtitleLines,
+        0,
+        subtitleY,
+        subtitleLineH,
+        `font-family="'Segoe UI', Roboto, Helvetica, sans-serif" font-size="14" font-weight="600" fill="#D1FAE5" letter-spacing="0.2"`
+      )
     : '';
 
   const brandingElement = logoDataUrl
     ? `<g transform="translate(0, 0)">
-      <image href="${logoDataUrl}" xlink:href="${logoDataUrl}" x="0" y="0" width="360" height="96" preserveAspectRatio="xMinYMid meet" />
+      <image href="${logoDataUrl}" xlink:href="${logoDataUrl}" x="0" y="0" width="240" height="60" preserveAspectRatio="xMinYMid meet" />
     </g>`
     : `<rect x="0" y="12" width="200" height="40" rx="20" fill="#2ECC71" opacity="0.25" stroke="#2ECC71" stroke-width="1.5" />
     <text x="100" y="38" font-family="'Segoe UI', Roboto, Helvetica, sans-serif" font-size="14" font-weight="bold" fill="#FFFFFF" text-anchor="middle" letter-spacing="2">${safeBrandTag}</text>`;
 
   const infoCard = showInfoCard
-    ? `<g transform="translate(40, 228)" filter="url(#cardShadow)">
+    ? `<g transform="translate(40, ${cardY})" filter="url(#cardShadow)">
       <rect width="1120" height="136" rx="20" fill="#FFFFFF" />
       <rect x="280" y="28" width="1" height="80" fill="#E2E8F0" />
       <rect x="560" y="28" width="1" height="80" fill="#E2E8F0" />
@@ -107,6 +176,9 @@ export function getAdvansysBannerSvg(
     <clipPath id="darkClip">
       <rect width="1200" height="${darkH}" />
     </clipPath>
+    <clipPath id="artClip">
+      <rect x="640" y="0" width="560" height="${darkH}" />
+    </clipPath>
   </defs>
 
   <rect y="${darkH}" width="1200" height="${canvasH - darkH}" fill="#FFFFFF" />
@@ -115,10 +187,11 @@ export function getAdvansysBannerSvg(
     <rect width="1200" height="${darkH}" fill="url(#bgGrad)" />
     <rect width="1200" height="${darkH}" fill="url(#grid)" />
 
-    <circle cx="980" cy="130" r="240" fill="#2ECC71" opacity="0.07" filter="url(#glow)"/>
-    <circle cx="820" cy="90" r="170" fill="#1E5F8A" opacity="0.22" filter="url(#glow)"/>
+    <g clip-path="url(#artClip)">
+    <circle cx="1020" cy="130" r="220" fill="#2ECC71" opacity="0.07" filter="url(#glow)"/>
+    <circle cx="900" cy="80" r="150" fill="#1E5F8A" opacity="0.22" filter="url(#glow)"/>
 
-    <g transform="translate(620, 36)">
+    <g transform="translate(700, 28)">
       <rect width="118" height="168" rx="12" fill="url(#glass)" stroke="#4FD1C5" stroke-width="1" stroke-opacity="0.45" />
       <text x="14" y="24" font-family="sans-serif" font-size="9" font-weight="bold" fill="#E2E8F0">METRICAS</text>
       <path d="M 14 128 Q 32 82 50 100 T 86 55 T 104 74" fill="none" stroke="#2ECC71" stroke-width="2.5" filter="url(#glow)"/>
@@ -126,14 +199,14 @@ export function getAdvansysBannerSvg(
       <circle cx="86" cy="55" r="4" fill="#2ECC71"/>
     </g>
 
-    <g transform="translate(752, 28)">
+    <g transform="translate(838, 22)">
       <rect width="118" height="148" rx="12" fill="url(#glass)" stroke="#63B3ED" stroke-width="1" stroke-opacity="0.4" />
       <ellipse cx="59" cy="76" rx="38" ry="28" fill="none" stroke="#63B3ED" stroke-width="1.5" />
       <ellipse cx="59" cy="76" rx="24" ry="16" fill="none" stroke="#2ECC71" stroke-width="1.5" />
       <ellipse cx="59" cy="76" rx="10" ry="6" fill="none" stroke="#FFFFFF" stroke-width="1" />
     </g>
 
-    <g transform="translate(886, 48)">
+    <g transform="translate(976, 40)">
       <rect width="118" height="168" rx="12" fill="url(#glass)" stroke="#4FD1C5" stroke-width="1" stroke-opacity="0.35" />
       <rect x="22" y="92" width="12" height="52" fill="#3182CE" rx="2" />
       <rect x="42" y="64" width="12" height="80" fill="#2ECC71" rx="2" />
@@ -142,7 +215,7 @@ export function getAdvansysBannerSvg(
       <path d="M 18 84 L 46 56 L 66 70 L 100 38" fill="none" stroke="#ECC94B" stroke-width="2"/>
     </g>
 
-    <g transform="translate(700, 148)">
+    <g transform="translate(760, 168)">
       <rect width="148" height="108" rx="12" fill="url(#glass)" stroke="#2ECC71" stroke-width="1.2" stroke-opacity="0.5" />
       <circle cx="32" cy="38" r="6" fill="#2ECC71" />
       <circle cx="74" cy="28" r="8" fill="#63B3ED" />
@@ -155,19 +228,18 @@ export function getAdvansysBannerSvg(
       <line x1="74" y1="28" x2="56" y2="74" stroke="#E2E8F0" stroke-width="1" opacity="0.6" />
       <line x1="116" y1="46" x2="102" y2="80" stroke="#E2E8F0" stroke-width="1" opacity="0.6" />
     </g>
+    </g>
   </g>
 
   <rect x="0" y="${darkH - 4}" width="1200" height="4" fill="#2ECC71" />
 
-  <g transform="translate(48, 28)">
+  <g transform="translate(48, ${groupY})">
     ${brandingElement}
 
-    <text x="0" y="130" font-family="'Segoe UI', Roboto, Helvetica, sans-serif" font-size="34" font-weight="900" fill="#FFFFFF" letter-spacing="0.5">
-      ${coverTitle}
-    </text>
+    ${titleElement}
     ${subtitleElement}
 
-    <rect x="0" y="160" width="460" height="6" fill="#2ECC71" rx="3" />
+    <rect x="0" y="${barY}" width="420" height="6" fill="#2ECC71" rx="3" />
   </g>
 
   ${infoCard}

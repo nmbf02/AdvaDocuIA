@@ -165,6 +165,37 @@ export function getEffectiveTitles(custom?: DocumentTitlesConfig): Required<Omit
 
 export type Page2LogoMode = 'off' | 'main' | 'page2';
 
+export const DEFAULT_AGENT_ROLE =
+  'Actúa como Analista Funcional Senior. Redacta requerimientos con lenguaje formal y orientado a negocio, manteniendo coherencia funcional, controles y alcance, objetivos claros, reglas de negocio, validaciones, impactos operativos, casos de uso y consideraciones contables o regulatorias cuando apliquen. Prioriza documentos listos para ser utilizados en análisis, desarrollo, pruebas y aprobación de clientes.';
+
+export interface AgentConfig {
+  idioma: 'es' | 'en';
+  interviewEnabled: boolean;
+  rol: string;
+}
+
+export const DEFAULT_AGENT_CONFIG: AgentConfig = {
+  idioma: 'es',
+  interviewEnabled: true,
+  rol: DEFAULT_AGENT_ROLE,
+};
+
+export function getEffectiveAgentConfig(custom?: AgentConfig | null): AgentConfig {
+  return {
+    idioma: custom?.idioma === 'en' ? 'en' : 'es',
+    interviewEnabled: custom?.interviewEnabled ?? true,
+    rol: custom?.rol?.trim() || DEFAULT_AGENT_ROLE,
+  };
+}
+
+export interface AgentUnderstanding {
+  objetivo: string;
+  alcance: string;
+  reglas: string;
+  supuestos: string;
+  pendientes: string;
+}
+
 export interface BrandingSettings {
   logoDataUrl?: string;
   logoMimeType?: string;
@@ -187,6 +218,7 @@ export interface BrandingSettings {
   techHeaderRightText?: string;
   techFooterText?: string;
   techIncludeHeaderBanner?: boolean;
+  agent?: AgentConfig;
 }
 
 export const DEFAULT_PROPOSAL_HEADER_FOOTER = {

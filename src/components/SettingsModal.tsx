@@ -2,6 +2,9 @@ import React, { useState, useRef } from 'react';
 import {
   BrandingSettings,
   DocumentTitlesConfig,
+  DEFAULT_AGENT_CONFIG,
+  DEFAULT_AGENT_ROLE,
+  getEffectiveAgentConfig,
   DEFAULT_DOCUMENT_TITLES,
   DEFAULT_TECHNICAL_DOC_TITLES,
   DEFAULT_DESCARGO_TEXT,
@@ -36,7 +39,10 @@ import {
   FileSpreadsheet,
   ChevronLeft,
   ChevronRight,
+  Bot,
 } from 'lucide-react';
+
+type SettingsTab = 'titles' | 'techTitles' | 'headersFooters' | 'branding' | 'agent' | 'backup' | 'local';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -56,7 +62,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const logoInputRef = useRef<HTMLInputElement>(null);
   const page2LogoInputRef = useRef<HTMLInputElement>(null);
   const tabsContainerRef = useRef<HTMLDivElement>(null);
-  const [activeTab, setActiveTab] = useState<'titles' | 'techTitles' | 'headersFooters' | 'branding' | 'backup' | 'local'>('titles');
+  const [activeTab, setActiveTab] = useState<SettingsTab>('titles');
   const [headerFooterSubTab, setHeaderFooterSubTab] = useState<'proposal' | 'technical'>('proposal');
   const [copiedNotification, setCopiedNotification] = useState<string | null>(null);
 
@@ -78,7 +84,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
-  const handleTabClick = (tabKey: 'titles' | 'techTitles' | 'headersFooters' | 'branding' | 'backup' | 'local', e?: React.MouseEvent<HTMLButtonElement>) => {
+  const handleTabClick = (tabKey: SettingsTab, e?: React.MouseEvent<HTMLButtonElement>) => {
     setActiveTab(tabKey);
     if (e?.currentTarget) {
       e.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
@@ -398,6 +404,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <span>Logo Corporativo</span>
               {branding.logoDataUrl && (
                 <span className="w-2 h-2 rounded-full bg-[#2ECC71]" title="Logo configurado" />
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={(e) => handleTabClick('agent', e)}
+              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap shrink-0 cursor-pointer ${
+                activeTab === 'agent'
+                  ? 'border-[#0A3D62] text-[#0A3D62] bg-white rounded-t-lg shadow-sm'
+                  : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-t-lg'
+              }`}
+            >
+              <Bot className="w-4 h-4 text-[#0A3D62]" />
+              <span>Agente IA</span>
+              {branding.agent && (
+                <span className="w-2 h-2 rounded-full bg-[#2ECC71]" title="Rol personalizado" />
               )}
             </button>
 
@@ -1616,6 +1638,95 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
             </div>
           )}
+
+          {activeTab === 'agent' && (() => {
+            const agent = getEffectiveAgentConfig(branding.agent);
+            return (
+              <div className="space-y-5">
+                <div className="bg-blue-50/60 border border-blue-100 rounded-xl p-3.5 text-xs text-slate-700 leading-relaxed">
+                  <span className="font-bold text-[#0A3D62] block mb-0.5">Instrucciones del agente</span>
+                  Define cómo debe redactar la IA. La entrevista (una pregunta a la vez) aparece al crear una propuesta, doc. técnica o diapositivas; después se cargan las notas del documento.
+                </div>
+
+                {copiedNotification && (
+                  <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs px-3 py-2 rounded-lg flex items-center gap-2">
+                    <Check className="w-4 h-4 text-emerald-600" />
+                    <span>{copiedNotification}</span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-800">Idioma</label>
+                    <select
+                      value={agent.idioma}
+                      onChange={(e) =>
+                        onChange({
+                          ...branding,
+                          agent: { ...agent, idioma: e.target.value === 'en' ? 'en' : 'es' },
+                        })
+                      }
+                      className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white"
+                    >
+                      <option value="es">Español formal</option>
+                      <option value="en">English</option>
+                    </select>
+                  </div>
+                  <div className="bg-white border border-slate-200 rounded-xl p-3.5 flex items-center justify-between gap-3">
+                    <div>
+                      <span className="block text-xs font-bold text-slate-800">Entrevista al crear documento</span>
+                      <p className="text-[11px] text-slate-500 mt-0.5">Al pulsar Nueva propuesta, técnica o diapositivas</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onChange({
+                          ...branding,
+                          agent: { ...agent, interviewEnabled: !agent.interviewEnabled },
+                        })
+                      }
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-bold shrink-0 ${
+                        agent.interviewEnabled
+                          ? 'bg-emerald-600 text-white border-emerald-700'
+                          : 'bg-white text-slate-700 border-slate-300'
+                      }`}
+                    >
+                      {agent.interviewEnabled ? 'Activada' : 'Apagada'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="block text-xs font-bold text-[#0A3D62] uppercase tracking-wide">Rol / instrucciones</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onChange({ ...branding, agent: { ...DEFAULT_AGENT_CONFIG } });
+                        setCopiedNotification('Rol restablecido al Analista Funcional Senior.');
+                        setTimeout(() => setCopiedNotification(null), 2500);
+                      }}
+                      className="flex items-center gap-1 px-2 py-1 bg-white border border-slate-300 text-slate-600 text-[10px] font-semibold rounded"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      Restablecer
+                    </button>
+                  </div>
+                  <textarea
+                    rows={8}
+                    value={branding.agent?.rol ?? DEFAULT_AGENT_ROLE}
+                    onChange={(e) =>
+                      onChange({
+                        ...branding,
+                        agent: { ...agent, rol: e.target.value },
+                      })
+                    }
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-3 text-xs text-slate-800 leading-relaxed"
+                  />
+                </div>
+              </div>
+            );
+          })()}
 
           {/* TAB 4: BACKUP & DATA MANAGEMENT */}
           {activeTab === 'backup' && (

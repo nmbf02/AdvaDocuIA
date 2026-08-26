@@ -21,6 +21,7 @@ import {
   Database,
   NotebookPen,
   BellRing,
+  Settings,
 } from 'lucide-react';
 
 interface WelcomeIntroProps {
@@ -43,6 +44,7 @@ interface WelcomeIntroProps {
   onLoadHistoryItem: (item: SavedProposal) => void;
   onLoadPreset: () => void;
   onOpenHistoryModal: () => void;
+  onOpenSettings?: () => void;
   onOpenBackup?: () => void;
   freeNotes?: FreeNote[];
   onOpenFreeWrite?: (noteId?: string) => void;
@@ -62,6 +64,7 @@ export const WelcomeIntro: React.FC<WelcomeIntroProps> = ({
   onLoadHistoryItem,
   onLoadPreset,
   onOpenHistoryModal,
+  onOpenSettings,
   onOpenBackup,
   freeNotes = [],
   onOpenFreeWrite,
@@ -128,6 +131,18 @@ export const WelcomeIntro: React.FC<WelcomeIntroProps> = ({
               >
                 <NotebookPen className="w-3.5 h-3.5 text-[#2ECC71]" />
                 <span className="hidden sm:inline">Notas</span>
+              </button>
+            )}
+
+            {onOpenSettings && (
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white border border-white/15 transition-colors shadow-sm cursor-pointer"
+                title="Personalizar logo, títulos, agente y encabezados"
+              >
+                <Settings className="w-3.5 h-3.5 text-blue-200" />
+                <span className="hidden sm:inline">Ajustes</span>
               </button>
             )}
 

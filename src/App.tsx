@@ -244,26 +244,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    fetchDefaultBackupFolder().then((folder) => {
-      if (cancelled || !folder) return;
-      setBackupConfig((prev) => {
-        if (prev.targetDirectoryPath) return prev;
-        const next = {
-          ...prev,
-          targetDirectoryPath: folder,
-          targetDirectoryName: prev.targetDirectoryName || folder,
-        };
-        saveBackupConfig(next);
-        return next;
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
     if (!notesReady) return;
     saveFreeNotesState(freeNotes, activeFreeNoteId);
   }, [freeNotes, activeFreeNoteId, notesReady]);

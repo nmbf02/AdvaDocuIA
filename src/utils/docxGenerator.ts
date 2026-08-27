@@ -621,6 +621,7 @@ export async function generateAdvansysDocx(
   docElements.push(
     new Paragraph({
       frame: {
+        type: 'absolute',
         width: 2900,
         height: 480,
         anchor: {

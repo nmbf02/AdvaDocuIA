@@ -35,6 +35,89 @@ function getGeminiClient(): GoogleGenAI {
   return aiClient;
 }
 
+const FALLBACK_MODELS = [
+  "gemini-3.7-flash",
+  "gemini-2.5-flash",
+  "gemini-3.1-flash-lite",
+  "gemini-flash-latest",
+];
+
+function formatCleanErrorMessage(rawError: any): string {
+  if (!rawError) return "Error al procesar la solicitud con IA.";
+  const rawMsg = typeof rawError === "string" ? rawError : rawError?.message || String(rawError);
+
+  try {
+    const jsonMatch = rawMsg.match(/\{[\s\S]*"error"[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed?.error?.code === 503 || parsed?.error?.status === "UNAVAILABLE") {
+        return "El servicio de IA está experimentando alta demanda temporal en sus servidores. Por favor, reintenta en unos instantes.";
+      }
+      if (parsed?.error?.code === 429 || parsed?.error?.status === "RESOURCE_EXHAUSTED") {
+        return "Límite temporal de peticiones alcanzado. Espera unos segundos y reintenta.";
+      }
+      if (parsed?.error?.message) {
+        return parsed.error.message;
+      }
+    }
+  } catch {
+    // Ignore JSON parse error and use pattern matching below
+  }
+
+  if (rawMsg.includes("503") || rawMsg.includes("high demand") || rawMsg.includes("UNAVAILABLE") || rawMsg.includes("overloaded")) {
+    return "El servicio de IA está experimentando alta demanda temporal en sus servidores. Por favor, reintenta en unos instantes.";
+  }
+  if (rawMsg.includes("429") || rawMsg.includes("RESOURCE_EXHAUSTED") || rawMsg.includes("quota")) {
+    return "Límite de solicitudes de IA alcanzado momentáneamente. Por favor espera unos segundos y reintenta.";
+  }
+
+  return rawMsg;
+}
+
+async function generateContentWithFallback(params: {
+  contents: any;
+  config?: any;
+  models?: string[];
+}): Promise<{ text: string | undefined; modelUsed: string }> {
+  const ai = getGeminiClient();
+  const modelsToTry = params.models && params.models.length > 0 ? params.models : FALLBACK_MODELS;
+  let lastError: any = null;
+
+  for (let i = 0; i < modelsToTry.length; i++) {
+    const model = modelsToTry[i];
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const response = await ai.models.generateContent({
+          model,
+          contents: params.contents,
+          config: params.config,
+        });
+        return { text: response.text, modelUsed: model };
+      } catch (err: any) {
+        lastError = err;
+        const msg = String(err?.message || err);
+        console.warn(`[Gemini API] Error en modelo ${model} (intento ${attempt}):`, msg);
+        const isTransient =
+          msg.includes("503") ||
+          msg.includes("429") ||
+          msg.includes("UNAVAILABLE") ||
+          msg.includes("high demand") ||
+          msg.includes("overloaded") ||
+          msg.includes("fetch failed");
+
+        if (isTransient && attempt < 2) {
+          // Breve pausa para superar picos de concurrencia
+          await new Promise((res) => setTimeout(res, 1200));
+        } else {
+          break; // Pasar al siguiente modelo de respaldo
+        }
+      }
+    }
+  }
+
+  throw new Error(formatCleanErrorMessage(lastError));
+}
+
 function agentPersonaBlock(agent: any): string {
   const rol = typeof agent?.rol === 'string' ? agent.rol.trim() : '';
   if (!rol) return '';
@@ -322,8 +405,7 @@ No inventes tickets, cifras ni nombres que no estén en el documento. Si falta u
         });
       });
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.6-flash",
+      const { text: textOutput } = await generateContentWithFallback({
         contents: { parts: promptParts },
         config: {
           temperature: 0.2,
@@ -331,8 +413,6 @@ No inventes tickets, cifras ni nombres que no estén en el documento. Si falta u
           responseSchema: sourceAnalysisSchema,
         },
       });
-
-      const textOutput = response.text;
       if (textOutput) {
         const parsed = JSON.parse(textOutput);
         const structured = buildStructuredRequirements(parsed);
@@ -391,8 +471,7 @@ async function handleAgentInterview(req: express.Request, res: express.Response)
       const qa = Array.isArray(answers)
         ? answers.map((a: any) => `P: ${a?.question || ""}\nR: ${a?.answer || ""}`).join("\n\n")
         : "";
-      const response = await ai.models.generateContent({
-        model: "gemini-3.6-flash",
+      const { text: textOutput } = await generateContentWithFallback({
         contents: `${metaLine}\n\nREQUERIMIENTOS:\n${rawRequirements}\n\nRESPUESTAS DE LA ENTREVISTA:\n${qa}`,
         config: {
           systemInstruction: `Resume lo entendido para que el analista lo confirme antes de redactar el documento. Idioma: ${idioma}.${persona}
@@ -412,7 +491,6 @@ No inventes alcance. Si falta dato, ponlo en pendientes.`,
           },
         },
       });
-      const textOutput = response.text;
       if (!textOutput) throw new Error("No se obtuvo el resumen.");
       let understanding;
       try {
@@ -423,8 +501,7 @@ No inventes alcance. Si falta dato, ponlo en pendientes.`,
       return res.json({ success: true, understanding });
     }
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
+    const { text: textOutput } = await generateContentWithFallback({
       contents: `${metaLine}\n\nREQUERIMIENTOS:\n${rawRequirements}`,
       config: {
         systemInstruction: `Eres un analista que entrevista al usuario ANTES de redactar. Idioma: ${idioma}.${persona}
@@ -441,7 +518,6 @@ No propongas la solución ni redactes el documento.`,
         },
       },
     });
-    const textOutput = response.text;
     if (!textOutput) throw new Error("No se obtuvieron preguntas.");
     let parsed: { questions?: string[] };
     try {
@@ -573,8 +649,7 @@ ${descargoInstruction}
 
 Retorna la información estrictamente en formato JSON según el schema especificado.`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
+    const { text: textOutput } = await generateContentWithFallback({
       contents: { parts: contentsParts },
       config: {
         systemInstruction: systemInstruction,
@@ -583,8 +658,6 @@ Retorna la información estrictamente en formato JSON según el schema especific
         responseSchema: proposalResponseSchema,
       },
     });
-
-    const textOutput = response.text;
     if (!textOutput) {
       throw new Error("No se obtuvo respuesta de la API de Gemini.");
     }
@@ -681,8 +754,7 @@ ${rawRequirements || 'Sin notas adicionales'}
       });
     }
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
+    const { text: textOutput } = await generateContentWithFallback({
       contents: { parts: contentsParts },
       config: {
         systemInstruction: "Eres un Editor Técnico Senior de Software en Advansys. Tu labor es actuar como co-piloto de IA asistiendo al analista humano en la redacción manual de su propuesta técnica.\n\nREGLA OBLIGATORIA: NO uses emojis ni emoticonos en ningún texto bajo ninguna circunstancia.",
@@ -691,8 +763,6 @@ ${rawRequirements || 'Sin notas adicionales'}
         responseSchema: proposalResponseSchema,
       },
     });
-
-    const textOutput = response.text;
     if (!textOutput) {
       throw new Error("No se obtuvo respuesta de la API de Gemini.");
     }
@@ -811,8 +881,7 @@ Pasos operativos: ${JSON.stringify(proposal.analisisOperativo || [])}
       required: ['title', 'client', 'project', 'slides']
     };
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
+    const { text: textOutput } = await generateContentWithFallback({
       contents: contextText,
       config: {
         systemInstruction: `Eres un Diseñador y Consultor de Presentaciones Ejecutivas Senior en Advansys.
@@ -835,8 +904,6 @@ Para cada diapositiva, incluye notas del orador útiles ('speakerNotes') que gu�
         responseSchema: slideDeckSchema,
       }
     });
-
-    const textOutput = response.text;
     if (!textOutput) {
       throw new Error("No se pudo generar la presentación.");
     }
@@ -970,8 +1037,7 @@ Devuelve 1 a 3 tablas útiles (catálogo de endpoints, entidades de BD o matriz 
       required: ["ruta", "flujoOperativo", "diseno", "consideracionesTecnicas", "codigoEjemplo"]
     };
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+    const { text: textOutput } = await generateContentWithFallback({
       contents: promptContext,
       config: {
         systemInstruction: `Eres el Arquitecto de Software y Líder Técnico Senior en Advansys.
@@ -991,8 +1057,6 @@ Si la propuesta ya existe, deriva nombres de módulos, pantallas y reglas desde 
         responseSchema: technicalDocSchema,
       }
     });
-
-    const textOutput = response.text;
     if (!textOutput) {
       throw new Error("No se pudo generar la documentación técnica.");
     }

@@ -338,6 +338,8 @@ export interface UploadedImage {
   mimeType: string;
   fileName?: string;
   fileSize?: number;
+  width?: number;
+  height?: number;
   /** Display width in the document, 25–100. Default 100. */
   widthPercent?: number;
   /** Horizontal placement. Default center. */
@@ -678,22 +680,22 @@ export interface AutoBackupConfig {
 }
 
 export const DEFAULT_BACKUP_CONFIG: AutoBackupConfig = {
-  enabled: true,
-  frequency: '5m',
+  enabled: false,
+  frequency: 'off',
   maxSnapshots: 15,
-  backupOnSave: true,
-  backupOnDocumentSwitch: true,
-  showNotificationToast: true,
+  backupOnSave: false,
+  backupOnDocumentSwitch: false,
+  showNotificationToast: false,
   includeDraft: true,
   includeBranding: true,
-  dailyScheduleEnabled: true,
+  dailyScheduleEnabled: false,
   dailyScheduleTime: '18:00',
-  dailyAutoDownloadJson: true,
+  dailyAutoDownloadJson: false,
   lastDailyBackupDate: null,
   lastDailyBackupClock: null,
   targetDirectoryName: null,
   targetDirectoryPath: null,
-  autoDownloadDailyToDisk: true,
+  autoDownloadDailyToDisk: false,
 };
 
 export interface BackupSnapshot {

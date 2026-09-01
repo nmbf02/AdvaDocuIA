@@ -138,7 +138,7 @@ function getDetailLevelGuidance(level: number): string {
 - Resumen ejecutivo: 1 párrafo corto (4 a 6 líneas).
 - Beneficios: 3 a 4 puntos, una frase cada uno.
 - Alcance, exclusiones y entregables: 3 a 5 ítems por lista, redactados de forma directa.
-- Análisis operativo: 3 a 5 pasos de un solo nivel (7.1, 7.2…). Sin subpasos. Cada explicación: 2 a 4 oraciones.
+- Análisis operativo: 3 a 5 pasos. Puedes usar subpasos (7.1.1) con campo nivel=1 cuando un paso tenga detalle interno. Cada explicación: 2 a 4 oraciones.
 - Describe solo lo esencial para entender y aprobar el cambio.`;
   }
   if (level <= 7) {
@@ -147,7 +147,7 @@ function getDetailLevelGuidance(level: number): string {
 - Resumen ejecutivo: 1 a 2 párrafos.
 - Beneficios: 5 a 7 puntos con justificación breve.
 - Alcance, exclusiones y entregables: 5 a 8 ítems por lista.
-- Análisis operativo: 6 a 10 pasos de un solo nivel (7.1, 7.2…). Sin subpasos 7.1.1. Cada paso con un párrafo claro (ubicación, componente y comportamiento).
+- Análisis operativo: 6 a 10 pasos. Usa subpasos (nivel=1 → 7.1.1) cuando un paso se descomponga en acciones. Cada paso con un párrafo claro (ubicación, componente y comportamiento).
 - Incluye el contexto suficiente para ejecutar el cambio.`;
   }
   return `FILTRO DE NIVEL DE DETALLE (Nivel ${level} de 10) — EXHAUSTIVO / PROFUNDO:
@@ -155,7 +155,7 @@ function getDetailLevelGuidance(level: number): string {
 - Resumen ejecutivo: 2 a 3 párrafos densos.
 - Beneficios: 8 a 12 puntos con justificación.
 - Alcance, exclusiones y entregables: 8 a 12 ítems detallados por lista.
-- Análisis operativo: 10 a 16 pasos de un solo nivel. Sin subpasos ni subpasos de subpasos. Cada paso con 2 a 4 párrafos (ubicación, componente, etiqueta, comportamiento, validaciones, excepciones y riesgos).
+- Análisis operativo: 10 a 16 pasos, con subpasos (nivel=1) y subpasos de subpasos (nivel=2 → 7.1.1.1) cuando el flujo lo requiera. Cada paso con 2 a 4 párrafos (ubicación, componente, etiqueta, comportamiento, validaciones, excepciones y riesgos).
 - Cruza cada imagen adjunta con explicación profunda y referencias explícitas [IMAGEN_n].
 - No omitas trazabilidad ni riesgos residuales relevantes.`;
 }
@@ -219,6 +219,7 @@ const proposalResponseSchema = {
         type: Type.OBJECT,
         properties: {
           paso: { type: Type.INTEGER },
+          nivel: { type: Type.INTEGER, description: "0 = paso 7.n, 1 = subpaso 7.n.m, 2 = 7.n.m.k" },
           titulo: { type: Type.STRING },
           explicacion: { type: Type.STRING },
           referenciaImagen: { type: Type.STRING },
@@ -644,7 +645,7 @@ ESTRUCTURA DEL DOCUMENTO:
 4. Objetivo
 5. Descripción
 6. Índice Análisis Operativo
-7. Análisis Operativo (Solo pasos de un nivel: 7.1, 7.2, 7.3. NO uses subpasos 7.1.1 ni subpasos de subpasos 7.1.1.1. Cada ítem es un paso independiente en analisisOperativo. Ajusta cantidad de pasos y profundidad de cada explicación al nivel de detalle. Para cada imagen adjunta, genera una explicación acorde al detalle solicitado y referencia explícitamente a [IMAGEN_1], [IMAGEN_2], etc.)
+7. Análisis Operativo (Pasos jerárquicos. nivel=0 → 7.1, 7.2; nivel=1 → 7.1.1; nivel=2 → 7.1.1.1. Coloca los subpasos inmediatamente después de su padre en el array analisisOperativo. No saltes niveles. Ajusta cantidad de pasos y profundidad de cada explicación al nivel de detalle. Para cada imagen adjunta, genera una explicación acorde al detalle solicitado y referencia explícitamente a [IMAGEN_1], [IMAGEN_2], etc.)
 ${descargoInstruction}
 
 Retorna la información estrictamente en formato JSON según el schema especificado.`;

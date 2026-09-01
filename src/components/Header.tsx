@@ -75,7 +75,7 @@ export const Header: React.FC<HeaderProps> = ({
   }, []);
 
   return (
-    <header className="sticky top-0 z-50 bg-[#0A3D62] text-white border-b border-white/10 shadow-md">
+    <header className="sticky top-0 z-50 bg-[#0A3D62] text-white border-b border-white/10 shadow-md overflow-visible">
       <div className="max-w-[1800px] w-full mx-auto px-3 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-13 sm:h-14 gap-2 min-w-0">
           
@@ -118,8 +118,8 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* RIGHT: Compact, Organized Action Hub */}
-          <div className="flex items-center gap-1 sm:gap-2 min-w-0 overflow-x-auto no-scrollbar">
+          {/* RIGHT: Compact, Organized Action Hub (menú ⋮ fuera del scroll para que no se recorte) */}
+          <div className="flex items-center gap-1 sm:gap-2 min-w-0 overflow-visible">
             
             {/* GROUP 1: Document Actions (Nuevo + Historial) */}
             <div className="flex items-center gap-1 sm:gap-1.5">
@@ -229,7 +229,7 @@ export const Header: React.FC<HeaderProps> = ({
 
                 {/* Dropdown Menu Panel */}
                 {isMenuOpen && (
-                  <div className="absolute right-0 mt-2 w-56 rounded-xl bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 shadow-2xl py-1.5 z-50 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-100">
+                  <div className="absolute right-0 top-full mt-2 w-56 rounded-xl bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 shadow-2xl py-1.5 z-[80] animate-in fade-in zoom-in-95 duration-100">
                     <div className="px-3 py-1.5 border-b border-slate-100 dark:border-slate-800 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                       Acciones de Documento
                     </div>

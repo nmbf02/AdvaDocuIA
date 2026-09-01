@@ -11,6 +11,7 @@ import {
   BackupFrequency,
   FreeNote,
 } from '../types';
+import { STORAGE_KEY_FREE_NOTES } from './freeNotesStorage';
 
 export const STORAGE_KEY_BACKUP_CONFIG = 'advansys_docgen_backup_config_v1';
 export const STORAGE_KEY_SNAPSHOTS = 'advansys_docgen_snapshots_v1';
@@ -628,6 +629,113 @@ export function formatBytes(bytes: number, decimals = 1): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 }
 
+export const STORAGE_KEY_HISTORY = 'advansys_docgen_history_v1';
+export const STORAGE_KEY_DRAFT = 'advansys_docgen_current_draft_v1';
+const STORAGE_KEY_SETTINGS = 'advansys_docgen_settings_v1';
+const STORAGE_KEY_THEME = 'advansys_docgen_theme_v1';
+
+export type StorageBucket = {
+  id: string;
+  label: string;
+  hint: string;
+  bytes: number;
+  formatted: string;
+};
+
+function storageBytes(key: string, value: string): number {
+  return (key.length + value.length) * 2;
+}
+
+function historyHintFromRaw(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return '';
+    let imgBytes = 0;
+    let imgCount = 0;
+    for (const item of parsed) {
+      for (const img of item?.images || []) {
+        if (img?.dataUrl) {
+          imgCount += 1;
+          imgBytes += String(img.dataUrl).length * 2;
+        }
+      }
+      const logo = item?.metadata?.logoDataUrl;
+      if (logo) imgBytes += String(logo).length * 2;
+    }
+    return `${parsed.length} documentos · ${imgCount} capturas (${formatBytes(imgBytes)} en imágenes)`;
+  } catch {
+    return '';
+  }
+}
+
+const BUCKET_META: Record<string, { label: string; hint: string }> = {
+  [STORAGE_KEY_HISTORY]: {
+    label: 'Historial de documentos',
+    hint: 'Cada guardado copia textos e imágenes. Aquí suele estar casi todo el peso.',
+  },
+  [STORAGE_KEY_DRAFT]: {
+    label: 'Borrador actual',
+    hint: 'El documento que tienes abierto ahora, con sus imágenes.',
+  },
+  [STORAGE_KEY_SNAPSHOTS]: {
+    label: 'Copias / puntos de restauración',
+    hint: 'Respaldo automático o manual (duplica historial e imágenes).',
+  },
+  [STORAGE_KEY_SETTINGS]: {
+    label: 'Ajustes y logo',
+    hint: 'Identidad, títulos y logo de empresa.',
+  },
+  [STORAGE_KEY_FREE_NOTES]: {
+    label: 'Notas de libre escritura',
+    hint: 'Ideas y recordatorios.',
+  },
+  [STORAGE_KEY_BACKUP_CONFIG]: {
+    label: 'Configuración de copias',
+    hint: 'Frecuencia y carpeta de backup. Pesa muy poco.',
+  },
+  [STORAGE_KEY_THEME]: {
+    label: 'Tema claro/oscuro',
+    hint: 'Preferencia de apariencia. Pesa muy poco.',
+  },
+};
+
+export function getStorageBreakdown(): StorageBucket[] {
+  const buckets: StorageBucket[] = [];
+  let otherBytes = 0;
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+      const val = localStorage.getItem(key) || '';
+      const bytes = storageBytes(key, val);
+      const meta = BUCKET_META[key];
+      if (meta) {
+        buckets.push({
+          id: key,
+          label: meta.label,
+          hint: key === STORAGE_KEY_HISTORY ? historyHintFromRaw(val) || meta.hint : meta.hint,
+          bytes,
+          formatted: formatBytes(bytes),
+        });
+      } else {
+        otherBytes += bytes;
+      }
+    }
+  } catch (e) {
+    console.warn('Error listing storage keys:', e);
+  }
+  if (otherBytes > 0) {
+    buckets.push({
+      id: 'other',
+      label: 'Otros datos del navegador',
+      hint: 'Claves que no son de Advansys DocGen.',
+      bytes: otherBytes,
+      formatted: formatBytes(otherBytes),
+    });
+  }
+  return buckets.sort((a, b) => b.bytes - a.bytes);
+}
+
 /**
  * Estimates total localStorage usage and health
  */
@@ -638,27 +746,20 @@ export function getStorageHealthInfo(): {
   historyCount: number;
   estimatedPercentage: number;
   status: 'healthy' | 'warning' | 'critical';
+  breakdown: StorageBucket[];
 } {
-  let totalBytes = 0;
+  const breakdown = getStorageBreakdown();
+  const totalBytes = breakdown.reduce((sum, b) => sum + b.bytes, 0);
   let snapshotsCount = 0;
   let historyCount = 0;
 
   try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key) {
-        const val = localStorage.getItem(key) || '';
-        totalBytes += (key.length + val.length) * 2; // UTF-16 approximate bytes
-      }
-    }
-    
     const snapshotsRaw = localStorage.getItem(STORAGE_KEY_SNAPSHOTS);
     if (snapshotsRaw) {
       const parsed = JSON.parse(snapshotsRaw);
       if (Array.isArray(parsed)) snapshotsCount = parsed.length;
     }
-
-    const historyRaw = localStorage.getItem('advansys_docgen_history_v1');
+    const historyRaw = localStorage.getItem(STORAGE_KEY_HISTORY);
     if (historyRaw) {
       const parsed = JSON.parse(historyRaw);
       if (Array.isArray(parsed)) historyCount = parsed.length;
@@ -667,10 +768,8 @@ export function getStorageHealthInfo(): {
     console.warn('Error calculating storage health:', e);
   }
 
-  // Typically browser localStorage is ~5MB to ~10MB
-  const maxQuota = 5 * 1024 * 1024; // 5 MB baseline
+  const maxQuota = 5 * 1024 * 1024;
   const percentage = Math.min(100, Math.round((totalBytes / maxQuota) * 100));
-  
   let status: 'healthy' | 'warning' | 'critical' = 'healthy';
   if (percentage > 85) status = 'critical';
   else if (percentage > 60) status = 'warning';
@@ -682,6 +781,7 @@ export function getStorageHealthInfo(): {
     historyCount,
     estimatedPercentage: percentage,
     status,
+    breakdown,
   };
 }
 
@@ -837,6 +937,98 @@ export function clearSnapshots(keepManual = true): BackupSnapshot[] {
     console.error('Error clearing snapshots:', e);
   }
   return next;
+}
+
+function compactHistoryItem(item: SavedProposal, keepImages: boolean): SavedProposal {
+  if (keepImages) return item;
+  return {
+    ...item,
+    images: (item.images || []).map((img) => ({
+      ...img,
+      dataUrl: '',
+      fileSize: 0,
+    })),
+    metadata: {
+      ...item.metadata,
+      logoDataUrl: undefined,
+    },
+  };
+}
+
+function persistHistoryJson(items: SavedProposal[]): SavedProposal[] {
+  let current = items;
+  while (current.length > 0) {
+    try {
+      localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(current));
+      return current;
+    } catch {
+      current = current.slice(0, -1);
+    }
+  }
+  try {
+    localStorage.removeItem(STORAGE_KEY_HISTORY);
+  } catch {
+    /* ignore */
+  }
+  return [];
+}
+
+/**
+ * Libera espacio: borra todas las copias de restauración y quita imágenes/logo
+ * duplicados del historial (conserva textos). El documento abierto no se toca.
+ */
+export function freeLocalStorageSpace(keepImagesForDocId?: string | null): {
+  history: SavedProposal[];
+  removedSnapshots: number;
+  strippedImageDocs: number;
+  droppedHistoryItems: number;
+  before: ReturnType<typeof getStorageHealthInfo>;
+  after: ReturnType<typeof getStorageHealthInfo>;
+} {
+  const before = getStorageHealthInfo();
+  const snapshots = loadSnapshots();
+  const removedSnapshots = snapshots.length;
+  try {
+    localStorage.removeItem(STORAGE_KEY_SNAPSHOTS);
+  } catch (e) {
+    console.error('Error removing snapshots:', e);
+  }
+
+  let history: SavedProposal[] = [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_HISTORY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) history = parsed;
+    }
+  } catch (e) {
+    console.error('Error reading history for compact:', e);
+  }
+
+  const originalLen = history.length;
+  let strippedImageDocs = 0;
+  const compacted = history.map((item) => {
+    const keep = Boolean(keepImagesForDocId && item.id === keepImagesForDocId);
+    if (!keep) {
+      const hasHeavy =
+        (item.images || []).some((img) => Boolean(img?.dataUrl)) || Boolean(item.metadata?.logoDataUrl);
+      if (hasHeavy) strippedImageDocs += 1;
+    }
+    return compactHistoryItem(item, keep);
+  });
+
+  const persisted = persistHistoryJson(compacted);
+  const droppedHistoryItems = originalLen - persisted.length;
+  const after = getStorageHealthInfo();
+
+  return {
+    history: persisted,
+    removedSnapshots,
+    strippedImageDocs,
+    droppedHistoryItems,
+    before,
+    after,
+  };
 }
 
 /**

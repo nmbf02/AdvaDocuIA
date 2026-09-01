@@ -24,6 +24,8 @@ export interface DocumentTitlesConfig {
   hideSection6?: boolean;
   hideSection7?: boolean;
   hideSection8?: boolean;
+  /** Si es true, el Análisis Operativo va primero (núm. 6) y el Índice después (núm. 7). */
+  swapSection6And7?: boolean;
   hiddenSections?: string[];
 
   // Technical Document Titles and Visibility
@@ -56,7 +58,7 @@ export const DEFAULT_CONFIDENTIALITY_TEXT =
   'Este documento es propiedad de Advansys, SRL. La información contenida es confidencial y está destinada exclusivamente al destinatario. Queda prohibida su copia, reproducción o divulgación total o parcial sin autorización previa y por escrito de Advansys, SRL.';
 export const COVER_SCOPE_MAX_ITEMS = 3;
 
-export const DEFAULT_DOCUMENT_TITLES: Required<Omit<DocumentTitlesConfig, 'hideSection1' | 'hideSection2' | 'hideSection3' | 'hideSection3_1' | 'hideSection3_2' | 'hideSection3_3' | 'hideSection4' | 'hideSection5' | 'hideSection6' | 'hideSection7' | 'hideSection8' | 'hiddenSections' | 'techMainTitle' | 'techSection1' | 'techSection2' | 'techSection3' | 'techSection4' | 'techSection5' | 'hideTechMainTitle' | 'hideTechSection1' | 'hideTechSection2' | 'hideTechSection3' | 'hideTechSection4' | 'hideTechSection5' | 'defaultDescargo' | 'hideConfidentiality'>> = {
+export const DEFAULT_DOCUMENT_TITLES: Required<Omit<DocumentTitlesConfig, 'hideSection1' | 'hideSection2' | 'hideSection3' | 'hideSection3_1' | 'hideSection3_2' | 'hideSection3_3' | 'hideSection4' | 'hideSection5' | 'hideSection6' | 'hideSection7' | 'hideSection8' | 'swapSection6And7' | 'hiddenSections' | 'techMainTitle' | 'techSection1' | 'techSection2' | 'techSection3' | 'techSection4' | 'techSection5' | 'hideTechMainTitle' | 'hideTechSection1' | 'hideTechSection2' | 'hideTechSection3' | 'hideTechSection4' | 'hideTechSection5' | 'defaultDescargo' | 'hideConfidentiality'>> = {
   mainTitle: 'PROPUESTA DE DESARROLLO',
   section1: 'Resumen Ejecutivo',
   section2: 'Beneficios de la Propuesta',
@@ -115,7 +117,20 @@ export function getEffectiveTechnicalTitles(custom?: DocumentTitlesConfig): {
   };
 }
 
-export function getEffectiveTitles(custom?: DocumentTitlesConfig): Required<Omit<DocumentTitlesConfig, 'hideSection1' | 'hideSection2' | 'hideSection3' | 'hideSection3_1' | 'hideSection3_2' | 'hideSection3_3' | 'hideSection4' | 'hideSection5' | 'hideSection6' | 'hideSection7' | 'hideSection8' | 'hiddenSections' | 'techMainTitle' | 'techSection1' | 'techSection2' | 'techSection3' | 'techSection4' | 'techSection5' | 'hideTechMainTitle' | 'hideTechSection1' | 'hideTechSection2' | 'hideTechSection3' | 'hideTechSection4' | 'hideTechSection5' | 'defaultDescargo' | 'hideConfidentiality'>> & {
+export function getOperativoSectionOrder(custom?: Pick<DocumentTitlesConfig, 'swapSection6And7'> | null): {
+  analysisFirst: boolean;
+  indiceNumber: string;
+  analisisNumber: string;
+} {
+  const analysisFirst = !!custom?.swapSection6And7;
+  return {
+    analysisFirst,
+    indiceNumber: analysisFirst ? '7' : '6',
+    analisisNumber: analysisFirst ? '6' : '7',
+  };
+}
+
+export function getEffectiveTitles(custom?: DocumentTitlesConfig): Required<Omit<DocumentTitlesConfig, 'hideSection1' | 'hideSection2' | 'hideSection3' | 'hideSection3_1' | 'hideSection3_2' | 'hideSection3_3' | 'hideSection4' | 'hideSection5' | 'hideSection6' | 'hideSection7' | 'hideSection8' | 'swapSection6And7' | 'hiddenSections' | 'techMainTitle' | 'techSection1' | 'techSection2' | 'techSection3' | 'techSection4' | 'techSection5' | 'hideTechMainTitle' | 'hideTechSection1' | 'hideTechSection2' | 'hideTechSection3' | 'hideTechSection4' | 'hideTechSection5' | 'defaultDescargo' | 'hideConfidentiality'>> & {
   hideSection1: boolean;
   hideSection2: boolean;
   hideSection3: boolean;
@@ -127,6 +142,7 @@ export function getEffectiveTitles(custom?: DocumentTitlesConfig): Required<Omit
   hideSection6: boolean;
   hideSection7: boolean;
   hideSection8: boolean;
+  swapSection6And7: boolean;
   defaultDescargo: string;
   hideConfidentiality: boolean;
 } {
@@ -158,6 +174,7 @@ export function getEffectiveTitles(custom?: DocumentTitlesConfig): Required<Omit
     hideSection6: !!custom?.hideSection6,
     hideSection7: !!custom?.hideSection7,
     hideSection8: !!custom?.hideSection8,
+    swapSection6And7: !!custom?.swapSection6And7,
     hideConfidentiality: !!custom?.hideConfidentiality,
     defaultDescargo: custom?.defaultDescargo?.trim() || DEFAULT_DESCARGO_TEXT,
   };
@@ -362,10 +379,149 @@ export interface ScopeSection {
 
 export interface OperativeStep {
   paso: number;
+  /** 0 = 7.1, 1 = 7.1.1, 2 = 7.1.1.1 */
+  nivel?: number;
   titulo: string;
   explicacion: string;
   referenciaImagen?: string; // e.g. "[IMAGEN_1]"
   imagenId?: string;
+}
+
+export const MAX_OPERATIVE_STEP_LEVEL = 2;
+
+export function getOperativeStepLevel(step: OperativeStep | undefined): number {
+  const n = Number(step?.nivel ?? 0);
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(MAX_OPERATIVE_STEP_LEVEL, Math.max(0, Math.round(n)));
+}
+
+export function normalizeOperativeStepLevels(steps: OperativeStep[]): OperativeStep[] {
+  let prev = 0;
+  return steps.map((step, index) => {
+    let level = getOperativeStepLevel(step);
+    if (index === 0) level = 0;
+    else if (level > prev + 1) level = prev + 1;
+    prev = level;
+    return { ...step, nivel: level, paso: index + 1 };
+  });
+}
+
+export function getOperativeStepLabels(steps: OperativeStep[], sectionNumber: number | string): string[] {
+  const counters = [0, 0, 0];
+  let prev = 0;
+  return steps.map((step, index) => {
+    let level = getOperativeStepLevel(step);
+    if (index === 0) level = 0;
+    else if (level > prev + 1) level = prev + 1;
+    counters[level] += 1;
+    for (let i = level + 1; i < counters.length; i++) counters[i] = 0;
+    prev = level;
+    const parts = [String(sectionNumber)];
+    for (let i = 0; i <= level; i++) parts.push(String(counters[i]));
+    return parts.join('.');
+  });
+}
+
+export function getOperativeSubtreeEnd(steps: OperativeStep[], index: number): number {
+  const base = getOperativeStepLevel(steps[index]);
+  let end = index;
+  for (let i = index + 1; i < steps.length; i++) {
+    if (getOperativeStepLevel(steps[i]) <= base) break;
+    end = i;
+  }
+  return end;
+}
+
+export function canIndentOperativeStep(steps: OperativeStep[], index: number): boolean {
+  if (index <= 0) return false;
+  const level = getOperativeStepLevel(steps[index]);
+  if (level >= MAX_OPERATIVE_STEP_LEVEL) return false;
+  return level <= getOperativeStepLevel(steps[index - 1]);
+}
+
+export function canOutdentOperativeStep(steps: OperativeStep[], index: number): boolean {
+  return getOperativeStepLevel(steps[index]) > 0;
+}
+
+export function indentOperativeStep(steps: OperativeStep[], index: number): OperativeStep[] {
+  if (!canIndentOperativeStep(steps, index)) return steps;
+  const end = getOperativeSubtreeEnd(steps, index);
+  return normalizeOperativeStepLevels(
+    steps.map((step, i) =>
+      i >= index && i <= end
+        ? { ...step, nivel: Math.min(MAX_OPERATIVE_STEP_LEVEL, getOperativeStepLevel(step) + 1) }
+        : step
+    )
+  );
+}
+
+export function outdentOperativeStep(steps: OperativeStep[], index: number): OperativeStep[] {
+  if (!canOutdentOperativeStep(steps, index)) return steps;
+  const end = getOperativeSubtreeEnd(steps, index);
+  return normalizeOperativeStepLevels(
+    steps.map((step, i) =>
+      i >= index && i <= end ? { ...step, nivel: Math.max(0, getOperativeStepLevel(step) - 1) } : step
+    )
+  );
+}
+
+export function canMoveOperativeSubtreeUp(steps: OperativeStep[], index: number): boolean {
+  const level = getOperativeStepLevel(steps[index]);
+  for (let i = index - 1; i >= 0; i--) {
+    const lv = getOperativeStepLevel(steps[i]);
+    if (lv < level) return false;
+    if (lv === level) return true;
+  }
+  return false;
+}
+
+export function canMoveOperativeSubtreeDown(steps: OperativeStep[], index: number): boolean {
+  const end = getOperativeSubtreeEnd(steps, index);
+  const next = steps[end + 1];
+  if (!next) return false;
+  return getOperativeStepLevel(next) === getOperativeStepLevel(steps[index]);
+}
+
+export function moveOperativeSubtree(steps: OperativeStep[], fromIndex: number, toIndex: number): OperativeStep[] {
+  if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= steps.length) {
+    return steps;
+  }
+  const end = getOperativeSubtreeEnd(steps, fromIndex);
+  if (toIndex >= fromIndex && toIndex <= end) return steps;
+  const subtree = steps.slice(fromIndex, end + 1);
+  const without = [...steps.slice(0, fromIndex), ...steps.slice(end + 1)];
+  let dest = toIndex;
+  if (toIndex > end) dest = toIndex - subtree.length;
+  dest = Math.max(0, Math.min(without.length, dest));
+  without.splice(dest, 0, ...subtree);
+  return normalizeOperativeStepLevels(without);
+}
+
+export function swapOperativeSubtreeUp(steps: OperativeStep[], index: number): OperativeStep[] {
+  if (!canMoveOperativeSubtreeUp(steps, index)) return steps;
+  const level = getOperativeStepLevel(steps[index]);
+  let prevStart = index - 1;
+  while (prevStart >= 0 && getOperativeStepLevel(steps[prevStart]) > level) prevStart -= 1;
+  if (prevStart < 0) return steps;
+  const end = getOperativeSubtreeEnd(steps, index);
+  return normalizeOperativeStepLevels([
+    ...steps.slice(0, prevStart),
+    ...steps.slice(index, end + 1),
+    ...steps.slice(prevStart, index),
+    ...steps.slice(end + 1),
+  ]);
+}
+
+export function swapOperativeSubtreeDown(steps: OperativeStep[], index: number): OperativeStep[] {
+  if (!canMoveOperativeSubtreeDown(steps, index)) return steps;
+  const end = getOperativeSubtreeEnd(steps, index);
+  const nextEnd = getOperativeSubtreeEnd(steps, end + 1);
+  return normalizeOperativeStepLevels([
+    ...steps.slice(0, index),
+    ...steps.slice(end + 1, nextEnd + 1),
+    ...steps.slice(index, end + 1),
+    ...steps.slice(nextEnd + 1),
+  ]);
 }
 
 export type SlideLayout = 
@@ -517,7 +673,7 @@ export const DEFAULT_COMMERCIAL_PAGE: Required<Omit<CommercialPage, 'hide' | 'lo
   reviewedLeftOrg: 'Advansys',
   reviewedRightRole: 'Aprobado por el Cliente',
   reviewedRightOrg: 'Nombre y Firma',
-  footerPhone: '809-000-0000',
+  footerPhone: '(809) 226-1875',
   footerEmail: 'info@advansys.com.do',
   footerWeb: 'www.advansys.com.do',
   footerCity: 'Santiago de los Caballeros, R.D.',
@@ -562,7 +718,10 @@ export function getEffectiveCommercialPage(proposal?: ProposalSection | null): t
     reviewedLeftOrg: c?.reviewedLeftOrg?.trim() || defaults.reviewedLeftOrg,
     reviewedRightRole: c?.reviewedRightRole?.trim() || defaults.reviewedRightRole,
     reviewedRightOrg: c?.reviewedRightOrg?.trim() || defaults.reviewedRightOrg,
-    footerPhone: c?.footerPhone?.trim() || defaults.footerPhone,
+    footerPhone: (() => {
+      const phone = c?.footerPhone?.trim() || '';
+      return !phone || phone === '809-000-0000' ? defaults.footerPhone : phone;
+    })(),
     footerEmail: c?.footerEmail?.trim() || defaults.footerEmail,
     footerWeb: c?.footerWeb?.trim() || defaults.footerWeb,
     footerCity: c?.footerCity?.trim() || defaults.footerCity,

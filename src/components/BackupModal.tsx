@@ -48,6 +48,7 @@ import {
   createAndSaveSnapshot,
   deleteSnapshot,
   clearSnapshots,
+  freeLocalStorageSpace,
   downloadSnapshotAsFile,
   getStorageHealthInfo,
   saveBackupConfig,
@@ -77,6 +78,8 @@ interface BackupModalProps {
   onManualSnapshotCreated?: (snapshot: BackupSnapshot) => void;
   lastAutoBackupTime?: string | null;
   freeNotes?: FreeNote[];
+  keepImagesForDocId?: string | null;
+  onHistoryCompacted?: (history: SavedProposal[]) => void;
 }
 
 export const BackupModal: React.FC<BackupModalProps> = ({
@@ -92,6 +95,8 @@ export const BackupModal: React.FC<BackupModalProps> = ({
   onManualSnapshotCreated,
   lastAutoBackupTime,
   freeNotes = [],
+  keepImagesForDocId = null,
+  onHistoryCompacted,
 }) => {
   // Tabs: 'snapshots' | 'config' | 'files'
   const [activeTab, setActiveTab] = useState<'snapshots' | 'config' | 'files'>('snapshots');
@@ -397,6 +402,37 @@ export const BackupModal: React.FC<BackupModalProps> = ({
     }
   };
 
+  const handleFreeStorageSpace = () => {
+    const top = storageInfo.breakdown?.[0];
+    const extra = top
+      ? `\n\nHoy el mayor peso está en: ${top.label} (${top.formatted}).\n${top.hint}`
+      : '';
+    if (
+      !window.confirm(
+        'Se borrarán todas las copias de restauración y se quitarán las imágenes de documentos viejos del historial (los textos se conservan). El documento que tienes abierto no se modifica.' +
+          extra
+      )
+    ) {
+      return;
+    }
+    const result = freeLocalStorageSpace(keepImagesForDocId);
+    onHistoryCompacted?.(result.history);
+    setSnapshots([]);
+    setSelectedSnapshot(null);
+    setStorageInfo(result.after);
+    setErrorMessage(null);
+    const parts: string[] = [];
+    if (result.removedSnapshots) parts.push(`${result.removedSnapshots} copias`);
+    if (result.strippedImageDocs) parts.push(`imágenes de ${result.strippedImageDocs} documentos`);
+    if (result.droppedHistoryItems) parts.push(`${result.droppedHistoryItems} documentos antiguos`);
+    setSuccessMessage(
+      parts.length
+        ? `Espacio liberado (${result.before.usedFormatted} → ${result.after.usedFormatted}): ${parts.join(', ')}.`
+        : `No había copias ni imágenes viejas que quitar. Uso: ${result.after.usedFormatted}. El peso está en el borrador o en el logo de Ajustes.`
+    );
+    setTimeout(() => setSuccessMessage(null), 8000);
+  };
+
   // Handle Snapshot Restore
   const handleRestoreFromSnapshot = (snapshot: BackupSnapshot, mode: 'merge' | 'replace') => {
     try {
@@ -590,6 +626,15 @@ export const BackupModal: React.FC<BackupModalProps> = ({
           <div className="hidden md:flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
             <HardDrive className="w-3.5 h-3.5 text-slate-400" />
             <span>Memoria: {storageInfo.usedFormatted} ({storageInfo.estimatedPercentage}%)</span>
+            <button
+              type="button"
+              onClick={handleFreeStorageSpace}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-white bg-[#0A3D62] hover:bg-[#1E5F8A] border border-[#0A3D62] cursor-pointer"
+              title="Borra copias de respaldo del navegador para liberar espacio"
+            >
+              <Trash2 className="w-3 h-3" />
+              Limpiar espacio
+            </button>
           </div>
         </div>
 
@@ -618,7 +663,25 @@ export const BackupModal: React.FC<BackupModalProps> = ({
         {/* TAB 1: SNAPSHOTS & RESTORE POINTS */}
         {activeTab === 'snapshots' && (
           <div className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
-            
+
+            {(storageInfo.breakdown || []).length > 0 && (
+              <div className="border border-slate-200 dark:border-slate-700 rounded-2xl p-3 sm:p-4 bg-white dark:bg-slate-900/40">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">
+                  Dónde está el espacio · {storageInfo.usedFormatted}
+                </p>
+                <ul className="space-y-1.5">
+                  {(storageInfo.breakdown || []).slice(0, 5).map((bucket) => (
+                    <li key={bucket.id} className="flex items-start justify-between gap-3 text-xs">
+                      <span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">{bucket.label}</span>
+                        <span className="block text-[11px] text-slate-500 dark:text-slate-400">{bucket.hint}</span>
+                      </span>
+                      <span className="font-bold tabular-nums shrink-0 text-slate-700 dark:text-slate-300">{bucket.formatted}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )} 
             {/* Quick Action Bar & Manual Creator */}
             <div className="bg-gradient-to-r from-blue-50 to-indigo-50/50 dark:from-slate-800 dark:to-slate-800/60 border border-blue-100 dark:border-slate-700 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div className="space-y-0.5">
@@ -685,8 +748,17 @@ export const BackupModal: React.FC<BackupModalProps> = ({
                 />
               </div>
 
-              {snapshots.length > 0 && (
-                <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleFreeStorageSpace}
+                  className="text-[11px] font-bold text-white bg-[#0A3D62] hover:bg-[#1E5F8A] px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                  title="Quita copias y las imágenes de documentos viejos del historial"
+                >
+                  <HardDrive className="w-3 h-3" />
+                  <span>Limpiar espacio</span>
+                </button>
+                {snapshots.length > 0 && (
                   <button
                     type="button"
                     onClick={handleClearAutoSnapshots}
@@ -696,8 +768,8 @@ export const BackupModal: React.FC<BackupModalProps> = ({
                     <Trash2 className="w-3 h-3" />
                     <span>Limpiar automáticas</span>
                   </button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
             {/* SNAPSHOTS LIST */}
@@ -1271,8 +1343,35 @@ export const BackupModal: React.FC<BackupModalProps> = ({
                 ></div>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Tus datos residen 100% de manera privada y segura en tu navegador.
+                El navegador guarda todo aquí (aprox. 5 MB). Abre esta lista para ver qué ocupa espacio.
               </p>
+              <ul className="space-y-2">
+                {(storageInfo.breakdown || []).map((bucket) => (
+                  <li key={bucket.id} className="text-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">{bucket.label}</span>
+                      <span className="font-bold tabular-nums text-slate-700 dark:text-slate-300">{bucket.formatted}</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">{bucket.hint}</p>
+                    <div className="mt-1 w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className="h-1.5 rounded-full bg-[#0A3D62] dark:bg-blue-400"
+                        style={{
+                          width: `${Math.max(2, Math.round((bucket.bytes / Math.max(storageInfo.usedBytes, 1)) * 100))}%`,
+                        }}
+                      />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                onClick={handleFreeStorageSpace}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white bg-[#0A3D62] hover:bg-[#1E5F8A] border border-[#0A3D62] cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Limpiar espacio
+              </button>
             </div>
           </div>
         )}

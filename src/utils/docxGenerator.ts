@@ -27,7 +27,7 @@ import {
   RelativeVerticalPosition,
   OverlapType,
 } from 'docx';
-import { MetadataHeader, ProposalSection, UploadedImage, DocumentTable, getEffectiveTitles, COVER_SCOPE_MAX_ITEMS, getEffectiveCommercialPage, formatUsd, parseCommercialNumber, resolvePage2LogoDataUrl, getSubsections, subsectionHasContent, sectionHasBodyOrSubs, NestedSectionField } from '../types';
+import { MetadataHeader, ProposalSection, UploadedImage, DocumentTable, getEffectiveTitles, getOperativoSectionOrder, COVER_SCOPE_MAX_ITEMS, getEffectiveCommercialPage, formatUsd, parseCommercialNumber, resolvePage2LogoDataUrl, getSubsections, subsectionHasContent, sectionHasBodyOrSubs, NestedSectionField, getOperativeStepLevel, getOperativeStepLabels } from '../types';
 import { getAdvansysBannerSvg, getCoverInfoCardSvg } from '../data/banner';
 import { formatFechaEs } from './dateFormat';
 import { fitImageSize } from './imageLayout';
@@ -809,9 +809,8 @@ export async function generateAdvansysDocx(
   const hasSection3_3 = !titles.hideSection3_3 && validEntregables.length > 0;
   const hasSection3 = !titles.hideSection3 && (hasSection3_1 || hasSection3_2 || hasSection3_3);
 
+  const TOTAL_W = 9520;
   const GAP = 160;
-  const CARD_W = Math.floor((9520 - GAP * 2) / 3);
-  const CARD_LAST = 9520 - CARD_W * 2 - GAP * 2;
 
   const spacerCell = () =>
     new TableCell({
@@ -860,11 +859,30 @@ export async function generateAdvansysDocx(
     });
 
   if (hasSection3) {
+    const scopeCards = [
+      hasSection3_1 && { heading: titles.section3_1, items: validAlcance, color: COLOR_SECONDARY_BLUE },
+      hasSection3_2 && { heading: titles.section3_2, items: validExclusiones, color: COLOR_PRIMARY_BLUE },
+      hasSection3_3 && { heading: titles.section3_3, items: validEntregables, color: '047857' },
+    ].filter(Boolean) as { heading: string; items: string[]; color: string }[];
+    const n = scopeCards.length;
+    const cardW = n === 1 ? TOTAL_W : Math.floor((TOTAL_W - GAP * (n - 1)) / n);
+    const lastW = n === 1 ? TOTAL_W : TOTAL_W - cardW * (n - 1) - GAP * (n - 1);
+    const columnWidths: number[] = [];
+    const rowCells: TableCell[] = [];
+    scopeCards.forEach((card, i) => {
+      if (i > 0) {
+        columnWidths.push(GAP);
+        rowCells.push(spacerCell());
+      }
+      const w = i === n - 1 ? lastW : cardW;
+      columnWidths.push(w);
+      rowCells.push(gridCell(card.heading, card.items, card.color, w));
+    });
     docElements.push(createSectionHeader(titles.section3));
     docElements.push(
       new Table({
-        width: { size: 9520, type: WidthType.DXA },
-        columnWidths: [CARD_W, GAP, CARD_W, GAP, CARD_LAST],
+        width: { size: TOTAL_W, type: WidthType.DXA },
+        columnWidths,
         borders: {
           top: NO_BORDER,
           bottom: NO_BORDER,
@@ -873,17 +891,7 @@ export async function generateAdvansysDocx(
           insideHorizontal: NO_BORDER,
           insideVertical: NO_BORDER,
         },
-        rows: [
-          new TableRow({
-            children: [
-              gridCell(titles.section3_1, hasSection3_1 ? validAlcance : [], COLOR_SECONDARY_BLUE, CARD_W),
-              spacerCell(),
-              gridCell(titles.section3_2, hasSection3_2 ? validExclusiones : [], COLOR_PRIMARY_BLUE, CARD_W),
-              spacerCell(),
-              gridCell(titles.section3_3, hasSection3_3 ? validEntregables : [], '047857', CARD_LAST),
-            ],
-          }),
-        ],
+        rows: [new TableRow({ children: rowCells })],
       })
     );
   }
@@ -1390,11 +1398,13 @@ export async function generateAdvansysDocx(
     appendSubsections(laterElements, proposal, 'descripcion', '5', contentTables, usedTables, imageMapByIndex);
   }
 
-  // 6. Índice Análisis Operativo
+  const { analysisFirst, indiceNumber, analisisNumber } = getOperativoSectionOrder(titles);
+
   const validIndice = (proposal.indiceAnalisisOperativo || []).filter((item) => item && item.trim().length > 0);
   const hasSection6 = !titles.hideSection6 && validIndice.length > 0;
-  if (hasSection6) {
-    laterElements.push(createSectionHeader(titles.section6, '6', getPageBreakForLaterSection()));
+  const pushIndiceSection = () => {
+    if (!hasSection6) return;
+    laterElements.push(createSectionHeader(titles.section6, indiceNumber, getPageBreakForLaterSection()));
     validIndice.forEach((item, idx) => {
       laterElements.push(
         new Paragraph({
@@ -1417,9 +1427,8 @@ export async function generateAdvansysDocx(
         })
       );
     });
-  }
+  };
 
-  // 7. Análisis Operativo con Imágenes e Ilustraciones
   const validSteps = (proposal.analisisOperativo || []).filter((step, idx) => {
     const hasText =
       (step.titulo && step.titulo.trim().length > 0) ||
@@ -1432,20 +1441,23 @@ export async function generateAdvansysDocx(
   });
   const hasSection7 = !titles.hideSection7 && validSteps.length > 0;
 
-  if (hasSection7) {
-    laterElements.push(createSectionHeader(titles.section7, '7', getPageBreakForLaterSection()));
+  const pushAnalisisSection = () => {
+    if (!hasSection7) return;
+    laterElements.push(createSectionHeader(titles.section7, analisisNumber, getPageBreakForLaterSection()));
 
+    const stepLabels = getOperativeStepLabels(validSteps, analisisNumber);
     validSteps.forEach((step, originalIdx) => {
-      const stepNumber = originalIdx + 1;
-      const stepTitle = step.titulo?.trim() || `Paso ${stepNumber}`;
+      const stepLabel = stepLabels[originalIdx];
+      const stepTitle = step.titulo?.trim() || `Paso ${stepLabel}`;
+      const stepLevel = getOperativeStepLevel(step);
 
-      // Step Title
       laterElements.push(
         new Paragraph({
           spacing: { before: 180, after: 80 },
+          indent: stepLevel > 0 ? { left: 360 * stepLevel } : undefined,
           children: [
             new TextRun({
-              text: `Paso 7.${stepNumber}: ${stepTitle}`,
+              text: `Paso ${stepLabel}: ${stepTitle}`,
               bold: true,
               color: COLOR_PRIMARY_BLUE,
               size: 24, // 12pt
@@ -1497,6 +1509,14 @@ export async function generateAdvansysDocx(
         pushTextWithTables(laterElements, step.explicacion.trim(), contentTables, usedTables, imageMapByIndex);
       }
     });
+  };
+
+  if (analysisFirst) {
+    pushAnalisisSection();
+    pushIndiceSection();
+  } else {
+    pushIndiceSection();
+    pushAnalisisSection();
   }
 
   // Tablas no referenciadas con [TABLA_n] — se agregan antes del descargo

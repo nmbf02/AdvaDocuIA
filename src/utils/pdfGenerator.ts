@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { MetadataHeader, ProposalSection, UploadedImage, DocumentTable, getEffectiveTitles, getEffectiveProposalHeaderFooter, COVER_SCOPE_MAX_ITEMS, getEffectiveCommercialPage, getSubsections, subsectionHasContent, sectionHasBodyOrSubs, NestedSectionField } from '../types';
+import { MetadataHeader, ProposalSection, UploadedImage, DocumentTable, getEffectiveTitles, getOperativoSectionOrder, getEffectiveProposalHeaderFooter, COVER_SCOPE_MAX_ITEMS, getEffectiveCommercialPage, getSubsections, subsectionHasContent, sectionHasBodyOrSubs, NestedSectionField, getOperativeStepLevel, getOperativeStepLabels } from '../types';
 import { getAdvansysBannerSvg } from '../data/banner';
 import { formatFechaEs } from './dateFormat';
 import { fitImageSize, getImageAlign, pdfImageX } from './imageLayout';
@@ -499,26 +499,30 @@ export async function generateAdvansysPdf(
 
   if (hasSection3) {
     renderSectionHeader(titles.section3, '3');
-    const gap = 4;
-    const colW = (contentWidth - gap * 2) / 3;
-    const pad = 3.2;
     const cards = [
-      {
+      hasSection3_1 && {
         title: titles.section3_1.replace(/^3\.1\s*/, '').toUpperCase(),
         items: validAlcance,
         titleRgb: COLOR_SECONDARY,
       },
-      {
+      hasSection3_2 && {
         title: titles.section3_2.replace(/^3\.2\s*/, '').toUpperCase(),
         items: validExclusiones,
         titleRgb: COLOR_PRIMARY,
       },
-      {
+      hasSection3_3 && {
         title: titles.section3_3.replace(/^3\.3\s*/, '').toUpperCase(),
         items: validEntregables,
         titleRgb: [4, 120, 87] as [number, number, number],
       },
-    ];
+    ].filter(Boolean) as {
+      title: string;
+      items: string[];
+      titleRgb: [number, number, number];
+    }[];
+    const gap = 4;
+    const colW = cards.length === 1 ? contentWidth : (contentWidth - gap * (cards.length - 1)) / cards.length;
+    const pad = 3.2;
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
@@ -609,13 +613,12 @@ export async function generateAdvansysPdf(
     if (proposal.descripcion?.trim()) await renderRichTextWithTables(proposal.descripcion.trim(), docTables);
     await renderNestedSubs('descripcion', '5');
   }
-  // ==========================================
-  // SECTION 6. ÍNDICE DE ANÁLISIS OPERATIVO
-  // ==========================================
+  const { analysisFirst, indiceNumber, analisisNumber } = getOperativoSectionOrder(titles);
   const validIndice = (proposal.indiceAnalisisOperativo || []).filter((item) => item && item.trim().length > 0);
   const hasSection6 = !titles.hideSection6 && validIndice.length > 0;
-  if (hasSection6) {
-    renderSectionHeader(titles.section6, '6', getPageBreakForLaterSection());
+  const renderIndiceSection = () => {
+    if (!hasSection6) return;
+    renderSectionHeader(titles.section6, indiceNumber, getPageBreakForLaterSection());
     for (let i = 0; i < validIndice.length; i++) {
       const item = validIndice[i];
 
@@ -631,11 +634,8 @@ export async function generateAdvansysPdf(
       cursorY += needed;
     }
     cursorY += 2;
-  }
+  };
 
-  // ==========================================
-  // SECTION 7. ANÁLISIS OPERATIVO DETALLADO (Paso a Paso con Imágenes)
-  // ==========================================
   const validSteps = (proposal.analisisOperativo || []).filter(
     (step, idx) =>
       (step.titulo && step.titulo.trim().length > 0) ||
@@ -645,19 +645,22 @@ export async function generateAdvansysPdf(
   );
   const hasSection7 = !titles.hideSection7 && validSteps.length > 0;
 
-  if (hasSection7) {
-    renderSectionHeader(titles.section7, '7', getPageBreakForLaterSection());
+  const renderAnalisisSection = async () => {
+    if (!hasSection7) return;
+    renderSectionHeader(titles.section7, analisisNumber, getPageBreakForLaterSection());
 
+    const stepLabels = getOperativeStepLabels(validSteps, analisisNumber);
     for (let idx = 0; idx < validSteps.length; idx++) {
       const step = validSteps[idx];
+      const stepLevel = getOperativeStepLevel(step);
+      const indentX = margin + stepLevel * 5;
       checkPageBreak(16);
 
-      // Step Header Box
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(9);
       doc.setTextColor(COLOR_PRIMARY[0], COLOR_PRIMARY[1], COLOR_PRIMARY[2]);
-      const stepTitle = `Paso 7.${idx + 1}: ${step.titulo?.trim() || `Paso ${idx + 1}`}`;
-      doc.text(stepTitle, margin, cursorY + 2);
+      const stepTitle = `Paso ${stepLabels[idx]}: ${step.titulo?.trim() || `Paso ${stepLabels[idx]}`}`;
+      doc.text(stepTitle, indentX, cursorY + 2);
       cursorY += 5.5;
 
       // Check for associated image strictly
@@ -694,6 +697,14 @@ export async function generateAdvansysPdf(
       }
       cursorY += 3;
     }
+  };
+
+  if (analysisFirst) {
+    await renderAnalisisSection();
+    renderIndiceSection();
+  } else {
+    renderIndiceSection();
+    await renderAnalisisSection();
   }
 
   // ==========================================

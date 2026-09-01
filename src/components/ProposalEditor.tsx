@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ProposalSection, MetadataHeader, UploadedImage, DocumentTable, getEffectiveTitles, SlideDeck, DocumentStatus, SavedProposal, DEFAULT_DESCARGO_TEXT, COVER_SCOPE_MAX_ITEMS, getEffectiveCommercialPage, getPage2LogoMode, Page2LogoMode, DEFAULT_COMMERCIAL_PAGE, NestedSectionField, getSubsections, createEmptySubsection } from '../types';
-import { FileDown, FileText, Edit3, Eye, Plus, Trash2, Sparkles, Wand2, Loader2, Cpu, Save, Check, GitBranch, Tag, X, Layers, CheckCircle2, CheckCheck, Presentation, Bold, ArrowRight, ArrowRightLeft, RotateCcw, Terminal, ChevronDown, ChevronUp, ChevronsUpDown, ChevronsDownUp, Table2, Image as ImageIcon, Upload, Paperclip, ExternalLink } from 'lucide-react';
+import { ProposalSection, MetadataHeader, UploadedImage, DocumentTable, getEffectiveTitles, getOperativoSectionOrder, SlideDeck, DocumentStatus, SavedProposal, DEFAULT_DESCARGO_TEXT, COVER_SCOPE_MAX_ITEMS, getEffectiveCommercialPage, getPage2LogoMode, Page2LogoMode, DEFAULT_COMMERCIAL_PAGE, NestedSectionField, getSubsections, createEmptySubsection, getOperativeStepLevel, getOperativeStepLabels, getOperativeSubtreeEnd, canIndentOperativeStep, canOutdentOperativeStep, indentOperativeStep, outdentOperativeStep, canMoveOperativeSubtreeUp, canMoveOperativeSubtreeDown, moveOperativeSubtree, swapOperativeSubtreeUp, swapOperativeSubtreeDown, normalizeOperativeStepLevels, MAX_OPERATIVE_STEP_LEVEL } from '../types';
+import { FileDown, FileText, Edit3, Eye, Plus, Trash2, Sparkles, Wand2, Loader2, Cpu, Save, Check, GitBranch, Tag, X, Layers, CheckCircle2, CheckCheck, Presentation, Bold, ArrowRight, ArrowRightLeft, RotateCcw, Terminal, ChevronDown, ChevronUp, ChevronsUpDown, ChevronsDownUp, Table2, Image as ImageIcon, Upload, Paperclip, ExternalLink, IndentIncrease, IndentDecrease } from 'lucide-react';
 import { generateAdvansysDocx } from '../utils/docxGenerator';
 import { downloadAdvansysPdf } from '../utils/pdfGenerator';
 import { DocxPreview } from './DocxPreview';
@@ -358,6 +358,9 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
   };
 
   const titles = getEffectiveTitles(metadata.customTitles);
+  const { analysisFirst, indiceNumber, analisisNumber } = getOperativoSectionOrder(titles);
+  const operativeSteps = proposal.analisisOperativo || [];
+  const operativeStepLabels = getOperativeStepLabels(operativeSteps, analisisNumber);
 
   const activeSlideDeck: SlideDeck = proposal.slideDeck || convertProposalToSlideDeck(proposal, metadata, images);
 
@@ -605,42 +608,66 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
   };
 
   // Operative Step Helpers
+  const commitOperativeSteps = (steps: typeof proposal.analisisOperativo) => {
+    const updatedSteps = normalizeOperativeStepLevels(steps || []);
+    onChange({
+      ...proposal,
+      analisisOperativo: updatedSteps,
+      indiceAnalisisOperativo: updatedSteps.map((s) => s.titulo),
+    });
+  };
+
   const handleStepChange = (index: number, field: 'titulo' | 'explicacion', val: string) => {
     const steps = [...(proposal.analisisOperativo || [])];
     steps[index] = { ...steps[index], [field]: val };
-    const updatedIndex = steps.map(s => s.titulo);
-    onChange({ ...proposal, analisisOperativo: steps, indiceAnalisisOperativo: updatedIndex });
+    commitOperativeSteps(steps);
   };
 
-  const handleAddStep = () => {
+  const handleAddStep = (afterIndex?: number, asChild = false) => {
     const currentSteps = proposal.analisisOperativo || [];
-    const newStepNum = currentSteps.length + 1;
+    const parentIndex = afterIndex ?? currentSteps.length - 1;
+    const parentLevel = parentIndex >= 0 ? getOperativeStepLevel(currentSteps[parentIndex]) : -1;
+    const nivel = asChild
+      ? Math.min(MAX_OPERATIVE_STEP_LEVEL, parentLevel + 1)
+      : 0;
+    const insertAt = asChild && parentIndex >= 0
+      ? getOperativeSubtreeEnd(currentSteps, parentIndex) + 1
+      : currentSteps.length;
     const newStep = {
-      paso: newStepNum,
-      titulo: `Paso 7.${newStepNum}: Descripción del flujo`,
-      explicacion: `Detalle técnico del paso ${newStepNum}...`,
-      referenciaImagen: images[newStepNum - 1] ? `[IMAGEN_${newStepNum}]` : ''
+      paso: insertAt + 1,
+      nivel,
+      titulo: 'Descripción del flujo',
+      explicacion: 'Detalle técnico del paso...',
+      referenciaImagen: images[insertAt] ? `[IMAGEN_${insertAt + 1}]` : ''
     };
-    const updatedSteps = [...currentSteps, newStep];
-    const updatedIndex = updatedSteps.map(s => s.titulo);
-    onChange({
-      ...proposal,
-      analisisOperativo: updatedSteps,
-      indiceAnalisisOperativo: updatedIndex
-    });
+    const updatedSteps = [...currentSteps.slice(0, insertAt), newStep, ...currentSteps.slice(insertAt)];
+    commitOperativeSteps(updatedSteps);
   };
 
   const handleRemoveStep = (index: number) => {
-    const updatedSteps = (proposal.analisisOperativo || []).filter((_, i) => i !== index).map((s, i) => ({
-      ...s,
-      paso: i + 1
-    }));
-    const updatedIndex = updatedSteps.map(s => s.titulo);
-    onChange({
-      ...proposal,
-      analisisOperativo: updatedSteps,
-      indiceAnalisisOperativo: updatedIndex
-    });
+    const steps = proposal.analisisOperativo || [];
+    const removedLevel = getOperativeStepLevel(steps[index]);
+    const updatedSteps = steps
+      .filter((_, i) => i !== index)
+      .map((s, i) => {
+        if (i >= index && getOperativeStepLevel(s) > removedLevel) {
+          return { ...s, nivel: getOperativeStepLevel(s) - 1 };
+        }
+        return s;
+      });
+    commitOperativeSteps(updatedSteps);
+  };
+
+  const handleMoveStep = (fromIndex: number, toIndex: number) => {
+    commitOperativeSteps(moveOperativeSubtree(proposal.analisisOperativo || [], fromIndex, toIndex));
+  };
+
+  const handleMoveStepUp = (index: number) => {
+    commitOperativeSteps(swapOperativeSubtreeUp(proposal.analisisOperativo || [], index));
+  };
+
+  const handleMoveStepDown = (index: number) => {
+    commitOperativeSteps(swapOperativeSubtreeDown(proposal.analisisOperativo || [], index));
   };
 
   const buildExportBasename = () => {
@@ -1901,7 +1928,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                   </span>
                   <div>
                     <label className="block text-sm font-bold text-[#0A3D62] uppercase tracking-wide min-w-0 break-words cursor-pointer">
-                      6 & 7. {titles.section6} & {titles.section7}
+                      {analysisFirst ? `${analisisNumber} & ${indiceNumber}. ${titles.section7} & ${titles.section6}` : `${indiceNumber} & ${analisisNumber}. ${titles.section6} & ${titles.section7}`}
                     </label>
                     <span className="text-xs text-slate-500">
                       {proposal.analisisOperativo?.length || 0} Pasos registrados
@@ -1919,7 +1946,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                     Redactar Pasos con IA
                   </button>
                   <button
-                    onClick={handleAddStep}
+                    onClick={() => handleAddStep()}
                     className="inline-flex items-center px-2.5 py-1 text-xs font-semibold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 rounded-lg transition-colors"
                   >
                     <Plus className="w-3.5 h-3.5 mr-1" />
@@ -1941,8 +1968,8 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                   className="mt-3 p-2.5 bg-white rounded-lg border border-dashed border-slate-300 text-xs text-slate-600 cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-all flex items-center justify-between gap-2"
                 >
                   <p className="truncate italic text-slate-500 flex-1">
-                    {proposal.analisisOperativo && proposal.analisisOperativo.length > 0
-                      ? proposal.analisisOperativo.map((s, i) => `Paso ${i+1}: ${s.titulo || 'Sin título'}`).join(' | ')
+                    {operativeSteps.length > 0
+                      ? operativeSteps.map((s, i) => `${operativeStepLabels[i]}: ${s.titulo || 'Sin título'}`).join(' | ')
                       : 'Sección comprimida (0 pasos). Haz clic para expandir.'}
                   </p>
                   <span className="text-[10px] font-bold text-[#0A3D62] shrink-0">Expandir</span>
@@ -1954,7 +1981,9 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                       No hay pasos operativos agregados. Haz clic en "Añadir Paso Manual" o "Redactar Pasos con IA".
                     </p>
                   )}
-                  {proposal.analisisOperativo?.map((step, idx) => {
+                  {operativeSteps.map((step, idx) => {
+                    const stepLevel = getOperativeStepLevel(step);
+                    const stepLabel = operativeStepLabels[idx];
                     const isExplicitNone = step.imagenId === 'none' || step.referenciaImagen === 'none';
                     const stepLinkedImg = isExplicitNone
                       ? null
@@ -1980,11 +2009,15 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                     const currentValueForSelect = isExplicitNone ? 'none' : (stepLinkedImg ? stepLinkedImg.id : 'none');
 
                     return (
-                      <div key={idx} className="bg-white p-3 rounded-lg border border-slate-200 space-y-3 relative group min-w-0">
+                      <div
+                        key={idx}
+                        className="bg-white p-3 rounded-lg border border-slate-200 space-y-3 relative group min-w-0"
+                        style={{ marginLeft: stepLevel * 20 }}
+                      >
                         <div className="flex flex-wrap items-start justify-between gap-2 min-w-0">
                           <div className="flex flex-wrap items-center gap-2 min-w-0 flex-1">
                             <span className="text-xs font-bold text-[#0A3D62] bg-blue-50 px-2 py-0.5 rounded border border-blue-200 shrink-0">
-                              Paso 7.{idx + 1}
+                              Paso {stepLabel}
                             </span>
                             {stepLinkedImg && linkedImgIndex && (
                               <span className="text-[11px] text-emerald-700 bg-emerald-50 font-semibold px-2 py-0.5 rounded border border-emerald-200 inline-flex items-center min-w-0 max-w-full">
@@ -1994,13 +2027,81 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                             )}
                           </div>
 
-                          <button
-                            onClick={() => handleRemoveStep(idx)}
-                            className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                            title="Eliminar paso"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <div className="inline-flex items-center rounded border border-slate-200 overflow-hidden">
+                              <button
+                                type="button"
+                                onClick={() => commitOperativeSteps(outdentOperativeStep(operativeSteps, idx))}
+                                disabled={!canOutdentOperativeStep(operativeSteps, idx)}
+                                className="p-1 text-slate-500 hover:text-[#0A3D62] hover:bg-blue-50 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-500 transition-colors"
+                                title="Subir de nivel (quitar sangría)"
+                              >
+                                <IndentDecrease className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => commitOperativeSteps(indentOperativeStep(operativeSteps, idx))}
+                                disabled={!canIndentOperativeStep(operativeSteps, idx)}
+                                className="p-1 text-slate-500 hover:text-[#0A3D62] hover:bg-blue-50 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-500 transition-colors border-l border-slate-200"
+                                title="Convertir en subpaso (sangrar)"
+                              >
+                                <IndentIncrease className="w-4 h-4" />
+                              </button>
+                            </div>
+                            <div className="inline-flex items-center rounded border border-slate-200 overflow-hidden">
+                              <button
+                                type="button"
+                                onClick={() => handleMoveStepUp(idx)}
+                                disabled={!canMoveOperativeSubtreeUp(operativeSteps, idx)}
+                                className="p-1 text-slate-500 hover:text-[#0A3D62] hover:bg-blue-50 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-500 transition-colors"
+                                title="Subir (junto con sus subpasos)"
+                              >
+                                <ChevronUp className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleMoveStepDown(idx)}
+                                disabled={!canMoveOperativeSubtreeDown(operativeSteps, idx)}
+                                className="p-1 text-slate-500 hover:text-[#0A3D62] hover:bg-blue-50 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-500 transition-colors border-l border-slate-200"
+                                title="Bajar (junto con sus subpasos)"
+                              >
+                                <ChevronDown className="w-4 h-4" />
+                              </button>
+                            </div>
+                            {operativeSteps.length > 1 && (
+                              <select
+                                value={idx}
+                                onChange={(e) => handleMoveStep(idx, parseInt(e.target.value, 10))}
+                                className="text-[10px] font-semibold text-slate-700 bg-white border border-slate-200 rounded px-1 py-1 max-w-[8.5rem] cursor-pointer"
+                                title="Mover este paso a otra posición"
+                              >
+                                {operativeSteps.map((_, pos) => (
+                                  <option key={pos} value={pos}>
+                                    {pos === idx ? `Posición ${operativeStepLabels[pos]}` : `Mover a ${operativeStepLabels[pos]}`}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                            {stepLevel < MAX_OPERATIVE_STEP_LEVEL && (
+                              <button
+                                type="button"
+                                onClick={() => handleAddStep(idx, true)}
+                                className="inline-flex items-center gap-0.5 px-1.5 py-1 text-[10px] font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded transition-colors"
+                                title="Añadir un subpaso dentro de este paso"
+                              >
+                                <Plus className="w-3 h-3" />
+                                Subpaso
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveStep(idx)}
+                              className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                              title="Eliminar paso"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
 
                         <div>
@@ -2126,11 +2227,11 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                   })}
                   <button
                     type="button"
-                    onClick={handleAddStep}
+                    onClick={() => handleAddStep()}
                     className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-dashed border-emerald-300 rounded-lg transition-colors"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    Añadir otro paso (7.{(proposal.analisisOperativo?.length || 0) + 1})
+                    Añadir otro paso
                   </button>
                 </div>
               )}

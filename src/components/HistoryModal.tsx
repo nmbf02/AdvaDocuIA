@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { SavedProposal, DocumentStatus } from '../types';
+import { SavedProposal, DocumentStatus, getOperativeStepLabels } from '../types';
 import { X, Calendar, Building2, FileText, Trash2, ArrowRight, Copy, GitBranch, Search, Check, Tag, Sparkles, Filter, RotateCcw, CheckCircle2, CheckCheck, Clock, ShieldCheck, Award, Terminal, Layers, Link, Database, Download, ChevronDown } from 'lucide-react';
 
 interface HistoryModalProps {
@@ -255,7 +255,7 @@ ${c.objetivo || 'N/A'}
 ${c.descripcion || 'N/A'}
 
 6. ANÁLISIS OPERATIVO:
-${c.analisisOperativo?.map((s, i) => `Paso ${i + 1}: ${s.titulo}\n${s.explicacion}`).join('\n\n') || 'N/A'}
+${c.analisisOperativo?.length ? getOperativeStepLabels(c.analisisOperativo, 7).map((label, i) => `Paso ${label}: ${c.analisisOperativo[i].titulo}\n${c.analisisOperativo[i].explicacion}`).join('\n\n') : 'N/A'}
 `;
 
     navigator.clipboard.writeText(textToCopy);

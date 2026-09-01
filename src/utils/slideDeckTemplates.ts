@@ -1,4 +1,4 @@
-import { SlideDeck, SlideItem, MetadataHeader, ProposalSection, UploadedImage } from '../types';
+import { SlideDeck, SlideItem, MetadataHeader, ProposalSection, UploadedImage, getOperativeStepLabels } from '../types';
 
 export function createDefaultSlideDeck(metadata: MetadataHeader, images: UploadedImage[] = []): SlideDeck {
   const cliente = metadata.cliente || 'Cliente Corporativo';
@@ -228,9 +228,10 @@ export function convertProposalToSlideDeck(
 
   // Slide 6: Análisis Operativo (Flujo paso a paso)
   if (proposal.analisisOperativo && proposal.analisisOperativo.length > 0) {
+    const labels = getOperativeStepLabels(proposal.analisisOperativo, 7);
     const steps = proposal.analisisOperativo.slice(0, 4).map((s, i) => ({
       stepNumber: i + 1,
-      title: s.titulo.replace(/^Paso\s*\d+[.:\-]?\s*/i, ''),
+      title: `${labels[i]} ${s.titulo.replace(/^Paso\s*[\d.]+\s*[.:\-]?\s*/i, '')}`.trim(),
       description: s.explicacion.slice(0, 160) + (s.explicacion.length > 160 ? '...' : ''),
     }));
 

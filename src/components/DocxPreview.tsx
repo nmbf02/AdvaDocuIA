@@ -1,5 +1,5 @@
 import React from 'react';
-import { ProposalSection, MetadataHeader, UploadedImage, getEffectiveTitles, getEffectiveProposalHeaderFooter, COVER_SCOPE_MAX_ITEMS, getEffectiveCommercialPage, formatUsd, parseCommercialNumber, resolvePage2LogoDataUrl, getSubsections, subsectionHasContent, sectionHasBodyOrSubs, NestedSectionField } from '../types';
+import { ProposalSection, MetadataHeader, UploadedImage, getEffectiveTitles, getOperativoSectionOrder, getEffectiveProposalHeaderFooter, COVER_SCOPE_MAX_ITEMS, getEffectiveCommercialPage, formatUsd, parseCommercialNumber, resolvePage2LogoDataUrl, getSubsections, subsectionHasContent, sectionHasBodyOrSubs, NestedSectionField, getOperativeStepLevel, getOperativeStepLabels } from '../types';
 import { FileText, Clock, Calendar, DollarSign, Globe } from 'lucide-react';
 import { getAdvansysBannerSvg, getCoverInfoCardSvg } from '../data/banner';
 import { formatFechaEs } from '../utils/dateFormat';
@@ -13,6 +13,7 @@ interface DocxPreviewProps {
 
 export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, images }) => {
   const titles = getEffectiveTitles(metadata.customTitles);
+  const { analysisFirst, indiceNumber, analisisNumber } = getOperativoSectionOrder(titles);
   const headerFooter = getEffectiveProposalHeaderFooter(metadata);
   const bannerSvg = getAdvansysBannerSvg(
     headerFooter.headerBrandTag || 'ADVANSYS',
@@ -55,6 +56,12 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
           {sub.body.trim() ? <RichTextBlock text={sub.body.trim()} tables={tables} images={images} /> : null}
         </div>
       ));
+  const hasScopeAlcance = !titles.hideSection3_1 && (proposal.alcanceExclusionesEntregables?.alcance || []).some(i => i && i.trim().length > 0);
+  const hasScopeExclusiones = !titles.hideSection3_2 && (proposal.alcanceExclusionesEntregables?.exclusiones || []).some(i => i && i.trim().length > 0);
+  const hasScopeEntregables = !titles.hideSection3_3 && (proposal.alcanceExclusionesEntregables?.entregables || []).some(i => i && i.trim().length > 0);
+  const scopeCardCount = [hasScopeAlcance, hasScopeExclusiones, hasScopeEntregables].filter(Boolean).length;
+  const scopeGridClass =
+    scopeCardCount <= 1 ? 'grid grid-cols-1 gap-4' : scopeCardCount === 2 ? 'grid grid-cols-1 md:grid-cols-2 gap-4' : 'grid grid-cols-1 md:grid-cols-3 gap-4';
   const hasLaterSections =
     (!titles.hideSection4 && sectionHasBodyOrSubs(proposal.objetivo, getSubsections(proposal, 'objetivo'))) ||
     (!titles.hideSection5 && sectionHasBodyOrSubs(proposal.descripcion, getSubsections(proposal, 'descripcion'))) ||
@@ -62,6 +69,78 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
     (!titles.hideSection7 &&
       (proposal.analisisOperativo || []).filter((s) => (s.titulo && s.titulo.trim().length > 0) || (s.explicacion && s.explicacion.trim().length > 0)).length > 0) ||
     (!titles.hideSection8 && sectionHasBodyOrSubs(proposal.descargo, getSubsections(proposal, 'descargo')));
+
+  const indicePreview = !titles.hideSection6 && (proposal.indiceAnalisisOperativo || []).filter(i => i && i.trim().length > 0).length > 0 ? (
+          <div key="indice-operativo">
+            <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
+              {indiceNumber}. {titles.section6.toUpperCase()}
+            </h2>
+            <ol className="list-decimal list-inside space-y-1 text-xs text-slate-700 pl-2">
+              {proposal.indiceAnalisisOperativo
+                ?.filter(item => item && item.trim().length > 0)
+                .map((item, idx) => (
+                  <li key={idx}>{item}</li>
+                ))}
+            </ol>
+          </div>
+        ) : null;
+
+  const analisisPreview = !titles.hideSection7 && (proposal.analisisOperativo || []).filter(s => (s.titulo && s.titulo.trim().length > 0) || (s.explicacion && s.explicacion.trim().length > 0)).length > 0 ? (
+          <div key="analisis-operativo">
+            <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-3">
+              {analisisNumber}. {titles.section7.toUpperCase()}
+            </h2>
+
+            <div className="space-y-6 text-xs">
+              {(() => {
+                const steps = (proposal.analisisOperativo || []).filter(step => (step.titulo && step.titulo.trim().length > 0) || (step.explicacion && step.explicacion.trim().length > 0));
+                const labels = getOperativeStepLabels(steps, analisisNumber);
+                return steps.map((step, idx) => {
+                  const isExplicitNone = step.imagenId === 'none' || step.referenciaImagen === 'none';
+                  const linkedImg = isExplicitNone
+                    ? null
+                    : (step.imagenId ? images.find(img => img.id === step.imagenId) : null) ||
+                      (step.referenciaImagen ? (() => {
+                        const m = step.referenciaImagen.match(/\[IMAGEN_(\d+)\]/i);
+                        if (m) {
+                          const targetIndex = parseInt(m[1], 10) - 1;
+                          return images[targetIndex] || null;
+                        }
+                        return images.find(img => img.id === step.referenciaImagen) || null;
+                      })() : null) ||
+                      (step.explicacion ? (() => {
+                        const m = step.explicacion.match(/\[IMAGEN_(\d+)\]/i);
+                        if (m) {
+                          const targetIndex = parseInt(m[1], 10) - 1;
+                          return images[targetIndex] || null;
+                        }
+                        return null;
+                      })() : null);
+                  const imgIdx = linkedImg ? images.indexOf(linkedImg) + 1 : null;
+                  const explicacionHasSameImageTag = Boolean(
+                    linkedImg && imgIdx && step.explicacion && new RegExp(`\\[IMAGEN_${imgIdx}\\]`, 'i').test(step.explicacion)
+                  );
+
+                  return (
+                    <div key={idx} className="border-l-2 border-[#0A3D62] pl-3 py-1 space-y-2" style={{ marginLeft: getOperativeStepLevel(step) * 16 }}>
+                      <h3 className="font-bold text-[#0A3D62] text-xs">
+                        Paso {labels[idx]}: {step.titulo?.trim() || `Paso ${labels[idx]}`}
+                      </h3>
+
+                      {linkedImg && imgIdx && !explicacionHasSameImageTag && (
+                        <PreviewImage image={linkedImg} index={imgIdx} />
+                      )}
+
+                      {step.explicacion?.trim() && (
+                        <RichTextBlock text={step.explicacion.trim()} tables={tables} images={images} />
+                      )}
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+        ) : null;
 
   return (
     <div className="w-full overflow-x-auto py-2">
@@ -132,17 +211,13 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
         ) : null}
 
         {/* 3. Alcance, Exclusiones y Entregables — grid of 3 */}
-        {!titles.hideSection3 && (
-          (proposal.alcanceExclusionesEntregables?.alcance || []).filter(i => i && i.trim().length > 0).length > 0 ||
-          (proposal.alcanceExclusionesEntregables?.exclusiones || []).filter(i => i && i.trim().length > 0).length > 0 ||
-          (proposal.alcanceExclusionesEntregables?.entregables || []).filter(i => i && i.trim().length > 0).length > 0
-        ) && (
+        {!titles.hideSection3 && scopeCardCount > 0 && (
           <div>
             <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-3 leading-[1.5]">
               {titles.section3}
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {!titles.hideSection3_1 && (proposal.alcanceExclusionesEntregables?.alcance || []).filter(i => i && i.trim().length > 0).length > 0 && (
+            <div className={scopeGridClass}>
+              {hasScopeAlcance && (
                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
                   <h3 className="font-bold text-[#1E5F8A] mb-3 text-[9pt] uppercase tracking-wide leading-[1.5]">
                     {titles.section3_1.replace(/^3\.1\s*/, '')}
@@ -160,7 +235,7 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
                   </ul>
                 </div>
               )}
-              {!titles.hideSection3_2 && (proposal.alcanceExclusionesEntregables?.exclusiones || []).filter(i => i && i.trim().length > 0).length > 0 && (
+              {hasScopeExclusiones && (
                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
                   <h3 className="font-bold text-[#0A3D62] mb-3 text-[9pt] uppercase tracking-wide leading-[1.5]">
                     {titles.section3_2.replace(/^3\.2\s*/, '')}
@@ -178,7 +253,7 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
                   </ul>
                 </div>
               )}
-              {!titles.hideSection3_3 && (proposal.alcanceExclusionesEntregables?.entregables || []).filter(i => i && i.trim().length > 0).length > 0 && (
+              {hasScopeEntregables && (
                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
                   <h3 className="font-bold text-emerald-800 mb-3 text-[9pt] uppercase tracking-wide leading-[1.5]">
                     {titles.section3_3.replace(/^3\.3\s*/, '')}
@@ -379,76 +454,16 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
           </div>
         )}
 
-        {/* 6. Índice Análisis Operativo */}
-        {!titles.hideSection6 && (proposal.indiceAnalisisOperativo || []).filter(i => i && i.trim().length > 0).length > 0 && (
-          <div>
-            <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
-              6. {titles.section6.toUpperCase()}
-            </h2>
-            <ol className="list-decimal list-inside space-y-1 text-xs text-slate-700 pl-2">
-              {proposal.indiceAnalisisOperativo
-                ?.filter(item => item && item.trim().length > 0)
-                .map((item, idx) => (
-                  <li key={idx}>{item}</li>
-                ))}
-            </ol>
-          </div>
-        )}
-
-        {/* 7. Análisis Operativo */}
-        {!titles.hideSection7 && (proposal.analisisOperativo || []).filter(s => (s.titulo && s.titulo.trim().length > 0) || (s.explicacion && s.explicacion.trim().length > 0)).length > 0 && (
-          <div>
-            <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-3">
-              7. {titles.section7.toUpperCase()}
-            </h2>
-
-            <div className="space-y-6 text-xs">
-              {proposal.analisisOperativo
-                ?.filter(step => (step.titulo && step.titulo.trim().length > 0) || (step.explicacion && step.explicacion.trim().length > 0))
-                .map((step, idx) => {
-                  const isExplicitNone = step.imagenId === 'none' || step.referenciaImagen === 'none';
-                  const linkedImg = isExplicitNone
-                    ? null
-                    : (step.imagenId ? images.find(img => img.id === step.imagenId) : null) ||
-                      (step.referenciaImagen ? (() => {
-                        const m = step.referenciaImagen.match(/\[IMAGEN_(\d+)\]/i);
-                        if (m) {
-                          const targetIndex = parseInt(m[1], 10) - 1;
-                          return images[targetIndex] || null;
-                        }
-                        return images.find(img => img.id === step.referenciaImagen) || null;
-                      })() : null) ||
-                      (step.explicacion ? (() => {
-                        const m = step.explicacion.match(/\[IMAGEN_(\d+)\]/i);
-                        if (m) {
-                          const targetIndex = parseInt(m[1], 10) - 1;
-                          return images[targetIndex] || null;
-                        }
-                        return null;
-                      })() : null);
-                  const imgIdx = linkedImg ? images.indexOf(linkedImg) + 1 : null;
-                  const explicacionHasSameImageTag = Boolean(
-                    linkedImg && imgIdx && step.explicacion && new RegExp(`\\[IMAGEN_${imgIdx}\\]`, 'i').test(step.explicacion)
-                  );
-
-                  return (
-                    <div key={idx} className="border-l-2 border-[#0A3D62] pl-3 py-1 space-y-2">
-                      <h3 className="font-bold text-[#0A3D62] text-xs">
-                        Paso 7.{idx + 1}: {step.titulo?.trim() || `Paso ${idx + 1}`}
-                      </h3>
-
-                      {linkedImg && imgIdx && !explicacionHasSameImageTag && (
-                        <PreviewImage image={linkedImg} index={imgIdx} />
-                      )}
-
-                      {step.explicacion?.trim() && (
-                        <RichTextBlock text={step.explicacion.trim()} tables={tables} images={images} />
-                      )}
-                    </div>
-                  );
-                })}
-            </div>
-          </div>
+        {analysisFirst ? (
+          <>
+            {analisisPreview}
+            {indicePreview}
+          </>
+        ) : (
+          <>
+            {indicePreview}
+            {analisisPreview}
+          </>
         )}
 
         {/* Tablas no insertadas con etiqueta */}

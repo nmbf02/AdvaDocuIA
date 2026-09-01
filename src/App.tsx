@@ -36,7 +36,8 @@ import {
   getTodayDateString,
   exportAppBackup,
   persistBackupToPc,
-  fetchDefaultBackupFolder
+  fetchDefaultBackupFolder,
+  freeLocalStorageSpace,
 } from './utils/backupManager';
 import { AutoBackupConfig, DEFAULT_BACKUP_CONFIG, BackupSnapshot } from './types';
 import { Sparkles, Loader2, FileText, AlertCircle, Cpu, Columns2, ClipboardList, Maximize2, Image as ImageIcon, PenLine, NotebookPen, Layers, X, Check, Database, BellRing } from 'lucide-react';
@@ -605,22 +606,34 @@ export default function App() {
     try {
       localStorage.setItem(STORAGE_KEY_DRAFT, JSON.stringify(draft));
       saveToHistory(proposal, currentVersion, currentVersionNote, targetDocId, false);
-      
-      // Auto-trigger snapshot on save if configured
+
       if (backupConfig.enabled && backupConfig.backupOnSave) {
-        const payload = getFullBackupPayload();
-        createAndSaveSnapshot(
-          payload,
-          'on_save',
-          `Al guardar: ${metadata.nombreProyecto || metadata.ticketNo || 'Documento'}`,
-          backupConfig.maxSnapshots
-        );
+        try {
+          const payload = getFullBackupPayload();
+          createAndSaveSnapshot(
+            payload,
+            'on_save',
+            `Al guardar: ${metadata.nombreProyecto || metadata.ticketNo || 'Documento'}`,
+            backupConfig.maxSnapshots
+          );
+        } catch (snapErr) {
+          console.error('Snapshot on save failed:', snapErr);
+        }
       }
 
+      setError(null);
       setShowSavedToast(true);
       setTimeout(() => setShowSavedToast(false), 3000);
     } catch (e) {
       console.error("Failed to save draft:", e);
+      const quota =
+        e instanceof DOMException &&
+        (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014);
+      setError(
+        quota
+          ? 'No se pudo guardar: el almacenamiento del navegador está lleno. Elimina copias antiguas en Copias / Backup o documentos del Historial e intenta de nuevo.'
+          : `No se pudo guardar el documento. ${e instanceof Error ? e.message : 'Intenta de nuevo.'}`
+      );
     }
   };
 
@@ -664,6 +677,7 @@ export default function App() {
         localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(updatedHistory));
       } catch (e) {
         console.error("Failed to save history:", e);
+        throw e;
       }
       return;
     }
@@ -722,7 +736,28 @@ export default function App() {
       localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(updatedHistory));
     } catch (e) {
       console.error("Failed to save history:", e);
+      throw e;
     }
+  };
+
+  const applyFreedStorage = () => {
+    const result = freeLocalStorageSpace(currentDocumentId);
+    setHistory(result.history);
+    const parts: string[] = [];
+    if (result.removedSnapshots) parts.push(`${result.removedSnapshots} copias`);
+    if (result.strippedImageDocs) parts.push(`imágenes de ${result.strippedImageDocs} documentos del historial`);
+    if (result.droppedHistoryItems) parts.push(`${result.droppedHistoryItems} documentos antiguos`);
+    const top = result.after.breakdown?.[0];
+    if (parts.length) {
+      setError(null);
+      setShowSavedToast(true);
+      setTimeout(() => setShowSavedToast(false), 3000);
+    } else {
+      setError(
+        `No había copias ni imágenes viejas que quitar. El peso está en: ${top ? `${top.label} (${top.formatted})` : result.after.usedFormatted}. El documento abierto y el logo de Ajustes no se borran.`
+      );
+    }
+    return result;
   };
 
   const persistCurrentDocumentIfNeeded = () => {
@@ -739,7 +774,11 @@ export default function App() {
     );
     if (!hasMeta && !hasBody) return;
     const targetDocId = currentDocumentId || `prop-${Date.now()}`;
-    saveToHistory(proposal, currentVersion, currentVersionNote, targetDocId, false);
+    try {
+      saveToHistory(proposal, currentVersion, currentVersionNote, targetDocId, false);
+    } catch (e) {
+      console.error('Failed to persist current document:', e);
+    }
   };
 
   const applySavedDocument = (saved: SavedProposal) => {
@@ -1566,6 +1605,8 @@ export default function App() {
           onUpdateBackupConfig={handleUpdateBackupConfig}
           onRestoreBackup={handleRestoreBackup}
           lastAutoBackupTime={lastAutoBackupTime}
+          keepImagesForDocId={currentDocumentId}
+          onHistoryCompacted={setHistory}
         />
 
         {/* New Document Dialog with Save Prompt */}
@@ -1691,13 +1732,22 @@ export default function App() {
               <strong className="font-bold text-red-900">Atención: </strong>
               {error}
             </div>
-            <button
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => applyFreedStorage()}
+                className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-white bg-[#0A3D62] hover:bg-[#1E5F8A] cursor-pointer"
+              >
+                Limpiar espacio
+              </button>
+              <button
               onClick={() => setError(null)}
               className="p-1 rounded-lg text-red-600 hover:bg-red-100 transition-colors"
               title="Descartar"
             >
               <X className="w-4 h-4" />
             </button>
+            </div>
           </div>
         )}
 
@@ -2117,6 +2167,8 @@ export default function App() {
         onUpdateBackupConfig={handleUpdateBackupConfig}
         onRestoreBackup={handleRestoreBackup}
         lastAutoBackupTime={lastAutoBackupTime}
+        keepImagesForDocId={currentDocumentId}
+        onHistoryCompacted={setHistory}
       />
 
       {backupToastEl}

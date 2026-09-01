@@ -40,6 +40,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Bot,
+  ArrowUpDown,
 } from 'lucide-react';
 
 type SettingsTab = 'titles' | 'techTitles' | 'headersFooters' | 'branding' | 'agent' | 'backup' | 'local';
@@ -151,6 +152,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       hideSection6: false,
       hideSection7: false,
       hideSection8: false,
+      swapSection6And7: false,
     };
     onChange({
       ...branding,
@@ -797,69 +799,107 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     />
                   </div>
 
-                  {/* Section 6 */}
-                  <div className={`border rounded-xl p-3 shadow-xs transition-colors ${
-                    currentTitles.hideSection6 ? 'bg-slate-100/80 border-slate-300 opacity-80' : 'bg-white border-slate-200'
-                  }`}>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="text-[11px] font-bold text-slate-700 truncate">
-                        6. Sección 6 (Índice Operativo)
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => handleToggleHide('hideSection6')}
-                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors cursor-pointer ${
-                          currentTitles.hideSection6
-                            ? 'bg-amber-100 text-amber-800 border border-amber-300'
-                            : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
-                        }`}
-                        title={currentTitles.hideSection6 ? 'Sección oculta en el documento' : 'Sección visible en el documento'}
-                      >
-                        {currentTitles.hideSection6 ? <EyeOff className="w-3 h-3 text-amber-700" /> : <Eye className="w-3 h-3 text-emerald-600" />}
-                        <span>{currentTitles.hideSection6 ? 'Oculto' : 'Visible'}</span>
-                      </button>
-                    </div>
-                    <input
-                      type="text"
-                      disabled={currentTitles.hideSection6}
-                      value={currentTitles.section6 ?? ''}
-                      onChange={(e) => handleTitleChange('section6', e.target.value)}
-                      placeholder={DEFAULT_DOCUMENT_TITLES.section6}
-                      className="w-full bg-slate-50/50 border border-slate-200 focus:bg-white focus:border-[#0A3D62] rounded-lg px-2.5 py-1.5 text-xs text-slate-800 disabled:opacity-50"
-                    />
-                  </div>
-
-                  {/* Section 7 */}
-                  <div className={`border rounded-xl p-3 shadow-xs transition-colors ${
-                    currentTitles.hideSection7 ? 'bg-slate-100/80 border-slate-300 opacity-80' : 'bg-white border-slate-200'
-                  }`}>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="text-[11px] font-bold text-slate-700 truncate">
-                        7. Sección 7 (Análisis Operativo)
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => handleToggleHide('hideSection7')}
-                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors cursor-pointer ${
-                          currentTitles.hideSection7
-                            ? 'bg-amber-100 text-amber-800 border border-amber-300'
-                            : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
-                        }`}
-                        title={currentTitles.hideSection7 ? 'Sección oculta en el documento' : 'Sección visible en el documento'}
-                      >
-                        {currentTitles.hideSection7 ? <EyeOff className="w-3 h-3 text-amber-700" /> : <Eye className="w-3 h-3 text-emerald-600" />}
-                        <span>{currentTitles.hideSection7 ? 'Oculto' : 'Visible'}</span>
-                      </button>
-                    </div>
-                    <input
-                      type="text"
-                      disabled={currentTitles.hideSection7}
-                      value={currentTitles.section7 ?? ''}
-                      onChange={(e) => handleTitleChange('section7', e.target.value)}
-                      placeholder={DEFAULT_DOCUMENT_TITLES.section7}
-                      className="w-full bg-slate-50/50 border border-slate-200 focus:bg-white focus:border-[#0A3D62] rounded-lg px-2.5 py-1.5 text-xs text-slate-800 disabled:opacity-50"
-                    />
-                  </div>
+                  {/* Sections 6 & 7: orden intercambiable */}
+                  {(() => {
+                    const analysisFirst = !!currentTitles.swapSection6And7;
+                    const indiceNum = analysisFirst ? '7' : '6';
+                    const analisisNum = analysisFirst ? '6' : '7';
+                    const indiceCard = (
+                      <div className={`border rounded-xl p-3 shadow-xs transition-colors ${
+                        currentTitles.hideSection6 ? 'bg-slate-100/80 border-slate-300 opacity-80' : 'bg-white border-slate-200'
+                      }`}>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[11px] font-bold text-slate-700 truncate">
+                            {indiceNum}. Índice de Análisis Operativo
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleHide('hideSection6')}
+                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors cursor-pointer ${
+                              currentTitles.hideSection6
+                                ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                            }`}
+                            title={currentTitles.hideSection6 ? 'Sección oculta en el documento' : 'Sección visible en el documento'}
+                          >
+                            {currentTitles.hideSection6 ? <EyeOff className="w-3 h-3 text-amber-700" /> : <Eye className="w-3 h-3 text-emerald-600" />}
+                            <span>{currentTitles.hideSection6 ? 'Oculto' : 'Visible'}</span>
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          disabled={currentTitles.hideSection6}
+                          value={currentTitles.section6 ?? ''}
+                          onChange={(e) => handleTitleChange('section6', e.target.value)}
+                          placeholder={DEFAULT_DOCUMENT_TITLES.section6}
+                          className="w-full bg-slate-50/50 border border-slate-200 focus:bg-white focus:border-[#0A3D62] rounded-lg px-2.5 py-1.5 text-xs text-slate-800 disabled:opacity-50"
+                        />
+                      </div>
+                    );
+                    const analisisCard = (
+                      <div className={`border rounded-xl p-3 shadow-xs transition-colors ${
+                        currentTitles.hideSection7 ? 'bg-slate-100/80 border-slate-300 opacity-80' : 'bg-white border-slate-200'
+                      }`}>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[11px] font-bold text-slate-700 truncate">
+                            {analisisNum}. Análisis Operativo
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleHide('hideSection7')}
+                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors cursor-pointer ${
+                              currentTitles.hideSection7
+                                ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                            }`}
+                            title={currentTitles.hideSection7 ? 'Sección oculta en el documento' : 'Sección visible en el documento'}
+                          >
+                            {currentTitles.hideSection7 ? <EyeOff className="w-3 h-3 text-amber-700" /> : <Eye className="w-3 h-3 text-emerald-600" />}
+                            <span>{currentTitles.hideSection7 ? 'Oculto' : 'Visible'}</span>
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          disabled={currentTitles.hideSection7}
+                          value={currentTitles.section7 ?? ''}
+                          onChange={(e) => handleTitleChange('section7', e.target.value)}
+                          placeholder={DEFAULT_DOCUMENT_TITLES.section7}
+                          className="w-full bg-slate-50/50 border border-slate-200 focus:bg-white focus:border-[#0A3D62] rounded-lg px-2.5 py-1.5 text-xs text-slate-800 disabled:opacity-50"
+                        />
+                      </div>
+                    );
+                    return (
+                      <div className="sm:col-span-2 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-[10px] text-slate-500">
+                            Orden en el documento: {analysisFirst ? 'Análisis Operativo → Índice' : 'Índice → Análisis Operativo'}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleHide('swapSection6And7')}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold bg-white border border-slate-300 text-[#0A3D62] hover:bg-blue-50 hover:border-blue-300 transition-colors cursor-pointer"
+                            title="Intercambiar el orden de las secciones 6 y 7 sin ocultar ninguna"
+                          >
+                            <ArrowUpDown className="w-3 h-3" />
+                            Intercambiar orden
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {analysisFirst ? (
+                            <>
+                              {analisisCard}
+                              {indiceCard}
+                            </>
+                          ) : (
+                            <>
+                              {indiceCard}
+                              {analisisCard}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Section 8 */}
                   <div className={`border rounded-xl p-3 shadow-xs sm:col-span-2 transition-colors ${

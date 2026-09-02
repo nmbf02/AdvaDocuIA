@@ -10,7 +10,8 @@ import { SlideDeckEditor } from './SlideDeckEditor';
 import { TechnicalDocEditor } from './TechnicalDocEditor';
 import { convertProposalToSlideDeck, createDefaultSlideDeck } from '../utils/slideDeckTemplates';
 import { createDefaultTechnicalDoc, proposalHasSubstance } from '../utils/technicalDocTemplates';
-import { TextFormattingToolbar, handleAutoBulletKeyDown, toggleBoldAtTarget } from './TextFormattingToolbar';
+import { TextFormattingToolbar, handleAutoBulletKeyDown, toggleBoldAtTarget, readTextareaCaret, insertSnippetAtCaret, TextCaret } from './TextFormattingToolbar';
+import { RichTextBlock } from './DocumentPreviewBlocks';
 
 type ProposalTextField = 'resumenEjecutivo' | 'objetivo' | 'descripcion' | 'descargo';
 
@@ -105,6 +106,19 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
   const descripcionRef = useRef<HTMLTextAreaElement>(null);
   const descargoRef = useRef<HTMLTextAreaElement>(null);
   const stepRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
+  const caretByKeyRef = useRef<Record<string, TextCaret>>({});
+
+  const rememberCaret = (key: string, el: HTMLTextAreaElement | null) => {
+    const caret = readTextareaCaret(el);
+    if (caret) caretByKeyRef.current[key] = caret;
+  };
+
+  const caretHandlers = (key: string) => ({
+    onSelect: (e: React.SyntheticEvent<HTMLTextAreaElement>) => rememberCaret(key, e.currentTarget),
+    onClick: (e: React.MouseEvent<HTMLTextAreaElement>) => rememberCaret(key, e.currentTarget),
+    onKeyUp: (e: React.KeyboardEvent<HTMLTextAreaElement>) => rememberCaret(key, e.currentTarget),
+    onBlur: (e: React.FocusEvent<HTMLTextAreaElement>) => rememberCaret(key, e.currentTarget),
+  });
 
   // Helper to get textarea ref for field
   const getTextareaRefForField = (field: ProposalTextField): React.RefObject<HTMLTextAreaElement | null> => {
@@ -122,36 +136,24 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
     }
   };
 
-  // Helper to insert text at cursor position or append
-  const insertTextAtCursor = (textarea: HTMLTextAreaElement | null, currentValue: string, textToInsert: string): string => {
-    if (!textarea) {
-      return currentValue?.trim() ? `${currentValue.trim()}\n\n${textToInsert}` : textToInsert;
-    }
-    const start = textarea.selectionStart ?? currentValue.length;
-    const end = textarea.selectionEnd ?? currentValue.length;
-    const before = currentValue.slice(0, start);
-    const after = currentValue.slice(end);
-
-    // Format with appropriate line breaks if surrounding text exists
-    let formattedInsert = textToInsert;
-    if (before.length > 0 && !before.endsWith('\n') && !before.endsWith('\n\n')) {
-      formattedInsert = `\n\n${formattedInsert}`;
-    }
-    if (after.length > 0 && !after.startsWith('\n') && !after.startsWith('\n\n')) {
-      formattedInsert = `${formattedInsert}\n\n`;
-    }
-
-    const nextVal = `${before}${formattedInsert}${after}`;
-    const newCursorPos = before.length + formattedInsert.length;
-
+  const insertTextAtCursor = (
+    textarea: HTMLTextAreaElement | null,
+    currentValue: string,
+    textToInsert: string,
+    caretKey?: string
+  ): string => {
+    const live = textarea && document.activeElement === textarea ? readTextareaCaret(textarea) : null;
+    const saved = caretKey ? caretByKeyRef.current[caretKey] : null;
+    const caret = live || saved || readTextareaCaret(textarea);
+    const { newText, cursor } = insertSnippetAtCaret(currentValue, textToInsert, caret);
+    if (caretKey) caretByKeyRef.current[caretKey] = { start: cursor, end: cursor };
     setTimeout(() => {
       if (textarea) {
         textarea.focus();
-        textarea.setSelectionRange(newCursorPos, newCursorPos);
+        textarea.setSelectionRange(cursor, cursor);
       }
     }, 10);
-
-    return nextVal;
+    return newText;
   };
 
   // Refs for Image picking & upload
@@ -161,6 +163,8 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
   const imageTag = (index: number) => `[IMAGEN_${index}]`;
 
   const handlePickImageForField = (field: ProposalTextField) => {
+    const fieldRef = getTextareaRefForField(field);
+    rememberCaret(field, fieldRef.current);
     pendingImageTargetRef.current = { field };
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -169,6 +173,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
   };
 
   const handleStepImagePick = (stepIndex: number) => {
+    rememberCaret(`step:${stepIndex}`, stepRefs.current[stepIndex]);
     pendingImageTargetRef.current = { stepIndex };
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -210,7 +215,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
             const tags = newImages.map((_, i) => imageTag(start + i)).join('\n\n');
             const fieldRef = getTextareaRefForField(target.field);
             const currentVal = String(proposal[target.field] || '');
-            const nextVal = insertTextAtCursor(fieldRef.current, currentVal, tags);
+            const nextVal = insertTextAtCursor(fieldRef.current, currentVal, tags, target.field);
             handleStringChange(target.field, nextVal);
           } else if (target?.stepIndex !== undefined && newImages.length) {
             const sIdx = target.stepIndex;
@@ -239,7 +244,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
     const tag = imageTag(imageIndex);
     const fieldRef = getTextareaRefForField(field);
     const currentVal = String(proposal[field] || '');
-    const nextVal = insertTextAtCursor(fieldRef.current, currentVal, tag);
+    const nextVal = insertTextAtCursor(fieldRef.current, currentVal, tag, field);
     handleStringChange(field, nextVal);
   };
 
@@ -278,7 +283,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
     const tag = imageTag(imageIndex);
     const stepEl = stepRefs.current[stepIndex];
     const currentExp = steps[stepIndex].explicacion || '';
-    const nextExp = insertTextAtCursor(stepEl, currentExp, tag);
+    const nextExp = insertTextAtCursor(stepEl, currentExp, tag, `step:${stepIndex}`);
     steps[stepIndex] = {
       ...steps[stepIndex],
       explicacion: nextExp,
@@ -290,6 +295,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
     <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
       <button
         type="button"
+        onMouseDown={(e) => e.preventDefault()}
         onClick={() => handlePickImageForField(field)}
         disabled={!onImagesChange}
         className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-[#0A3D62] bg-white hover:bg-blue-50 border border-slate-300 rounded transition-colors disabled:opacity-50 shadow-2xs cursor-pointer"
@@ -302,6 +308,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
         <button
           key={img.id || idx}
           type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => handleInsertExistingImage(field, idx + 1)}
           className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded transition-colors cursor-pointer"
           title={`Insertar ${imageTag(idx + 1)}: ${img.title || img.fileName || 'Imagen'}`}
@@ -353,6 +360,16 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
             </figure>
           );
         })}
+      </div>
+    );
+  };
+
+  const renderFieldLivePreview = (text: string) => {
+    if (!(text || '').includes('```')) return null;
+    return (
+      <div className="rounded-lg border border-slate-200 bg-white p-2.5">
+        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">Vista del código</p>
+        <RichTextBlock text={text} tables={proposal.tables || []} images={images} />
       </div>
     );
   };
@@ -496,23 +513,29 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
     onChange({ ...proposal, beneficios: proposal.beneficios.filter((_, i) => i !== index) });
   };
 
-  const insertTableIntoText = (current: string) => {
+  const insertTableIntoText = (current: string, textarea: HTMLTextAreaElement | null, caretKey: string) => {
     const tables = [...(proposal.tables || [])];
     tables.push(createEmptyDocumentTable(tables.length + 1));
     const tag = tableTag(tables.length);
-    const nextText = current.trim() ? `${current.trim()}\n\n${tag}` : tag;
+    rememberCaret(caretKey, textarea);
+    const nextText = insertTextAtCursor(textarea, current, tag, caretKey);
     return { tables, nextText };
   };
 
   const handleInsertTableInField = (field: 'resumenEjecutivo' | 'objetivo' | 'descripcion' | 'descargo') => {
-    const { tables, nextText } = insertTableIntoText(String(proposal[field] || ''));
+    const fieldRef = getTextareaRefForField(field);
+    const { tables, nextText } = insertTableIntoText(String(proposal[field] || ''), fieldRef.current, field);
     onChange({ ...proposal, [field]: nextText, tables });
     setActiveSectionFilter(field === 'resumenEjecutivo' ? 'resumen' : field === 'descripcion' ? 'descripcion' : field);
   };
 
   const handleInsertTableInStep = (index: number) => {
     const steps = [...(proposal.analisisOperativo || [])];
-    const { tables, nextText } = insertTableIntoText(steps[index]?.explicacion || '');
+    const { tables, nextText } = insertTableIntoText(
+      steps[index]?.explicacion || '',
+      stepRefs.current[index],
+      `step:${index}`
+    );
     steps[index] = { ...steps[index], explicacion: nextText };
     onChange({ ...proposal, analisisOperativo: steps, tables });
   };
@@ -1137,12 +1160,14 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                     value={proposal.resumenEjecutivo}
                     onChange={(e) => handleStringChange('resumenEjecutivo', e.target.value)}
                     onKeyDown={(e) => handleAutoBulletKeyDown(e, proposal.resumenEjecutivo, (v) => handleStringChange('resumenEjecutivo', v))}
+                    {...caretHandlers('resumenEjecutivo')}
                     placeholder="Escribe el resumen ejecutivo de la propuesta... (usa los botones de arriba o escribe '• ' o '1. ' para viñetas automáticas)"
                     rows={4}
                     className="w-full min-w-0 max-w-full p-3 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-800 font-sans leading-relaxed"
                   />
                   {renderInlineTables(proposal.resumenEjecutivo)}
                   {renderInlineImages(proposal.resumenEjecutivo)}
+                  {renderFieldLivePreview(proposal.resumenEjecutivo)}
                   {renderSubsectionEditor('resumenEjecutivo', '1')}
                 </div>
               )}
@@ -1810,12 +1835,14 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                     value={proposal.objetivo}
                     onChange={(e) => handleStringChange('objetivo', e.target.value)}
                     onKeyDown={(e) => handleAutoBulletKeyDown(e, proposal.objetivo, (v) => handleStringChange('objetivo', v))}
+                    {...caretHandlers('objetivo')}
                     placeholder="Describa el objetivo general y específico... (usa • Viñeta o escribe '• ' o '1. ' para listas automáticas)"
                     rows={3}
                     className="w-full min-w-0 max-w-full p-3 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-800 font-sans leading-relaxed"
                   />
                   {renderInlineTables(proposal.objetivo)}
                   {renderInlineImages(proposal.objetivo)}
+                  {renderFieldLivePreview(proposal.objetivo)}
                   {renderSubsectionEditor('objetivo', '4')}
                 </div>
               )}
@@ -1897,12 +1924,14 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                     value={proposal.descripcion}
                     onChange={(e) => handleStringChange('descripcion', e.target.value)}
                     onKeyDown={(e) => handleAutoBulletKeyDown(e, proposal.descripcion, (v) => handleStringChange('descripcion', v))}
+                    {...caretHandlers('descripcion')}
                     placeholder="Escriba el detalle de la solución arquitectónica propuesta... (usa • Viñeta o escribe '• ' o '1. ' para listas automáticas)"
                     rows={4}
                     className="w-full min-w-0 max-w-full p-3 text-sm bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-800 font-sans leading-relaxed"
                   />
                   {renderInlineTables(proposal.descripcion)}
                   {renderInlineImages(proposal.descripcion)}
+                  {renderFieldLivePreview(proposal.descripcion)}
                   {renderSubsectionEditor('descripcion', '5')}
                 </div>
               )}
@@ -2199,6 +2228,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                                 <button
                                   key={img.id || i}
                                   type="button"
+                                  onMouseDown={(e) => e.preventDefault()}
                                   onClick={() => handleInsertImageTagInStep(idx, i + 1)}
                                   className="px-1.5 py-0.5 font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded cursor-pointer"
                                   title={`Insertar ${imageTag(i + 1)} en la posición del cursor`}
@@ -2215,12 +2245,14 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                             value={step.explicacion}
                             onChange={(e) => handleStepChange(idx, 'explicacion', e.target.value)}
                             onKeyDown={(e) => handleAutoBulletKeyDown(e, step.explicacion, (v) => handleStepChange(idx, 'explicacion', v))}
+                            {...caretHandlers(`step:${idx}`)}
                             placeholder="Detalle los procedimientos, llamadas a API o reglas de negocio... (usa • Viñeta o escribe '• ' o '1. ')"
                             rows={3}
                             className="w-full min-w-0 max-w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded text-slate-800 font-sans leading-relaxed"
                           />
                           {renderInlineTables(step.explicacion)}
                           {renderInlineImages(step.explicacion)}
+                          {renderFieldLivePreview(step.explicacion)}
                         </div>
                       </div>
                     );
@@ -2454,11 +2486,13 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                     value={proposal.descargo}
                     onChange={(e) => handleStringChange('descargo', e.target.value)}
                     onKeyDown={(e) => handleAutoBulletKeyDown(e, proposal.descargo, (v) => handleStringChange('descargo', v))}
+                    {...caretHandlers('descargo')}
                     rows={3}
                     className="w-full min-w-0 max-w-full p-3 text-xs bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-700 italic font-sans leading-relaxed"
                   />
                   {renderInlineTables(proposal.descargo)}
                   {renderInlineImages(proposal.descargo)}
+                  {renderFieldLivePreview(proposal.descargo)}
                   {renderSubsectionEditor('descargo', '8')}
                 </div>
               )}

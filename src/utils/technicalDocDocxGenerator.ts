@@ -31,6 +31,7 @@ import { getAdvansysBannerSvg } from '../data/banner';
 import { fitImageSize } from './imageLayout';
 import { createDocxImageBlock } from './imageDocx';
 import { prepareImageForDocx, DocxRasterType } from './imageExport';
+import { splitMarkdownCodeFences } from './markdownCode';
 
 type ProcessedImage = UploadedImage & {
   index: number;
@@ -274,10 +275,20 @@ function createContentTable(table: DocumentTable): Table {
 
 function parseBoldRuns(text: string): TextRun[] {
   const runs: TextRun[] = [];
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
   for (const part of parts) {
     if (!part) continue;
-    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+    if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
+      runs.push(
+        new TextRun({
+          text: part.slice(1, -1),
+          font: 'Consolas',
+          color: '0F766E',
+          size: 20,
+          shading: { type: ShadingType.CLEAR, fill: 'ECFDF5' },
+        })
+      );
+    } else if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
       runs.push(
         new TextRun({
           text: part.slice(2, -2),
@@ -363,7 +374,46 @@ function pushTextWithTablesAndImages(
     const rawBlock = part.trim();
     if (!rawBlock) continue;
 
-    const lines = rawBlock.split('\n');
+    for (const segment of splitMarkdownCodeFences(rawBlock)) {
+      if (segment.kind === 'code') {
+        const codeLines = (segment.content || ' ').split('\n');
+        if (segment.lang) {
+          docElements.push(
+            new Paragraph({
+              spacing: { before: 80, after: 20 },
+              children: [
+                new TextRun({
+                  text: segment.lang.toUpperCase(),
+                  bold: true,
+                  color: '94A3B8',
+                  size: 14,
+                  font: 'Calibri',
+                }),
+              ],
+            })
+          );
+        }
+        codeLines.forEach((line, i) => {
+          docElements.push(
+            new Paragraph({
+              spacing: { before: i === 0 && !segment.lang ? 80 : 0, after: i === codeLines.length - 1 ? 80 : 0 },
+              shading: { type: ShadingType.CLEAR, fill: '1E293B' },
+              children: [
+                new TextRun({
+                  text: line.length ? line : ' ',
+                  font: 'Consolas',
+                  color: '6EE7B7',
+                  size: 16,
+                }),
+              ],
+            })
+          );
+        });
+        wroteSomething = true;
+        continue;
+      }
+
+    const lines = segment.content.split('\n');
     let currentParagraphLines: string[] = [];
 
     const flushCurrentParagraph = () => {
@@ -430,6 +480,7 @@ function pushTextWithTablesAndImages(
     }
 
     flushCurrentParagraph();
+    }
   }
 
   if (!wroteSomething && (!source || !source.trim())) {

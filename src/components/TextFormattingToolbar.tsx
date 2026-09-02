@@ -5,9 +5,35 @@ import {
   Bold, 
   Minus, 
   Table as TableIcon,
-  HelpCircle,
-  Sparkles
+  Code2,
 } from 'lucide-react';
+import { isCursorInsideCodeFence } from '../utils/markdownCode';
+
+export type TextCaret = { start: number; end: number };
+
+export function readTextareaCaret(el: HTMLTextAreaElement | null): TextCaret | null {
+  if (!el) return null;
+  return {
+    start: el.selectionStart ?? 0,
+    end: el.selectionEnd ?? 0,
+  };
+}
+
+export function insertSnippetAtCaret(
+  currentValue: string,
+  snippet: string,
+  caret: TextCaret | null
+): { newText: string; cursor: number } {
+  const start = caret?.start ?? currentValue.length;
+  const end = caret?.end ?? currentValue.length;
+  const before = currentValue.slice(0, start);
+  const after = currentValue.slice(end);
+  let formatted = snippet;
+  if (before.length > 0 && !before.endsWith('\n')) formatted = `\n${formatted}`;
+  if (after.length > 0 && !after.startsWith('\n')) formatted = `${formatted}\n`;
+  const newText = `${before}${formatted}${after}`;
+  return { newText, cursor: before.length + formatted.length };
+}
 
 interface TextFormattingToolbarProps {
   textareaRef?: React.RefObject<HTMLTextAreaElement | null>;
@@ -156,6 +182,9 @@ export const handleFormattingKeyDown = (
   if (e.key === 'Enter' && !e.shiftKey && e.currentTarget instanceof HTMLTextAreaElement) {
     const textarea = e.currentTarget;
     const cursorPos = textarea.selectionStart;
+    if (isCursorInsideCodeFence(value, cursorPos)) {
+      return;
+    }
     const textBefore = value.substring(0, cursorPos);
     const textAfter = value.substring(cursorPos);
     const lastLineBreak = textBefore.lastIndexOf('\n');
@@ -276,6 +305,7 @@ export const TextFormattingToolbar: React.FC<TextFormattingToolbarProps> = ({
         {/* 1. Negrita (Bold) con atajo Ctrl+B */}
         <button
           type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={handleBoldClick}
           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-white dark:bg-slate-700 hover:bg-[#0A3D62] hover:text-white dark:hover:bg-blue-600 text-slate-900 dark:text-white border border-slate-300 dark:border-slate-600 font-bold text-[11px] transition-all shadow-xs cursor-pointer active:scale-95"
           title="Poner en negrita (**texto**). También puedes seleccionar texto y pulsar Ctrl+B"
@@ -290,6 +320,7 @@ export const TextFormattingToolbar: React.FC<TextFormattingToolbarProps> = ({
         {/* 2. Viñeta Redonda */}
         <button
           type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => applyFormatting('• ', '', 'Elemento de lista')}
           className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white dark:bg-slate-700 hover:bg-emerald-50 dark:hover:bg-emerald-950 text-slate-800 dark:text-slate-200 hover:text-emerald-700 dark:hover:text-emerald-300 border border-slate-200 dark:border-slate-600 font-medium text-[11px] transition-colors shadow-2xs cursor-pointer"
           title="Insertar viñeta (• ). Al pulsar Enter se crea automáticamente la siguiente viñeta."
@@ -301,6 +332,7 @@ export const TextFormattingToolbar: React.FC<TextFormattingToolbarProps> = ({
         {/* 3. Lista Numerada */}
         <button
           type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => applyFormatting('1. ', '', 'Primer paso o punto')}
           className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white dark:bg-slate-700 hover:bg-blue-50 dark:hover:bg-blue-950 text-slate-800 dark:text-slate-200 hover:text-[#0A3D62] dark:hover:text-blue-300 border border-slate-200 dark:border-slate-600 font-medium text-[11px] transition-colors shadow-2xs cursor-pointer"
           title="Insertar lista numerada (1. 2. 3.). Al pulsar Enter se numera el siguiente renglón."
@@ -312,6 +344,7 @@ export const TextFormattingToolbar: React.FC<TextFormattingToolbarProps> = ({
         {/* 4. Viñeta Guión */}
         <button
           type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => applyFormatting('- ', '', 'Punto con guión')}
           className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-600 font-medium text-[11px] transition-colors shadow-2xs cursor-pointer"
           title="Insertar viñeta con guión (- )"
@@ -319,12 +352,24 @@ export const TextFormattingToolbar: React.FC<TextFormattingToolbarProps> = ({
           <Minus className="w-3 h-3 text-slate-500" />
           <span>- Guión</span>
         </button>
+
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => applyFormatting('```\n', '\n```', 'código')}
+          className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white dark:bg-slate-700 hover:bg-slate-800 hover:text-emerald-300 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-600 font-medium text-[11px] transition-colors shadow-2xs cursor-pointer"
+          title="Insertar bloque de código Markdown (```) en la posición del cursor"
+        >
+          <Code2 className="w-3.5 h-3.5 text-emerald-600" />
+          <span>Código</span>
+        </button>
       </div>
 
       <div className="flex items-center gap-1.5">
         {showTableButton && onInsertTable && (
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={onInsertTable}
             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#0A3D62] hover:bg-[#1E5F8A] text-white font-semibold text-[11px] transition-colors shadow-2xs cursor-pointer active:scale-95"
             title="Crear e insertar tabla estructurada en este campo"

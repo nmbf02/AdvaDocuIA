@@ -4,6 +4,7 @@ import { MetadataHeader, TechnicalDoc, DocumentTable, UploadedImage, getEffectiv
 import { getAdvansysBannerSvg } from '../data/banner';
 import { loadSvgOrImageToCanvasPng } from './imageExport';
 import { fitImageSize, getImageAlign, pdfImageX } from './imageLayout';
+import { splitMarkdownCodeFences } from './markdownCode';
 
 const COLOR_PRIMARY: [number, number, number] = [10, 61, 98]; // #0A3D62
 const COLOR_ACCENT: [number, number, number] = [46, 204, 113]; // #2ECC71
@@ -151,10 +152,42 @@ export async function generateTechnicalDocPdf(
     cursorY += 8.5;
   };
 
+  const renderCodeBlock = (content: string, lang = ''): void => {
+    const codeLines = (content || ' ').split('\n');
+    doc.setFont('courier', 'normal');
+    doc.setFontSize(7.5);
+    const wrapped: string[] = [];
+    for (const line of codeLines) {
+      const pieces = doc.splitTextToSize(line.length ? line : ' ', contentWidth - 4);
+      wrapped.push(...(Array.isArray(pieces) ? pieces : [pieces]));
+    }
+    const boxH = wrapped.length * 3.4 + 5 + (lang ? 4 : 0);
+    checkPageBreak(boxH);
+    doc.setFillColor(30, 41, 59);
+    doc.roundedRect(margin, cursorY, contentWidth, boxH, 1.2, 1.2, 'F');
+    let ty = cursorY + 4;
+    if (lang) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text(lang.toUpperCase(), margin + 2, ty);
+      ty += 3.5;
+      doc.setFont('courier', 'normal');
+      doc.setFontSize(7.5);
+    }
+    doc.setTextColor(110, 231, 183);
+    doc.text(wrapped, margin + 2, ty);
+    cursorY += boxH + 3;
+  };
+
   const renderParagraph = (text?: string): void => {
     if (!text || !text.trim()) return;
-    const cleanText = text.trim();
-    const rawLines = cleanText.split('\n');
+    for (const segment of splitMarkdownCodeFences(text.trim())) {
+      if (segment.kind === 'code') {
+        renderCodeBlock(segment.content, segment.lang);
+        continue;
+      }
+    const rawLines = segment.content.split('\n');
 
     for (const rawLine of rawLines) {
       const trimmedLine = rawLine.trim();
@@ -210,6 +243,7 @@ export async function generateTechnicalDocPdf(
         doc.text(lines, margin, cursorY);
         cursorY += needed;
       }
+    }
     }
   };
 

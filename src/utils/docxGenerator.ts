@@ -33,6 +33,7 @@ import { formatFechaEs } from './dateFormat';
 import { fitImageSize } from './imageLayout';
 import { createDocxImageBlock } from './imageDocx';
 import { prepareImageForDocx, DocxRasterType } from './imageExport';
+import { splitMarkdownCodeFences } from './markdownCode';
 
 type ProcessedImage = UploadedImage & {
   index: number;
@@ -313,10 +314,20 @@ function createContentTable(table: DocumentTable): Table {
 
 function parseBoldRuns(text: string, size = 22): TextRun[] {
   const runs: TextRun[] = [];
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
   for (const part of parts) {
     if (!part) continue;
-    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+    if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
+      runs.push(
+        new TextRun({
+          text: part.slice(1, -1),
+          font: 'Consolas',
+          color: '0F766E',
+          size: size - 2,
+          shading: { type: ShadingType.CLEAR, fill: 'ECFDF5' },
+        })
+      );
+    } else if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
       runs.push(
         new TextRun({
           text: part.slice(2, -2),
@@ -338,6 +349,42 @@ function parseBoldRuns(text: string, size = 22): TextRun[] {
     }
   }
   return runs.length > 0 ? runs : [new TextRun({ text: text, color: COLOR_TEXT_DARK, size, font: 'Calibri' })];
+}
+
+function pushCodeFenceParagraphs(docElements: (Paragraph | Table)[], content: string, lang = '') {
+  if (lang) {
+    docElements.push(
+      new Paragraph({
+        spacing: { before: 80, after: 20 },
+        children: [
+          new TextRun({
+            text: lang.toUpperCase(),
+            bold: true,
+            color: '94A3B8',
+            size: 14,
+            font: 'Calibri',
+          }),
+        ],
+      })
+    );
+  }
+  const codeLines = (content || ' ').split('\n');
+  codeLines.forEach((line, i) => {
+    docElements.push(
+      new Paragraph({
+        spacing: { before: i === 0 && !lang ? 80 : 0, after: i === codeLines.length - 1 ? 80 : 0 },
+        shading: { type: ShadingType.CLEAR, fill: '1E293B' },
+        children: [
+          new TextRun({
+            text: line.length ? line : ' ',
+            font: 'Consolas',
+            color: '6EE7B7',
+            size: 16,
+          }),
+        ],
+      })
+    );
+  });
 }
 
 const NO_BORDER = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
@@ -425,8 +472,14 @@ function pushTextWithTables(
     const rawBlock = part.trim();
     if (!rawBlock) continue;
 
-    // Split paragraphs and lines to detect bulleted lists or numbered lists
-    const lines = rawBlock.split('\n');
+    for (const segment of splitMarkdownCodeFences(rawBlock)) {
+      if (segment.kind === 'code') {
+        pushCodeFenceParagraphs(docElements, segment.content, segment.lang);
+        wroteSomething = true;
+        continue;
+      }
+
+    const lines = segment.content.split('\n');
     let currentParagraphLines: string[] = [];
 
     const flushCurrentParagraph = () => {
@@ -493,6 +546,7 @@ function pushTextWithTables(
     }
 
     flushCurrentParagraph();
+    }
   }
 
   if (!wroteSomething && source.trim()) {

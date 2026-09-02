@@ -55,7 +55,8 @@ import {
 import { createDefaultTechnicalDoc, isTechnicalDocUnfilled, proposalHasSubstance, copyLinkedProposalMetadata } from '../utils/technicalDocTemplates';
 import { generateTechnicalDocDocx } from '../utils/technicalDocDocxGenerator';
 import { downloadTechnicalDocPdf } from '../utils/technicalDocPdfGenerator';
-import { TextFormattingToolbar, handleAutoBulletKeyDown } from './TextFormattingToolbar';
+import { TextFormattingToolbar, handleAutoBulletKeyDown, readTextareaCaret, insertSnippetAtCaret, TextCaret } from './TextFormattingToolbar';
+import { RichTextBlock } from './DocumentPreviewBlocks';
 import { DocumentTablesEditor, createEmptyDocumentTable, tableTag } from './DocumentTablesEditor';
 import { ImageUploader } from './ImageUploader';
 import { TechnicalDocPreview } from './TechnicalDocPreview';
@@ -236,6 +237,7 @@ export const TechnicalDocEditor: React.FC<TechnicalDocEditorProps> = ({
   const flujoRef = React.useRef<HTMLTextAreaElement>(null);
   const disenoRef = React.useRef<HTMLTextAreaElement>(null);
   const consRef = React.useRef<HTMLTextAreaElement>(null);
+  const caretByKeyRef = React.useRef<Record<string, TextCaret>>({});
   const imageFileInputRef = React.useRef<HTMLInputElement>(null);
   const pendingImageFieldRef = React.useRef<TechTextField | null>(null);
   const didAutoGenerate = useRef(false);
@@ -253,14 +255,49 @@ export const TechnicalDocEditor: React.FC<TechnicalDocEditorProps> = ({
 
   const imageTag = (index1: number) => `[IMAGEN_${index1}]`;
 
+  const getFieldRef = (field: TechTextField) => {
+    switch (field) {
+      case 'ruta':
+        return rutaRef;
+      case 'flujoOperativo':
+        return flujoRef;
+      case 'diseno':
+        return disenoRef;
+      default:
+        return consRef;
+    }
+  };
+
+  const rememberCaret = (key: string, el: HTMLTextAreaElement | null) => {
+    const caret = readTextareaCaret(el);
+    if (caret) caretByKeyRef.current[key] = caret;
+  };
+
+  const caretHandlers = (key: string) => ({
+    onSelect: (e: React.SyntheticEvent<HTMLTextAreaElement>) => rememberCaret(key, e.currentTarget),
+    onClick: (e: React.MouseEvent<HTMLTextAreaElement>) => rememberCaret(key, e.currentTarget),
+    onKeyUp: (e: React.KeyboardEvent<HTMLTextAreaElement>) => rememberCaret(key, e.currentTarget),
+    onBlur: (e: React.FocusEvent<HTMLTextAreaElement>) => rememberCaret(key, e.currentTarget),
+  });
+
   const insertTagIntoField = (field: TechTextField, tag: string) => {
+    const el = getFieldRef(field).current;
     const current = String(docData[field] || '');
-    const nextText = current.trim() ? `${current.trim()}\n\n${tag}` : tag;
+    const live = el && document.activeElement === el ? readTextareaCaret(el) : null;
+    const caret = live || caretByKeyRef.current[field] || readTextareaCaret(el);
+    const { newText, cursor } = insertSnippetAtCaret(current, tag, caret);
+    caretByKeyRef.current[field] = { start: cursor, end: cursor };
     onChange({
       ...docData,
-      [field]: nextText,
+      [field]: newText,
       lastUpdated: new Date().toISOString(),
     });
+    setTimeout(() => {
+      if (el) {
+        el.focus();
+        el.setSelectionRange(cursor, cursor);
+      }
+    }, 10);
   };
 
   const handleInsertExistingImage = (field: TechTextField, index1: number) => {
@@ -268,6 +305,7 @@ export const TechnicalDocEditor: React.FC<TechnicalDocEditorProps> = ({
   };
 
   const handlePickImageForField = (field: TechTextField) => {
+    rememberCaret(field, getFieldRef(field).current);
     pendingImageFieldRef.current = field;
     imageFileInputRef.current?.click();
   };
@@ -315,6 +353,7 @@ export const TechnicalDocEditor: React.FC<TechnicalDocEditorProps> = ({
     <div className="flex flex-wrap items-center gap-1.5">
       <button
         type="button"
+        onMouseDown={(e) => e.preventDefault()}
         onClick={() => handlePickImageForField(field)}
         disabled={!onImagesChange}
         className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-[#0A3D62] bg-white hover:bg-blue-50 border border-slate-300 rounded transition-colors disabled:opacity-50"
@@ -327,6 +366,7 @@ export const TechnicalDocEditor: React.FC<TechnicalDocEditorProps> = ({
         <button
           key={img.id}
           type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => handleInsertExistingImage(field, idx + 1)}
           className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded"
           title={`Insertar ${imageTag(idx + 1)}: ${img.title}`}
@@ -378,16 +418,27 @@ export const TechnicalDocEditor: React.FC<TechnicalDocEditorProps> = ({
     });
   };
 
-  const insertTableIntoText = (current: string) => {
+  const insertTableIntoText = (field: TechTextField, current: string) => {
     const tables = [...(docData.tables || [])];
     tables.push(createEmptyDocumentTable(tables.length + 1));
     const tag = tableTag(tables.length);
-    const nextText = current.trim() ? `${current.trim()}\n\n${tag}` : tag;
-    return { tables, nextText };
+    const el = getFieldRef(field).current;
+    rememberCaret(field, el);
+    const live = el && document.activeElement === el ? readTextareaCaret(el) : null;
+    const caret = live || caretByKeyRef.current[field] || readTextareaCaret(el);
+    const { newText, cursor } = insertSnippetAtCaret(current, tag, caret);
+    caretByKeyRef.current[field] = { start: cursor, end: cursor };
+    setTimeout(() => {
+      if (el) {
+        el.focus();
+        el.setSelectionRange(cursor, cursor);
+      }
+    }, 10);
+    return { tables, nextText: newText };
   };
 
   const handleInsertTableInField = (field: TechTextField) => {
-    const { tables, nextText } = insertTableIntoText(String(docData[field] || ''));
+    const { tables, nextText } = insertTableIntoText(field, String(docData[field] || ''));
     onChange({
       ...docData,
       [field]: nextText,
@@ -1206,11 +1257,15 @@ export const TechnicalDocEditor: React.FC<TechnicalDocEditorProps> = ({
                 value={docData.ruta}
                 onChange={(e) => handleFieldChange('ruta', e.target.value)}
                 onKeyDown={(e) => handleAutoBulletKeyDown(e, docData.ruta, (v) => handleFieldChange('ruta', v))}
+                {...caretHandlers('ruta')}
                 placeholder="Ejemplo: Menú Principal > Operaciones > Facturación > frm_gestion_cobros.aspx"
                 className="w-full text-xs text-slate-800 bg-slate-50/70 border border-slate-200 rounded-xl p-3.5 focus:bg-white focus:border-[#0A3D62] focus:ring-1 focus:ring-[#0A3D62] outline-none transition-all resize-y leading-relaxed font-mono"
               />
               {renderInlineTables(docData.ruta)}
               {renderInlineImages(docData.ruta)}
+              {(docData.ruta || '').includes('```') && (
+                <RichTextBlock text={docData.ruta} tables={docData.tables || []} images={images} />
+              )}
             </div>
           )}
         </div>
@@ -1332,11 +1387,15 @@ export const TechnicalDocEditor: React.FC<TechnicalDocEditorProps> = ({
                 value={docData.flujoOperativo}
                 onChange={(e) => handleFieldChange('flujoOperativo', e.target.value)}
                 onKeyDown={(e) => handleAutoBulletKeyDown(e, docData.flujoOperativo, (v) => handleFieldChange('flujoOperativo', v))}
+                {...caretHandlers('flujoOperativo')}
                 placeholder="1. Evento Disparador: El usuario presiona el botón...\n2. Validación Frontend...\n3. Procesamiento Backend..."
                 className="w-full text-xs text-slate-800 bg-slate-50/70 border border-slate-200 rounded-xl p-3.5 focus:bg-white focus:border-[#0A3D62] focus:ring-1 focus:ring-[#0A3D62] outline-none transition-all resize-y leading-relaxed"
               />
               {renderInlineTables(docData.flujoOperativo)}
               {renderInlineImages(docData.flujoOperativo)}
+              {(docData.flujoOperativo || '').includes('```') && (
+                <RichTextBlock text={docData.flujoOperativo} tables={docData.tables || []} images={images} />
+              )}
             </div>
           )}
         </div>
@@ -1458,11 +1517,15 @@ export const TechnicalDocEditor: React.FC<TechnicalDocEditorProps> = ({
                 value={docData.diseno}
                 onChange={(e) => handleFieldChange('diseno', e.target.value)}
                 onKeyDown={(e) => handleAutoBulletKeyDown(e, docData.diseno, (v) => handleFieldChange('diseno', v))}
+                {...caretHandlers('diseno')}
                 placeholder="• Componentes Visuales: Formulario modal con grilla...\n• Tablas de BD: TBL_CLIENTE_CUENTAS (Id, ClienteId, Saldo, Estado)..."
                 className="w-full text-xs text-slate-800 bg-slate-50/70 border border-slate-200 rounded-xl p-3.5 focus:bg-white focus:border-[#0A3D62] focus:ring-1 focus:ring-[#0A3D62] outline-none transition-all resize-y leading-relaxed"
               />
               {renderInlineTables(docData.diseno)}
               {renderInlineImages(docData.diseno)}
+              {(docData.diseno || '').includes('```') && (
+                <RichTextBlock text={docData.diseno} tables={docData.tables || []} images={images} />
+              )}
             </div>
           )}
         </div>
@@ -1584,11 +1647,15 @@ export const TechnicalDocEditor: React.FC<TechnicalDocEditorProps> = ({
                 value={docData.consideracionesTecnicas}
                 onChange={(e) => handleFieldChange('consideracionesTecnicas', e.target.value)}
                 onKeyDown={(e) => handleAutoBulletKeyDown(e, docData.consideracionesTecnicas, (v) => handleFieldChange('consideracionesTecnicas', v))}
+                {...caretHandlers('consideracionesTecnicas')}
                 placeholder="• Seguridad: Requiere rol SUPERVISOR_OPERACIONES...\n• Transacciones: Ejecutar dentro de BEGIN TRANSACTION...\n• Auditoría: Registrar usuario e IP en TBL_LOG..."
                 className="w-full text-xs text-slate-800 bg-slate-50/70 border border-slate-200 rounded-xl p-3.5 focus:bg-white focus:border-[#0A3D62] focus:ring-1 focus:ring-[#0A3D62] outline-none transition-all resize-y leading-relaxed"
               />
               {renderInlineTables(docData.consideracionesTecnicas)}
               {renderInlineImages(docData.consideracionesTecnicas)}
+              {(docData.consideracionesTecnicas || '').includes('```') && (
+                <RichTextBlock text={docData.consideracionesTecnicas} tables={docData.tables || []} images={images} />
+              )}
             </div>
           )}
         </div>

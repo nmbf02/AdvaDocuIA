@@ -1,6 +1,7 @@
 import React from 'react';
 import { DocumentTable, UploadedImage } from '../types';
 import { getImageRotation, getImageWidthPercent, previewWrapClass } from '../utils/imageLayout';
+import { splitMarkdownCodeFences } from '../utils/markdownCode';
 
 export const PreviewTable: React.FC<{ table: DocumentTable }> = ({ table }) => (
   <div className="my-3 overflow-x-auto">
@@ -33,8 +34,18 @@ export const PreviewTable: React.FC<{ table: DocumentTable }> = ({ table }) => (
 );
 
 export const formatInlineBold = (text: string): React.ReactNode => {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
   return parts.map((part, index) => {
+    if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
+      return (
+        <code
+          key={index}
+          className="px-1 py-0.5 rounded bg-slate-800 text-emerald-300 font-mono text-[10px]"
+        >
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
     if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
       return (
         <strong key={index} className="font-bold text-slate-900">
@@ -46,7 +57,31 @@ export const formatInlineBold = (text: string): React.ReactNode => {
   });
 };
 
+const CodeFenceBlock: React.FC<{ lang?: string; content: string }> = ({ lang, content }) => (
+  <pre className="my-2 p-3 rounded-lg bg-slate-900 text-emerald-300 font-mono text-[11px] leading-relaxed overflow-x-auto whitespace-pre-wrap border border-slate-700">
+    {lang ? (
+      <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">{lang}</div>
+    ) : null}
+    {content || ' '}
+  </pre>
+);
+
 const FormattedParagraphs: React.FC<{ text: string; className: string }> = ({ text, className }) => {
+  const segments = splitMarkdownCodeFences(text);
+  return (
+    <>
+      {segments.map((seg, si) =>
+        seg.kind === 'code' ? (
+          <CodeFenceBlock key={`code-${si}`} lang={seg.lang} content={seg.content} />
+        ) : (
+          <FormattedTextLines key={`txt-${si}`} text={seg.content} className={className} />
+        )
+      )}
+    </>
+  );
+};
+
+const FormattedTextLines: React.FC<{ text: string; className: string }> = ({ text, className }) => {
   const lines = text.split('\n');
   const elements: React.ReactNode[] = [];
   let currentListItems: { type: 'bullet' | 'number'; num?: string; text: string; indent: boolean }[] = [];

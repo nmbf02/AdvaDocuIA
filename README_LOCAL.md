@@ -50,7 +50,7 @@ Abre tu navegador web y entra a:
 
 ## 🛠️ ¿Cómo funciona la IA en Local?
 
-- **Servidor Express Local (`server.ts`)**: El servidor se encarga de recibir las solicitudes de la interfaz (`/api/generate-proposal`, `/api/refine-proposal`, `/api/generate-slides`, `/api/generate-technical-doc`, `/api/analyze-source-document`), conectar con los modelos `gemini-2.5-flash` / `gemini-3.6-flash` usando tu API Key local y devolver los datos en formato estructurado JSON.
+- **Servidor Express Local (`server.ts`)**: El servidor se encarga de recibir las solicitudes de la interfaz (`/api/generate-proposal`, `/api/refine-proposal`, `/api/generate-slides`, `/api/generate-technical-doc`, `/api/analyze-source-document`), conectar con los modelos `gemini-3.6-flash` / `gemini-3.7-flash` usando tu API Key local y devolver los datos en formato estructurado JSON.
 - **Exportación Word/PDF/PowerPoint**: Se realiza en tu propio equipo sin enviar documentos a ningún servidor de terceros.
 - **Almacenamiento e Historial**: Guarda todo en tu navegador (`localStorage`) y cuenta con el botón **"Copia de Seguridad (.json)"** para respaldar y restaurar todos tus documentos en cualquier momento.
 

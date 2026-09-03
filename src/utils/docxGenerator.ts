@@ -26,6 +26,7 @@ import {
   TableAnchorType,
   RelativeVerticalPosition,
   OverlapType,
+  HeightRule,
 } from 'docx';
 import { MetadataHeader, ProposalSection, UploadedImage, DocumentTable, getEffectiveTitles, getOperativoSectionOrder, COVER_SCOPE_MAX_ITEMS, getEffectiveCommercialPage, formatUsd, parseCommercialNumber, resolvePage2LogoDataUrl, getSubsections, subsectionHasContent, sectionHasBodyOrSubs, NestedSectionField, getOperativeStepLevel, getOperativeStepLabels } from '../types';
 import { getAdvansysBannerSvg, getCoverInfoCardSvg } from '../data/banner';
@@ -608,6 +609,27 @@ export async function generateAdvansysDocx(
       }
     } catch (err) {
       console.error('Error processing corporate logo:', err);
+    }
+  }
+
+  let signatureLeftBytes: Uint8Array | null = null;
+  let signatureLeftType: DocxRasterType = 'png';
+  let signatureLeftSize = { width: 120, height: 40 };
+  if (metadata.signatureLeftDataUrl) {
+    try {
+      const processedSig = await prepareImageForDocx(metadata.signatureLeftDataUrl, metadata.signatureLeftMimeType);
+      if (processedSig.data && processedSig.data.length > 0) {
+        signatureLeftBytes = processedSig.data;
+        signatureLeftType = processedSig.type;
+        signatureLeftSize = fitLogoSize(
+          metadata.signatureLeftWidth || processedSig.width,
+          metadata.signatureLeftHeight || processedSig.height,
+          140,
+          48
+        );
+      }
+    } catch (err) {
+      console.error('Error processing signature image:', err);
     }
   }
 
@@ -1207,7 +1229,14 @@ export async function generateAdvansysDocx(
     const stepsW = commercialTableW - condW - condGap;
     const sigColW = Math.round((commercialTableW - condGap) / 2);
     const sigLineW = Math.min(4200, sigColW - 120);
-    const makeSignatureBlock = (role: string, org: string) =>
+    const sigRowTwips = signatureLeftBytes
+      ? Math.max(800, Math.round((signatureLeftSize.height + 6) * 15))
+      : 120;
+    const makeSignatureBlock = (
+      role: string,
+      org: string,
+      signature?: { data: Uint8Array; type: DocxRasterType; width: number; height: number } | null
+    ) =>
       new Table({
         width: { size: sigLineW, type: WidthType.DXA },
         alignment: AlignmentType.CENTER,
@@ -1222,16 +1251,35 @@ export async function generateAdvansysDocx(
         },
         rows: [
           new TableRow({
+            height: { value: sigRowTwips, rule: HeightRule.EXACT },
             children: [
               new TableCell({
                 width: { size: sigLineW, type: WidthType.DXA },
+                verticalAlign: VerticalAlign.BOTTOM,
                 borders: {
                   top: NO_BORDER,
                   bottom: { style: BorderStyle.SINGLE, size: 8, color: COLOR_PRIMARY_BLUE },
                   left: NO_BORDER,
                   right: NO_BORDER,
                 },
-                children: [new Paragraph({ spacing: { before: 40, after: 60 }, children: [new TextRun({ text: '', size: 2 })] })],
+                children: [
+                  new Paragraph({
+                    alignment: AlignmentType.CENTER,
+                    spacing: { before: 0, after: 0 },
+                    children: signature
+                      ? [
+                          new ImageRun({
+                            data: signature.data,
+                            type: signature.type,
+                            transformation: {
+                              width: signature.width,
+                              height: signature.height,
+                            },
+                          }),
+                        ]
+                      : [new TextRun({ text: '', size: 2 })],
+                  }),
+                ],
               }),
             ],
           }),
@@ -1405,7 +1453,20 @@ export async function generateAdvansysDocx(
               new TableCell({
                 width: { size: sigColW, type: WidthType.DXA },
                 borders: { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER },
-                children: [makeSignatureBlock(commercial.reviewedLeftRole, commercial.reviewedBy.trim() || commercial.reviewedLeftOrg)],
+                children: [
+                  makeSignatureBlock(
+                    commercial.reviewedLeftRole,
+                    commercial.reviewedBy.trim() || commercial.reviewedLeftOrg,
+                    signatureLeftBytes
+                      ? {
+                          data: signatureLeftBytes,
+                          type: signatureLeftType,
+                          width: signatureLeftSize.width,
+                          height: signatureLeftSize.height,
+                        }
+                      : null
+                  ),
+                ],
               }),
               new TableCell({
                 width: { size: condGap, type: WidthType.DXA },

@@ -225,6 +225,11 @@ export interface BrandingSettings {
   page2LogoWidth?: number;
   page2LogoHeight?: number;
   page2LogoMode?: Page2LogoMode;
+  signatureLeftDataUrl?: string;
+  signatureLeftMimeType?: string;
+  signatureLeftFileName?: string;
+  signatureLeftWidth?: number;
+  signatureLeftHeight?: number;
   customTitles?: DocumentTitlesConfig;
   // Independent Header & Footer presets
   proposalHeaderBrandTag?: string;
@@ -341,6 +346,11 @@ export interface MetadataHeader {
   page2LogoWidth?: number;
   page2LogoHeight?: number;
   page2LogoMode?: Page2LogoMode;
+  signatureLeftDataUrl?: string;
+  signatureLeftMimeType?: string;
+  signatureLeftFileName?: string;
+  signatureLeftWidth?: number;
+  signatureLeftHeight?: number;
   technicalLevel?: number; // 1 to 10 scale (1 = Alta Gerencia, 10 = TI & Desarrollo)
   detailLevel?: number; // 1 to 10 scale (1 = conciso, 10 = exhaustivo)
   paraphraseLevel?: number; // 1 to 10 scale (1 = conservar texto original, 10 = reescritura libre)

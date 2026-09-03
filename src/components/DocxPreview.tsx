@@ -389,14 +389,25 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
             <div className="flex-1 min-h-[3rem]" />
             <div className="pt-6">
               <h3 className="text-sm font-bold text-[#0A3D62] uppercase mb-16">{commercial.reviewedByTitle}</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-10">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-10 items-end">
                 <div className="flex flex-col items-center">
-                  <div className="w-[88%] border-t border-[#0A3D62] mb-3" />
+                  <div className="relative w-[88%] h-14 mb-3 flex items-end justify-center">
+                    <div className="absolute bottom-0 left-0 right-0 border-t border-[#0A3D62]" />
+                    {metadata.signatureLeftDataUrl && (
+                      <img
+                        src={metadata.signatureLeftDataUrl}
+                        alt="Firma Gerente Financiera"
+                        className="relative z-10 max-h-14 max-w-[90%] object-contain"
+                      />
+                    )}
+                  </div>
                   <p className="text-[11px] font-bold text-[#0A3D62] text-center">{commercial.reviewedLeftRole}</p>
                   <p className="text-[11px] text-[#1E5F8A] text-center">{commercial.reviewedBy.trim() || commercial.reviewedLeftOrg}</p>
                 </div>
                 <div className="flex flex-col items-center">
-                  <div className="w-[88%] border-t border-[#0A3D62] mb-3" />
+                  <div className="relative w-[88%] h-14 mb-3">
+                    <div className="absolute bottom-0 left-0 right-0 border-t border-[#0A3D62]" />
+                  </div>
                   <p className="text-[11px] font-bold text-[#0A3D62] text-center">{commercial.reviewedRightRole}</p>
                   <p className="text-[11px] text-[#1E5F8A] text-center">{commercial.reviewedRightOrg}</p>
                 </div>

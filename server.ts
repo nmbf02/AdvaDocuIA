@@ -2,9 +2,16 @@ import express from "express";
 import path from "path";
 import fs from "fs/promises";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI, Type } from "@google/genai";
+import { Type } from "@google/genai";
 import dotenv from "dotenv";
 import { extractSourceDocument } from "./sourceDocument";
+import {
+  generateContentWithFallback as generateAiContent,
+  generateChat,
+  getAiStatus,
+  saveAiConfig,
+  loadAiSecrets,
+} from "./aiEngine";
 
 dotenv.config();
 
@@ -14,33 +21,6 @@ const PORT = Number(process.env.PORT) || 3000;
 // Middleware to parse large JSON payloads (including base64 images)
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-
-// Lazy initializer for Gemini client to prevent crashes if GEMINI_API_KEY is not set at boot
-let aiClient: GoogleGenAI | null = null;
-function getGeminiClient(): GoogleGenAI {
-  if (!aiClient) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      console.warn("Warning: GEMINI_API_KEY is not defined in environment variables.");
-    }
-    aiClient = new GoogleGenAI({
-      apiKey: apiKey || "",
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        },
-      },
-    });
-  }
-  return aiClient;
-}
-
-const FALLBACK_MODELS = [
-  "gemini-3.6-flash",
-  "gemini-3.7-flash",
-  "gemini-3.1-flash-lite",
-  "gemini-flash-latest",
-];
 
 function formatCleanErrorMessage(rawError: any): string {
   if (!rawError) return "Error al procesar la solicitud con IA.";
@@ -79,43 +59,11 @@ async function generateContentWithFallback(params: {
   config?: any;
   models?: string[];
 }): Promise<{ text: string | undefined; modelUsed: string }> {
-  const ai = getGeminiClient();
-  const modelsToTry = params.models && params.models.length > 0 ? params.models : FALLBACK_MODELS;
-  let lastError: any = null;
-
-  for (let i = 0; i < modelsToTry.length; i++) {
-    const model = modelsToTry[i];
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      try {
-        const response = await ai.models.generateContent({
-          model,
-          contents: params.contents,
-          config: params.config,
-        });
-        return { text: response.text, modelUsed: model };
-      } catch (err: any) {
-        lastError = err;
-        const msg = String(err?.message || err);
-        console.warn(`[Gemini API] Error en modelo ${model} (intento ${attempt}):`, msg);
-        const isTransient =
-          msg.includes("503") ||
-          msg.includes("429") ||
-          msg.includes("UNAVAILABLE") ||
-          msg.includes("high demand") ||
-          msg.includes("overloaded") ||
-          msg.includes("fetch failed");
-
-        if (isTransient && attempt < 2) {
-          // Breve pausa para superar picos de concurrencia
-          await new Promise((res) => setTimeout(res, 1200));
-        } else {
-          break; // Pasar al siguiente modelo de respaldo
-        }
-      }
-    }
+  try {
+    return await generateAiContent(params);
+  } catch (err: any) {
+    throw new Error(formatCleanErrorMessage(err));
   }
-
-  throw new Error(formatCleanErrorMessage(lastError));
 }
 
 function agentPersonaBlock(agent: any): string {
@@ -347,6 +295,53 @@ app.post("/api/save-backup", async (req, res) => {
   }
 });
 
+app.get("/api/ai-status", async (_req, res) => {
+  try {
+    const status = await getAiStatus();
+    res.json({ success: true, ...status });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error?.message || "No se pudo leer la configuración de IA." });
+  }
+});
+
+app.post("/api/ai-config", async (req, res) => {
+  try {
+    const { provider, fallbacks, models, keys, clearKeys } = req.body || {};
+    const status = await saveAiConfig({ provider, fallbacks, models, keys, clearKeys });
+    res.json({ success: true, ...status });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error?.message || "No se pudo guardar la configuración de IA." });
+  }
+});
+
+app.post("/api/chat", async (req, res) => {
+  try {
+    const { messages, useAgent, agentConfig } = req.body || {};
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ success: false, error: "Envía al menos un mensaje." });
+    }
+    const idioma = agentConfig?.idioma === "en" ? "English" : "español";
+    const agentBlock = useAgent ? agentPersonaBlock(agentConfig) : "";
+    const system = `Eres un asistente de conversación general. Responde de forma natural, clara y útil, como en ChatGPT, Claude o Gemini. Idioma preferido: ${idioma}.
+No fuerces formato de propuesta Advansys salvo que el usuario lo pida.
+${agentBlock}`.trim();
+    const payload = [
+      { role: "system" as const, content: system },
+      ...messages
+        .filter((m: any) => m && (m.role === "user" || m.role === "assistant"))
+        .map((m: any) => ({ role: m.role, content: String(m.content || "") })),
+    ];
+    const result = await generateChat({ messages: payload, temperature: 0.7 });
+    res.json({ success: true, reply: result.text, modelUsed: result.modelUsed });
+  } catch (error: any) {
+    console.error("Error in /api/chat:", error);
+    res.status(500).json({
+      success: false,
+      error: formatCleanErrorMessage(error) || "No se pudo responder el chat.",
+    });
+  }
+});
+
 app.post("/api/analyze-source-document", async (req, res) => {
   try {
     const { fileName, mimeType, dataBase64, metadata } = req.body || {};
@@ -369,7 +364,6 @@ app.post("/api/analyze-source-document", async (req, res) => {
     }));
 
     try {
-      const ai = getGeminiClient();
       const promptParts: any[] = [
         {
           text: `Analiza el documento de origen y conviértelo en el planteamiento de un requerimiento Advansys.
@@ -463,7 +457,6 @@ async function handleAgentInterview(req: express.Request, res: express.Response)
       return res.status(400).json({ success: false, error: "Las notas o requerimientos son obligatorios." });
     }
 
-    const ai = getGeminiClient();
     const persona = agentPersonaBlock(agentConfig);
     const idioma = agentConfig?.idioma === "en" ? "English" : "español formal";
     const metaLine = `Cliente: ${metadata?.cliente || "N/A"}. Proyecto: ${metadata?.nombreProyecto || "N/A"}. Ticket: ${metadata?.ticketNo || "N/A"}.`;
@@ -548,8 +541,6 @@ app.post("/api/generate-proposal", async (req, res) => {
     if (!rawRequirements || typeof rawRequirements !== 'string') {
       return res.status(400).json({ error: "Las notas o requerimientos son obligatorios." });
     }
-
-    const ai = getGeminiClient();
 
     const techLevel = clampLevel(metadata?.technicalLevel, 7);
     const detailLevel = clampLevel(metadata?.detailLevel, 6);
@@ -686,8 +677,6 @@ app.post("/api/refine-proposal", async (req, res) => {
       return res.status(400).json({ error: "No se proporcionó el borrador de propuesta a mejorar." });
     }
 
-    const ai = getGeminiClient();
-
     const techLevel = clampLevel(metadata?.technicalLevel, 7);
     const detailLevel = clampLevel(metadata?.detailLevel, 6);
     const paraphraseLevel = clampLevel(metadata?.paraphraseLevel, 3);
@@ -783,7 +772,6 @@ ${rawRequirements || 'Sin notas adicionales'}
 // Endpoint to generate professional Slide Decks (.pptx data) using Gemini AI
 app.post("/api/generate-slides", async (req, res) => {
   try {
-    const ai = getGeminiClient();
     const { metadata = {}, rawRequirements = '', images = [], proposal = null } = req.body;
 
     const cliente = metadata.cliente || 'Cliente Corporativo';
@@ -923,7 +911,6 @@ Para cada diapositiva, incluye notas del orador útiles ('speakerNotes') que gu�
 // Endpoint to generate internal technical documentation linked to proposal
 app.post("/api/generate-technical-doc", async (req, res) => {
   try {
-    const ai = getGeminiClient();
     const { metadata = {}, rawRequirements = '', images = [], proposal = null } = req.body;
 
     const cliente = metadata.cliente || 'Cliente Corporativo';
@@ -1101,6 +1088,7 @@ Si la propuesta ya existe, deriva nombres de módulos, pantallas y reglas desde 
 
 // Vite or Static file serving
 async function startServer() {
+  await loadAiSecrets();
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },

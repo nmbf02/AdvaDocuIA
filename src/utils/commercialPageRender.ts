@@ -146,6 +146,7 @@ export async function renderCommercialPagePng(
   const commercial = getEffectiveCommercialPage(proposal);
   const logoUrl = resolvePage2LogoDataUrl(metadata, proposal?.commercial);
   const logoImg = logoUrl ? await loadImage(logoUrl) : null;
+  const signatureLeftImg = metadata.signatureLeftDataUrl ? await loadImage(metadata.signatureLeftDataUrl) : null;
 
   const W = 768;
   const H = 1008;
@@ -392,6 +393,14 @@ export async function renderCommercialPagePng(
   ctx.moveTo(pad + sigW + 56 + 8, sySig);
   ctx.lineTo(pad + barW - 8, sySig);
   ctx.stroke();
+  if (signatureLeftImg && signatureLeftImg.width && signatureLeftImg.height) {
+    const maxW = sigW * 0.72;
+    const maxH = 52;
+    const s = Math.min(maxW / signatureLeftImg.width, maxH / signatureLeftImg.height, 1);
+    const dw = signatureLeftImg.width * s;
+    const dh = signatureLeftImg.height * s;
+    ctx.drawImage(signatureLeftImg, pad + (sigW - dw) / 2, sySig - dh + 5, dw, dh);
+  }
   sySig += 18;
   ctx.textAlign = 'center';
   ctx.font = '700 11px Calibri, Segoe UI, sans-serif';

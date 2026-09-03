@@ -15,6 +15,7 @@ import { BackupModal } from './components/BackupModal';
 import { NewDocumentModal, NewDocumentType } from './components/NewDocumentModal';
 import { WelcomeIntro } from './components/WelcomeIntro';
 import { FreeWriteWorkspace } from './components/FreeWriteWorkspace';
+import { ChatWorkspace } from './components/ChatWorkspace';
 import { ScrollToTopBubble } from './components/ScrollToTopBubble';
 import {
   inferredNoteTitle,
@@ -59,6 +60,11 @@ const extractBranding = (source?: Partial<BrandingSettings> | null): BrandingSet
   page2LogoWidth: source?.page2LogoWidth,
   page2LogoHeight: source?.page2LogoHeight,
   page2LogoMode: source?.page2LogoMode,
+  signatureLeftDataUrl: source?.signatureLeftDataUrl,
+  signatureLeftMimeType: source?.signatureLeftMimeType,
+  signatureLeftFileName: source?.signatureLeftFileName,
+  signatureLeftWidth: source?.signatureLeftWidth,
+  signatureLeftHeight: source?.signatureLeftHeight,
   customTitles: source?.customTitles,
 });
 
@@ -160,7 +166,7 @@ export default function App() {
   const [layoutMode, setLayoutMode] = useState<'split' | 'inputs' | 'editor'>('split');
   const [inputTab, setInputTab] = useState<'metadatos' | 'requerimientos' | 'imagenes' | 'all'>('requerimientos');
   const [editorTab, setEditorTab] = useState<'editor' | 'preview' | 'slides' | 'technical'>('editor');
-  const [workspaceMode, setWorkspaceMode] = useState<'proposal' | 'technical' | 'notes'>('proposal');
+  const [workspaceMode, setWorkspaceMode] = useState<'proposal' | 'technical' | 'notes' | 'chat'>('proposal');
   const [freeNotes, setFreeNotes] = useState<FreeNote[]>([]);
   const [activeFreeNoteId, setActiveFreeNoteId] = useState<string | null>(null);
   const [notesReady, setNotesReady] = useState(false);
@@ -362,7 +368,7 @@ export default function App() {
       stats: {
         totalHistoryItems: s.history.length,
         hasDraft: Boolean(s.proposal),
-        hasBranding: Boolean(s.branding && (s.branding.logoDataUrl || s.branding.customTitles)),
+        hasBranding: Boolean(s.branding && (s.branding.logoDataUrl || s.branding.signatureLeftDataUrl || s.branding.customTitles)),
       },
       history: s.history,
       draft: s.proposal
@@ -1322,16 +1328,21 @@ export default function App() {
     handleStartStandaloneTechnicalDoc({ resetFields: true });
   };
 
-  const leaveNotesForDocuments = () => {
+  const leaveAuxWorkspaces = () => {
     setWorkspaceMode((mode) =>
-      mode === 'notes'
+      mode === 'notes' || mode === 'chat'
         ? (proposal?.technicalDoc?.isStandalone ? 'technical' : 'proposal')
         : mode
     );
   };
 
   const handleContinueDraftFromWelcome = () => {
-    leaveNotesForDocuments();
+    leaveAuxWorkspaces();
+    setShowWelcome(false);
+  };
+
+  const handleOpenChat = () => {
+    setWorkspaceMode('chat');
     setShowWelcome(false);
   };
 
@@ -1532,7 +1543,7 @@ export default function App() {
           onLoadHistoryItem={handleLoadHistoryFromWelcome}
           onLoadPreset={handleLoadPresetFromWelcome}
           onOpenHistoryModal={() => {
-            leaveNotesForDocuments();
+            leaveAuxWorkspaces();
             setShowWelcome(false);
             setIsHistoryOpen(true);
           }}
@@ -1540,6 +1551,7 @@ export default function App() {
           onOpenBackup={() => setIsBackupOpen(true)}
           freeNotes={freeNotes}
           onOpenFreeWrite={handleOpenFreeWrite}
+          onOpenChat={handleOpenChat}
         />
 
         {/* History Drawer Modal */}
@@ -1646,6 +1658,22 @@ export default function App() {
             </button>
           </div>
         )}
+        <ScrollToTopBubble />
+        {backupToastEl}
+      </>
+    );
+  }
+
+  if (workspaceMode === 'chat') {
+    return (
+      <>
+        <ChatWorkspace
+          theme={theme}
+          onToggleTheme={handleToggleTheme}
+          onGoHome={() => setShowWelcome(true)}
+          logoDataUrl={branding.logoDataUrl}
+          agentConfig={getEffectiveAgentConfig(branding.agent)}
+        />
         <ScrollToTopBubble />
         {backupToastEl}
       </>

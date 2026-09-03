@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   BrandingSettings,
   DocumentTitlesConfig,
@@ -16,6 +16,7 @@ import {
   getEffectiveTechnicalHeaderFooter,
   Page2LogoMode,
 } from '../types';
+import { readApiJson } from '../utils/apiJson';
 import {
   Settings,
   X,
@@ -37,13 +38,20 @@ import {
   ExternalLink,
   AlignJustify,
   FileSpreadsheet,
-  ChevronLeft,
-  ChevronRight,
   Bot,
   ArrowUpDown,
+  Cpu,
 } from 'lucide-react';
 
-type SettingsTab = 'titles' | 'techTitles' | 'headersFooters' | 'branding' | 'agent' | 'backup' | 'local';
+type SettingsTab = 'titles' | 'techTitles' | 'headersFooters' | 'branding' | 'agent' | 'ai' | 'backup' | 'local';
+
+const DEFAULT_AI_PROVIDERS = [
+  { id: 'gemini', label: 'Google Gemini', envKey: 'GEMINI_API_KEY', hint: 'Google AI Studio', defaultModel: 'gemini-3.6-flash' },
+  { id: 'claude', label: 'Anthropic Claude', envKey: 'ANTHROPIC_API_KEY', hint: 'console.anthropic.com — API, no el chat de claude.ai', defaultModel: 'claude-sonnet-4-5' },
+  { id: 'openai', label: 'OpenAI', envKey: 'OPENAI_API_KEY', hint: 'platform.openai.com', defaultModel: 'gpt-4.1-mini' },
+  { id: 'groq', label: 'Groq', envKey: 'GROQ_API_KEY', hint: 'console.groq.com', defaultModel: 'llama-3.3-70b-versatile' },
+  { id: 'openrouter', label: 'OpenRouter', envKey: 'OPENROUTER_API_KEY', hint: 'openrouter.ai', defaultModel: 'anthropic/claude-sonnet-4' },
+];
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -62,34 +70,64 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   const logoInputRef = useRef<HTMLInputElement>(null);
   const page2LogoInputRef = useRef<HTMLInputElement>(null);
-  const tabsContainerRef = useRef<HTMLDivElement>(null);
-  const [activeTab, setActiveTab] = useState<SettingsTab>('titles');
+  const signatureLeftInputRef = useRef<HTMLInputElement>(null);
+  const [activeTab, setActiveTab] = useState<SettingsTab>('branding');
   const [headerFooterSubTab, setHeaderFooterSubTab] = useState<'proposal' | 'technical'>('proposal');
   const [copiedNotification, setCopiedNotification] = useState<string | null>(null);
+  const [aiStatus, setAiStatus] = useState<{
+    provider: string;
+    fallbacks: string[];
+    keys: Record<string, boolean>;
+    models: Record<string, string>;
+    providers: { id: string; label: string; envKey: string; hint: string; defaultModel: string }[];
+  } | null>(null);
+  const [aiProvider, setAiProvider] = useState('auto');
+  const [aiFallbacks, setAiFallbacks] = useState<string[]>([]);
+  const [aiModels, setAiModels] = useState<Record<string, string>>({});
+  const [aiKeys, setAiKeys] = useState<Record<string, string>>({});
+  const [aiSaving, setAiSaving] = useState(false);
+  const [aiMessage, setAiMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    fetch('/api/ai-status')
+      .then((r) => readApiJson(r))
+      .then((data) => {
+        if (cancelled) return;
+        if (!data?.success) {
+          setAiMessage({
+            kind: 'error',
+            text: data?.error || 'Reinicia el servidor (npm run dev) para cargar Motores IA.',
+          });
+          return;
+        }
+        setAiStatus(data);
+        setAiProvider(data.provider || 'auto');
+        setAiFallbacks(Array.isArray(data.fallbacks) ? data.fallbacks : []);
+        setAiModels(data.models || {});
+        setAiKeys({});
+        setAiMessage(null);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setAiMessage({
+            kind: 'error',
+            text:
+              err?.message ||
+              'No se pudo leer el estado de IA. Cierra el servidor y vuelve a ejecutar npm run dev.',
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const scrollTabs = (direction: 'left' | 'right') => {
-    if (tabsContainerRef.current) {
-      const scrollAmount = 220;
-      tabsContainerRef.current.scrollBy({
-        left: direction === 'left' ? -scrollAmount : scrollAmount,
-        behavior: 'smooth',
-      });
-    }
-  };
-
-  const handleTabsWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    if (tabsContainerRef.current && e.deltaY !== 0) {
-      tabsContainerRef.current.scrollLeft += e.deltaY;
-    }
-  };
-
-  const handleTabClick = (tabKey: SettingsTab, e?: React.MouseEvent<HTMLButtonElement>) => {
+  const handleTabClick = (tabKey: SettingsTab) => {
     setActiveTab(tabKey);
-    if (e?.currentTarget) {
-      e.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-    }
   };
 
   const currentTitles = branding.customTitles || {};
@@ -230,7 +268,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setTimeout(() => setCopiedNotification(null), 2500);
   };
 
-  const applyLogoFromFile = (file: File, target: 'main' | 'page2' = 'main') => {
+  const applyLogoFromFile = (file: File, target: 'main' | 'page2' | 'signatureLeft' = 'main') => {
     if (!file.type.startsWith('image/')) return;
 
     const reader = new FileReader();
@@ -251,6 +289,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           });
           return;
         }
+        if (target === 'signatureLeft') {
+          onChange({
+            ...branding,
+            signatureLeftDataUrl: dataUrl,
+            signatureLeftMimeType: mime,
+            signatureLeftFileName: file.name,
+            signatureLeftWidth: width,
+            signatureLeftHeight: height,
+          });
+          return;
+        }
         onChange({
           ...branding,
           logoDataUrl: dataUrl,
@@ -263,8 +312,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
       const img = new Image();
       img.onload = () => {
-        const maxW = 480;
-        const maxH = 200;
+        const maxW = target === 'signatureLeft' ? 560 : 480;
+        const maxH = target === 'signatureLeft' ? 240 : 200;
         const scale = Math.min(1, maxW / (img.width || 1), maxH / (img.height || 1));
         const width = Math.max(1, Math.round(img.width * scale));
         const height = Math.max(1, Math.round(img.height * scale));
@@ -305,11 +354,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     if (page2LogoInputRef.current) page2LogoInputRef.current.value = '';
   };
 
+  const handleRemoveSignatureLeft = () => {
+    onChange({
+      ...branding,
+      signatureLeftDataUrl: undefined,
+      signatureLeftMimeType: undefined,
+      signatureLeftFileName: undefined,
+      signatureLeftWidth: undefined,
+      signatureLeftHeight: undefined,
+    });
+    if (signatureLeftInputRef.current) signatureLeftInputRef.current.value = '';
+  };
+
   const page2LogoMode: Page2LogoMode = branding.page2LogoMode || (branding.page2LogoDataUrl ? 'page2' : 'main');
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
-      <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
+      <div className="bg-white w-full max-w-5xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
         {/* Modal Header */}
         <div className="bg-[#0A3D62] text-white p-3 sm:p-4 px-4 sm:px-6 flex items-center justify-between gap-2 border-b border-[#1E5F8A] min-w-0">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -317,9 +378,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <Settings className="w-5 h-5 text-[#2ECC71]" />
             </div>
             <div className="min-w-0">
-              <h2 className="text-base font-bold text-white">Configuración y Ajustes</h2>
+              <h2 className="text-base font-bold text-white">Configuración</h2>
               <p className="text-[11px] text-blue-200 hidden sm:block">
-                Personaliza títulos de documentos, secciones y branding institucional
+                Marca, textos del documento, IA y copias
               </p>
             </div>
           </div>
@@ -331,142 +392,61 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
         </div>
 
-        {/* Tab Navigation with Left/Right Scroll Chevrons & Wheel Support */}
-        <div className="relative flex items-center border-b border-slate-200 bg-slate-100/90 px-2 sm:px-3">
-          <button
-            type="button"
-            onClick={() => scrollTabs('left')}
-            aria-label="Desplazar a la izquierda"
-            title="Desplazar opciones a la izquierda"
-            className="flex items-center justify-center p-1.5 rounded-lg text-slate-600 hover:text-[#0A3D62] hover:bg-white/80 active:bg-white shadow-2xs border border-transparent hover:border-slate-200 transition-all mr-1 shrink-0 cursor-pointer"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-
-          <div
-            ref={tabsContainerRef}
-            onWheel={handleTabsWheel}
-            className="flex items-center gap-1.5 pt-2 pb-1.5 overflow-x-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent scroll-smooth flex-1 select-none"
-          >
-            <button
-              type="button"
-              onClick={(e) => handleTabClick('titles', e)}
-              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap shrink-0 cursor-pointer ${
-                activeTab === 'titles'
-                  ? 'border-[#0A3D62] text-[#0A3D62] bg-white rounded-t-lg shadow-sm'
-                  : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-t-lg'
-              }`}
-            >
-              <FileText className="w-4 h-4 text-[#0A3D62]" />
-              <span>Propuesta Técnica (8 Secc.)</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={(e) => handleTabClick('techTitles', e)}
-              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap shrink-0 cursor-pointer ${
-                activeTab === 'techTitles'
-                  ? 'border-[#0A3D62] text-[#0A3D62] bg-white rounded-t-lg shadow-sm'
-                  : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-t-lg'
-              }`}
-            >
-              <Terminal className="w-4 h-4 text-[#2ECC71]" />
-              <span>Doc. Técnica (5 Secc.)</span>
-              {(currentTitles.techMainTitle || currentTitles.techSection1 || currentTitles.techSection2 || currentTitles.techSection3 || currentTitles.techSection4 || currentTitles.techSection5 || currentTitles.hideTechMainTitle || currentTitles.hideTechSection1 || currentTitles.hideTechSection2 || currentTitles.hideTechSection3 || currentTitles.hideTechSection4 || currentTitles.hideTechSection5) && (
-                <span className="w-2 h-2 rounded-full bg-[#2ECC71]" title="Personalizado" />
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={(e) => handleTabClick('headersFooters', e)}
-              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap shrink-0 cursor-pointer ${
-                activeTab === 'headersFooters'
-                  ? 'border-[#0A3D62] text-[#0A3D62] bg-white rounded-t-lg shadow-sm'
-                  : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-t-lg'
-              }`}
-            >
-              <Sliders className="w-4 h-4 text-[#0A3D62]" />
-              <span>Encabezados y Pies</span>
-              {(branding.proposalHeaderBrandTag || branding.proposalHeaderSubtitle || branding.proposalFooterText || branding.techHeaderBrandTag || branding.techHeaderSubtitle || branding.techHeaderRightText || branding.techFooterText || branding.techIncludeHeaderBanner) && (
-                <span className="w-2 h-2 rounded-full bg-[#2ECC71]" title="Personalizado" />
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={(e) => handleTabClick('branding', e)}
-              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap shrink-0 cursor-pointer ${
-                activeTab === 'branding'
-                  ? 'border-[#0A3D62] text-[#0A3D62] bg-white rounded-t-lg shadow-sm'
-                  : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-t-lg'
-              }`}
-            >
-              <ImageIcon className="w-4 h-4 text-[#0A3D62]" />
-              <span>Logo Corporativo</span>
-              {branding.logoDataUrl && (
-                <span className="w-2 h-2 rounded-full bg-[#2ECC71]" title="Logo configurado" />
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={(e) => handleTabClick('agent', e)}
-              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap shrink-0 cursor-pointer ${
-                activeTab === 'agent'
-                  ? 'border-[#0A3D62] text-[#0A3D62] bg-white rounded-t-lg shadow-sm'
-                  : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-t-lg'
-              }`}
-            >
-              <Bot className="w-4 h-4 text-[#0A3D62]" />
-              <span>Agente IA</span>
-              {branding.agent && (
-                <span className="w-2 h-2 rounded-full bg-[#2ECC71]" title="Rol personalizado" />
-              )}
-            </button>
-
-            {onOpenBackup && (
+        <div className="flex flex-1 min-h-0 max-sm:flex-col">
+          <aside className="sm:w-48 shrink-0 border-b sm:border-b-0 sm:border-r border-slate-200 bg-slate-50 px-2 py-2 sm:py-3 flex sm:flex-col gap-1 overflow-x-auto">
+            {(
+              [
+                { id: 'branding' as const, label: 'Marca', hint: 'Logo y firma', icon: ImageIcon, active: activeTab === 'branding' },
+                { id: 'titles' as const, label: 'Títulos', hint: 'Propuesta y spec', icon: FileText, active: activeTab === 'titles' || activeTab === 'techTitles' },
+                { id: 'headersFooters' as const, label: 'Encabezados', hint: 'Banner y pie', icon: Sliders, active: activeTab === 'headersFooters' },
+                { id: 'ai' as const, label: 'Inteligencia', hint: 'Rol y motores', icon: Cpu, active: activeTab === 'agent' || activeTab === 'ai' },
+                { id: 'backup' as const, label: 'Sistema', hint: 'Copias y guía', icon: Database, active: activeTab === 'backup' || activeTab === 'local' },
+              ] as const
+            ).map((item) => (
               <button
+                key={item.id}
                 type="button"
-                onClick={(e) => handleTabClick('backup', e)}
-                className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap shrink-0 cursor-pointer ${
-                  activeTab === 'backup'
-                    ? 'border-[#0A3D62] text-[#0A3D62] bg-white rounded-t-lg shadow-sm'
-                    : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-t-lg'
+                onClick={() => {
+                  if (item.id === 'titles') handleTabClick(activeTab === 'techTitles' ? 'techTitles' : 'titles');
+                  else if (item.id === 'ai') handleTabClick(activeTab === 'agent' ? 'agent' : 'ai');
+                  else if (item.id === 'backup') handleTabClick(onOpenBackup ? (activeTab === 'local' ? 'local' : 'backup') : 'local');
+                  else handleTabClick(item.id);
+                }}
+                className={`flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left shrink-0 cursor-pointer ${
+                  item.active ? 'bg-white text-[#0A3D62] shadow-sm border border-slate-200' : 'text-slate-600 hover:bg-white/70 border border-transparent'
                 }`}
               >
-                <Database className="w-4 h-4 text-[#0A3D62]" />
-                <span>Copia de Seguridad</span>
+                <item.icon className="w-4 h-4 shrink-0" />
+                <span className="min-w-0">
+                  <span className="block text-xs font-bold">{item.label}</span>
+                  <span className="hidden sm:block text-[10px] text-slate-500 font-medium">{item.hint}</span>
+                </span>
               </button>
+            ))}
+          </aside>
+
+          <div className="p-4 sm:p-6 overflow-y-auto flex-1 min-w-0">
+            {(activeTab === 'titles' || activeTab === 'techTitles') && (
+              <div className="flex gap-1 mb-4 p-1 bg-slate-100 rounded-xl w-fit">
+                <button type="button" onClick={() => handleTabClick('titles')} className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${activeTab === 'titles' ? 'bg-white text-[#0A3D62] shadow-sm' : 'text-slate-600'}`}>Propuesta</button>
+                <button type="button" onClick={() => handleTabClick('techTitles')} className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${activeTab === 'techTitles' ? 'bg-white text-[#0A3D62] shadow-sm' : 'text-slate-600'}`}>Doc. técnica</button>
+              </div>
+            )}
+            {(activeTab === 'agent' || activeTab === 'ai') && (
+              <div className="flex gap-1 mb-4 p-1 bg-slate-100 rounded-xl w-fit">
+                <button type="button" onClick={() => handleTabClick('ai')} className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${activeTab === 'ai' ? 'bg-white text-[#0A3D62] shadow-sm' : 'text-slate-600'}`}>Motores</button>
+                <button type="button" onClick={() => handleTabClick('agent')} className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${activeTab === 'agent' ? 'bg-white text-[#0A3D62] shadow-sm' : 'text-slate-600'}`}>Rol del agente</button>
+              </div>
+            )}
+            {(activeTab === 'backup' || activeTab === 'local') && (
+              <div className="flex gap-1 mb-4 p-1 bg-slate-100 rounded-xl w-fit">
+                {onOpenBackup && (
+                  <button type="button" onClick={() => handleTabClick('backup')} className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${activeTab === 'backup' ? 'bg-white text-[#0A3D62] shadow-sm' : 'text-slate-600'}`}>Copias</button>
+                )}
+                <button type="button" onClick={() => handleTabClick('local')} className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${activeTab === 'local' ? 'bg-white text-[#0A3D62] shadow-sm' : 'text-slate-600'}`}>Guía local</button>
+              </div>
             )}
 
-            <button
-              type="button"
-              onClick={(e) => handleTabClick('local', e)}
-              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold border-b-2 transition-all whitespace-nowrap shrink-0 cursor-pointer ${
-                activeTab === 'local'
-                  ? 'border-[#0A3D62] text-[#0A3D62] bg-white rounded-t-lg shadow-sm'
-                : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-t-lg'
-              }`}
-            >
-              <Laptop className="w-4 h-4 text-[#0A3D62]" />
-              <span>Guía de Uso Local</span>
-            </button>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => scrollTabs('right')}
-            aria-label="Desplazar a la derecha"
-            title="Desplazar opciones a la derecha"
-            className="flex items-center justify-center p-1.5 rounded-lg text-slate-600 hover:text-[#0A3D62] hover:bg-white/80 active:bg-white shadow-2xs border border-transparent hover:border-slate-200 transition-all ml-1 shrink-0 cursor-pointer"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Content Area */}
-        <div className="p-6 overflow-y-auto flex-1 space-y-6">
           
           {/* TAB 1: PROPUESTA TÉCNICA TITLES */}
           {activeTab === 'titles' && (
@@ -1676,6 +1656,74 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </button>
                 )}
               </div>
+
+              <div className="pt-4 border-t border-slate-200 space-y-3">
+                <div className="flex items-center gap-2">
+                  <ImageIcon className="w-4 h-4 text-[#0A3D62]" />
+                  <h3 className="text-xs font-bold text-[#0A3D62] uppercase tracking-wide">
+                    Firma de Gerente Financiera
+                  </h3>
+                </div>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Se aplica por defecto en la página comercial, superpuesta sobre la línea de firma izquierda (Gerente Financiera). PNG con fondo transparente funciona mejor.
+                </p>
+                <input
+                  type="file"
+                  ref={signatureLeftInputRef}
+                  accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) applyLogoFromFile(file, 'signatureLeft');
+                  }}
+                />
+                {branding.signatureLeftDataUrl ? (
+                  <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl p-3.5 min-w-0">
+                    <div className="relative h-16 w-36 shrink-0 rounded-lg bg-white border border-slate-200 flex items-end justify-center overflow-hidden px-2 pb-2">
+                      <div className="absolute bottom-2 left-3 right-3 border-t border-[#0A3D62]" />
+                      <img
+                        src={branding.signatureLeftDataUrl}
+                        alt="Firma Gerente Financiera"
+                        className="relative z-10 max-h-12 max-w-full object-contain"
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-[#0A3D62] truncate">
+                        {branding.signatureLeftFileName || 'Firma cargada'}
+                      </p>
+                      <p className="text-[10px] text-slate-500">Visible en vista previa, Word y PDF</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemoveSignatureLeft}
+                      className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors shrink-0 cursor-pointer"
+                      title="Quitar firma"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => signatureLeftInputRef.current?.click()}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const file = e.dataTransfer.files?.[0];
+                      if (file) applyLogoFromFile(file, 'signatureLeft');
+                    }}
+                    className="w-full border-2 border-dashed border-slate-300 hover:border-[#0A3D62] bg-slate-50 hover:bg-blue-50/40 rounded-xl p-5 text-center transition-all cursor-pointer group"
+                  >
+                    <Upload className="w-5 h-5 mx-auto mb-1.5 text-[#0A3D62] group-hover:scale-110 transition-transform" />
+                    <span className="block text-xs font-semibold text-slate-700">Cargar imagen de firma</span>
+                    <span className="block text-[10px] text-slate-500 mt-1">PNG, JPG o SVG — se coloca sobre la línea existente</span>
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
@@ -1768,6 +1816,167 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             );
           })()}
 
+          {activeTab === 'ai' && (
+            <div className="space-y-4">
+              <div className="bg-blue-50/60 border border-blue-100 rounded-xl p-3.5 text-xs text-slate-700 leading-relaxed">
+                <span className="font-bold text-[#0A3D62] block mb-0.5">Motores de generación</span>
+                Elige un motor principal y respaldos. Las claves se guardan en el servidor (archivo local, no en el navegador). Claude usa la API de Anthropic, no el inicio de sesión de claude.ai.
+              </div>
+              {aiMessage && (
+                <div
+                  className={`text-xs px-3 py-2 rounded-lg border ${
+                    aiMessage.kind === 'ok'
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      : 'bg-amber-50 border-amber-200 text-amber-900'
+                  }`}
+                >
+                  {aiMessage.text}
+                </div>
+              )}
+              {(() => {
+                const providers = aiStatus?.providers?.length ? aiStatus.providers : DEFAULT_AI_PROVIDERS;
+                return (
+              <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-800">Motor principal</label>
+                  <select
+                    value={aiProvider}
+                    onChange={(e) => setAiProvider(e.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white"
+                  >
+                    <option value="auto">Automático (primera clave disponible)</option>
+                    {providers.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-800">Respaldo si falla el principal</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {providers.map((p) => {
+                      const on = aiFallbacks.includes(p.id);
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() =>
+                            setAiFallbacks((prev) => (on ? prev.filter((x) => x !== p.id) : [...prev, p.id]))
+                          }
+                          className={`px-2 py-1 rounded-lg text-[11px] font-bold border ${
+                            on ? 'bg-[#0A3D62] text-white border-[#0A3D62]' : 'bg-white text-slate-600 border-slate-200'
+                          }`}
+                        >
+                          {p.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+              {providers.map((p) => (
+                <div key={p.id} className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <h4 className="text-xs font-bold text-[#0A3D62]">{p.label}</h4>
+                      <p className="text-[10px] text-slate-500">{p.envKey} · {p.hint}</p>
+                    </div>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        aiStatus?.keys?.[p.id] ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                      }`}
+                    >
+                      {aiStatus?.keys?.[p.id] ? 'Clave lista' : 'Sin clave'}
+                    </span>
+                  </div>
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    placeholder={aiStatus?.keys?.[p.id] ? 'Dejar vacío para conservar la clave actual' : `Pega ${p.envKey}`}
+                    value={aiKeys[p.id] || ''}
+                    onChange={(e) => setAiKeys((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg"
+                  />
+                  <input
+                    type="text"
+                    placeholder={`Modelo (${p.defaultModel})`}
+                    value={aiModels[p.id] || ''}
+                    onChange={(e) => setAiModels((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg"
+                  />
+                  {aiStatus?.keys?.[p.id] && (
+                    <button
+                      type="button"
+                      className="text-[11px] font-semibold text-red-600"
+                      onClick={async () => {
+                        setAiSaving(true);
+                        setAiMessage(null);
+                        try {
+                          const res = await fetch('/api/ai-config', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ clearKeys: [p.id] }),
+                          });
+                          const data = await readApiJson(res);
+                          if (!res.ok || !data.success) throw new Error(data.error || 'No se pudo quitar la clave');
+                          setAiStatus(data);
+                          setAiMessage({ kind: 'ok', text: `Clave de ${p.label} eliminada del servidor.` });
+                        } catch (err: any) {
+                          setAiMessage({ kind: 'error', text: err?.message || 'Error al quitar la clave' });
+                        } finally {
+                          setAiSaving(false);
+                        }
+                      }}
+                    >
+                      Quitar clave guardada
+                    </button>
+                  )}
+                </div>
+              ))}
+              <button
+                type="button"
+                disabled={aiSaving}
+                onClick={async () => {
+                  setAiSaving(true);
+                  setAiMessage(null);
+                  try {
+                    const keys: Record<string, string> = {};
+                    Object.entries(aiKeys).forEach(([id, val]) => {
+                      if (val.trim()) keys[id] = val.trim();
+                    });
+                    const res = await fetch('/api/ai-config', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        provider: aiProvider,
+                        fallbacks: aiFallbacks,
+                        models: aiModels,
+                        keys,
+                      }),
+                    });
+                    const data = await readApiJson(res);
+                    if (!res.ok || !data.success) throw new Error(data.error || 'No se pudo guardar');
+                    setAiStatus(data);
+                    setAiKeys({});
+                    setAiMessage({ kind: 'ok', text: 'Configuración de IA guardada en el servidor.' });
+                  } catch (err: any) {
+                    setAiMessage({ kind: 'error', text: err?.message || 'Error al guardar' });
+                  } finally {
+                    setAiSaving(false);
+                  }
+                }}
+                className="px-4 py-2.5 rounded-xl bg-[#0A3D62] text-white text-xs font-bold disabled:opacity-50"
+              >
+                {aiSaving ? 'Guardando...' : 'Guardar motores y claves'}
+              </button>
+              </>
+                );
+              })()}
+            </div>
+          )}
+
           {/* TAB 4: BACKUP & DATA MANAGEMENT */}
           {activeTab === 'backup' && (
             <div className="space-y-5">
@@ -1816,7 +2025,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <h3 className="text-sm font-bold text-white">Ejecución en tu Computadora (Local)</h3>
                 </div>
                 <p className="text-slate-300 text-xs leading-relaxed">
-                  Esta aplicación ya está lista para correr como una aplicación web local en tu computadora, manteniendo todos los botones con IA de Gemini activos mediante tu propia clave de API.
+                  Esta aplicación ya está lista para correr como una aplicación web local en tu computadora. Los botones de IA usan el motor que configures (Gemini, Claude, OpenAI, Groq u OpenRouter).
                 </p>
               </div>
 
@@ -1845,17 +2054,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
                   <h4 className="font-bold text-slate-900 flex items-center gap-2">
                     <span className="w-5 h-5 rounded-full bg-[#0A3D62] text-white text-[11px] flex items-center justify-center font-bold">2</span>
-                    Crea tu archivo .env con tu clave de Gemini
+                    Crea tu archivo .env (o usa Ajustes → Motores IA)
                   </h4>
                   <p className="text-[11px] text-slate-600">
-                    Crea un archivo llamado <code>.env</code> en la carpeta raíz con tu clave obtenida en Google AI Studio:
+                    En la raíz del proyecto, o pega las claves en la pestaña Motores IA:
                   </p>
                   <div className="bg-slate-950 text-slate-100 p-2.5 rounded-lg font-mono text-[11px] flex items-center justify-between">
-                    <code>GEMINI_API_KEY=tu_clave_de_gemini_aqui</code>
+                    <code>ANTHROPIC_API_KEY=tu_clave_claude</code>
                     <button
                       type="button"
                       onClick={() => {
-                        navigator.clipboard.writeText('GEMINI_API_KEY=tu_clave_de_gemini_aqui\nPORT=3000');
+                        navigator.clipboard.writeText(
+                          'AI_PROVIDER=auto\nAI_FALLBACK_PROVIDERS=gemini,claude\nGEMINI_API_KEY=\nANTHROPIC_API_KEY=\nOPENAI_API_KEY=\nGROQ_API_KEY=\nOPENROUTER_API_KEY=\nPORT=3000'
+                        );
                         setCopiedNotification('Configuración copiada');
                         setTimeout(() => setCopiedNotification(null), 2000);
                       }}
@@ -1892,6 +2103,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
             </div>
           )}
+        </div>
         </div>
 
         {/* Modal Footer */}

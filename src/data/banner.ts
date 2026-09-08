@@ -66,15 +66,15 @@ export function getAdvansysBannerSvg(
 ): string {
   const safeBrandTag = escapeSvgText(brandTag || 'ADVANSYS');
   const coverTitleRaw = options?.coverTitle?.trim() || 'PROPUESTA DE DESARROLLO';
-  const titleLines = wrapWords(coverTitleRaw, 32, 3).map(escapeSvgText);
+  const titleLines = wrapWords(coverTitleRaw, 42, 3).map(escapeSvgText);
   const subtitleLines = subtitle.trim()
     ? wrapWords(subtitle.trim(), 48, 2).map(escapeSvgText)
     : [];
 
   const groupY = 20;
   const logoBlockH = 64;
-  const titleY = logoBlockH + 28;
-  const titleLineH = 34;
+  const titleY = logoBlockH + 22;
+  const titleLineH = 22;
   const subtitleLineH = 20;
   const lastTitleY = titleY + Math.max(0, titleLines.length - 1) * titleLineH;
   const subtitleY = subtitleLines.length ? lastTitleY + 26 : lastTitleY;
@@ -99,7 +99,7 @@ export function getAdvansysBannerSvg(
     0,
     titleY,
     titleLineH,
-    `font-family="'Segoe UI', Roboto, Helvetica, sans-serif" font-size="28" font-weight="900" fill="#FFFFFF" letter-spacing="0.2"`
+    `font-family="'Segoe UI', Roboto, Helvetica, sans-serif" font-size="18" font-weight="800" fill="#FFFFFF" letter-spacing="0.15"`
   );
   const subtitleElement = subtitleLines.length
     ? svgMultilineText(

@@ -19,6 +19,28 @@ Esta aplicación está construida en **React + Node.js (Express) + TypeScript + 
 
 ## 📦 Paso a Paso para Correr en Local (Windows, Mac o Linux)
 
+### Pasar el proyecto a otra PC
+
+No copies `node_modules` ni `.env` (pesan mucho y bloquean el envío). En esta PC ejecuta `scripts\empaquetar-para-otra-pc.cmd` y envía el ZIP `AdvaDocuIA-portable.zip`.
+
+En la PC de tu compañero:
+
+1. Instalar **Node.js LTS**: https://nodejs.org
+2. Extraer el ZIP en cualquier carpeta (no hace falta que se llame `C:\AdvaDocuIA`).
+3. Abrir **`INICIAR.cmd`**. Instala dependencias la primera vez y abre http://localhost:3000
+4. En PowerShell, si `npm` falla, usar **`npm.cmd install`** y **`npm.cmd run dev`**.
+5. Cada navegador tiene su propio historial. Para compartir documentos: **Copia de Seguridad (.json)** y restaurar en la otra PC.
+
+### Acceso por IP (misma red, sin instalar en la otra PC)
+
+El servidor debe estar encendido en **esta** computadora. En el navegador del compañero: `http://TU-IP:3000`.
+
+1. Ejecutar `scripts\abrir-acceso-red.cmd` **como administrador** (abre el puerto 3000 en el firewall).
+2. Ejecutar `INICIAR.cmd` en esta PC.
+3. La consola muestra la URL de red, por ejemplo `http://10.23.96.57:3000`.
+4. Ambos equipos en la misma red (Wi‑Fi/LAN corporativa). La IP puede cambiar al reconectar.
+5. El historial no se comparte: cada navegador guarda lo suyo. Usar **Copia de Seguridad (.json)** si deben ver los mismos documentos.
+
 ### 1. Clonar o descargar el código
 Descarga todos los archivos del proyecto en una carpeta de tu computadora.
 

@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import os from "os";
 import fs from "fs/promises";
 import { createServer as createViteServer } from "vite";
 import { Type } from "@google/genai";
@@ -17,6 +18,20 @@ dotenv.config();
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
+
+function listLanIPv4(): string[] {
+  const nets = os.networkInterfaces();
+  const ips: string[] = [];
+  for (const list of Object.values(nets)) {
+    for (const net of list || []) {
+      const family = String(net.family);
+      if ((family === "IPv4" || family === "4") && !net.internal) {
+        ips.push(net.address);
+      }
+    }
+  }
+  return ips;
+}
 
 // Middleware to parse large JSON payloads (including base64 images)
 app.use(express.json({ limit: '50mb' }));
@@ -1091,7 +1106,7 @@ async function startServer() {
   await loadAiSecrets();
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { middlewareMode: true, host: true, allowedHosts: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
@@ -1104,7 +1119,11 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Servidor Advansys DocGen escuchando en http://localhost:${PORT}`);
+    console.log(`Servidor Advansys DocGen`);
+    console.log(`  Esta PC:     http://localhost:${PORT}`);
+    for (const ip of listLanIPv4()) {
+      console.log(`  Red / IP:    http://${ip}:${PORT}`);
+    }
   });
 }
 

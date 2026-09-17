@@ -475,15 +475,15 @@ export interface OperativeIndexItem {
   level: number;
 }
 
-/** Índice alineado con la numeración jerárquica: 4, 4.1, 4.1.1, … */
+/** Índice de pasos: 4.1, 4.1.1, … (sin repetir el título de la sección). */
 export function getOperativeIndexItems(
   steps: OperativeStep[],
   sectionNumber: number | string,
-  sectionTitle?: string
+  _sectionTitle?: string
 ): OperativeIndexItem[] {
   const labels = getOperativeStepLabels(steps, sectionNumber);
   let prev = 0;
-  const items = steps.map((step, index) => {
+  return steps.map((step, index) => {
     let level = getOperativeStepLevel(step);
     if (index === 0) level = 0;
     else if (level > prev + 1) level = prev + 1;
@@ -492,19 +492,9 @@ export function getOperativeIndexItems(
     return {
       label,
       title: step.titulo?.trim() || `Paso ${label}`,
-      level: level + 1,
+      level,
     };
   });
-  const heading = sectionTitle?.trim();
-  if (!heading && items.length === 0) return [];
-  return [
-    {
-      label: String(sectionNumber),
-      title: heading || 'Análisis operativo',
-      level: 0,
-    },
-    ...items,
-  ];
 }
 
 export function getOperativeSubtreeEnd(steps: OperativeStep[], index: number): number {

@@ -11,6 +11,7 @@ import { TechnicalDocEditor } from './TechnicalDocEditor';
 import { convertProposalToSlideDeck, createDefaultSlideDeck } from '../utils/slideDeckTemplates';
 import { createDefaultTechnicalDoc, proposalHasSubstance } from '../utils/technicalDocTemplates';
 import { TextFormattingToolbar, handleAutoBulletKeyDown, toggleBoldAtTarget, readTextareaCaret, insertSnippetAtCaret, TextCaret } from './TextFormattingToolbar';
+import { tryApplyPastedTables } from '../utils/markdownTable';
 import { RichTextBlock } from './DocumentPreviewBlocks';
 
 type ProposalTextField = 'resumenEjecutivo' | 'objetivo' | 'descripcion' | 'descargo';
@@ -538,6 +539,23 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
     );
     steps[index] = { ...steps[index], explicacion: nextText };
     onChange({ ...proposal, analisisOperativo: steps, tables });
+  };
+
+  const applyPastedMarkdownTables = (
+    e: React.ClipboardEvent<HTMLTextAreaElement>,
+    current: string,
+    apply: (nextText: string, tables: DocumentTable[]) => void,
+    caretKey: string
+  ) => {
+    const result = tryApplyPastedTables(e, current, proposal.tables || []);
+    if (!result) return;
+    caretByKeyRef.current[caretKey] = { start: result.cursor, end: result.cursor };
+    apply(result.nextText, result.tables);
+    const el = e.currentTarget;
+    setTimeout(() => {
+      el.focus();
+      el.setSelectionRange(result.cursor, result.cursor);
+    }, 10);
   };
 
   const renderInlineTables = (text: string) => {
@@ -1160,6 +1178,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                     value={proposal.resumenEjecutivo}
                     onChange={(e) => handleStringChange('resumenEjecutivo', e.target.value)}
                     onKeyDown={(e) => handleAutoBulletKeyDown(e, proposal.resumenEjecutivo, (v) => handleStringChange('resumenEjecutivo', v))}
+                    onPaste={(e) => applyPastedMarkdownTables(e, proposal.resumenEjecutivo, (nextText, tables) => onChange({ ...proposal, resumenEjecutivo: nextText, tables }), 'resumenEjecutivo')}
                     {...caretHandlers('resumenEjecutivo')}
                     placeholder="Escribe el resumen ejecutivo de la propuesta... (usa los botones de arriba o escribe '• ' o '1. ' para viñetas automáticas)"
                     rows={4}
@@ -1835,6 +1854,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                     value={proposal.objetivo}
                     onChange={(e) => handleStringChange('objetivo', e.target.value)}
                     onKeyDown={(e) => handleAutoBulletKeyDown(e, proposal.objetivo, (v) => handleStringChange('objetivo', v))}
+                    onPaste={(e) => applyPastedMarkdownTables(e, proposal.objetivo, (nextText, tables) => onChange({ ...proposal, objetivo: nextText, tables }), 'objetivo')}
                     {...caretHandlers('objetivo')}
                     placeholder="Describa el objetivo general y específico... (usa • Viñeta o escribe '• ' o '1. ' para listas automáticas)"
                     rows={3}
@@ -1924,6 +1944,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                     value={proposal.descripcion}
                     onChange={(e) => handleStringChange('descripcion', e.target.value)}
                     onKeyDown={(e) => handleAutoBulletKeyDown(e, proposal.descripcion, (v) => handleStringChange('descripcion', v))}
+                    onPaste={(e) => applyPastedMarkdownTables(e, proposal.descripcion, (nextText, tables) => onChange({ ...proposal, descripcion: nextText, tables }), 'descripcion')}
                     {...caretHandlers('descripcion')}
                     placeholder="Escriba el detalle de la solución arquitectónica propuesta... (usa • Viñeta o escribe '• ' o '1. ' para listas automáticas)"
                     rows={4}
@@ -2245,6 +2266,11 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                             value={step.explicacion}
                             onChange={(e) => handleStepChange(idx, 'explicacion', e.target.value)}
                             onKeyDown={(e) => handleAutoBulletKeyDown(e, step.explicacion, (v) => handleStepChange(idx, 'explicacion', v))}
+                            onPaste={(e) => applyPastedMarkdownTables(e, step.explicacion, (nextText, tables) => {
+                              const steps = [...(proposal.analisisOperativo || [])];
+                              steps[idx] = { ...steps[idx], explicacion: nextText };
+                              onChange({ ...proposal, analisisOperativo: steps, tables });
+                            }, `step:${idx}`)}
                             {...caretHandlers(`step:${idx}`)}
                             placeholder="Detalle los procedimientos, llamadas a API o reglas de negocio... (usa • Viñeta o escribe '• ' o '1. ')"
                             rows={3}
@@ -2486,6 +2512,7 @@ export const ProposalEditor: React.FC<ProposalEditorProps> = ({
                     value={proposal.descargo}
                     onChange={(e) => handleStringChange('descargo', e.target.value)}
                     onKeyDown={(e) => handleAutoBulletKeyDown(e, proposal.descargo, (v) => handleStringChange('descargo', v))}
+                    onPaste={(e) => applyPastedMarkdownTables(e, proposal.descargo, (nextText, tables) => onChange({ ...proposal, descargo: nextText, tables }), 'descargo')}
                     {...caretHandlers('descargo')}
                     rows={3}
                     className="w-full min-w-0 max-w-full p-3 text-xs bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#0A3D62] text-slate-700 italic font-sans leading-relaxed"

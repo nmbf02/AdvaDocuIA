@@ -2,6 +2,7 @@ import React from 'react';
 import { DocumentTable, UploadedImage } from '../types';
 import { getImageRotation, getImageWidthPercent, previewWrapClass } from '../utils/imageLayout';
 import { splitMarkdownCodeFences } from '../utils/markdownCode';
+import { splitInlineMarkdown } from '../utils/inlineMarkdown';
 
 export const PreviewTable: React.FC<{ table: DocumentTable }> = ({ table }) => (
   <div className="my-3 overflow-x-auto">
@@ -13,7 +14,7 @@ export const PreviewTable: React.FC<{ table: DocumentTable }> = ({ table }) => (
         <tr>
           {table.headers.map((h, i) => (
             <th key={i} className="border border-slate-300 bg-[#0A3D62] text-white font-semibold px-2 py-1.5 text-left">
-              {h}
+              {formatInlineBold(h, 'text-white')}
             </th>
           ))}
         </tr>
@@ -23,7 +24,7 @@ export const PreviewTable: React.FC<{ table: DocumentTable }> = ({ table }) => (
           <tr key={ri} className={ri % 2 === 0 ? 'bg-slate-50' : 'bg-white'}>
             {table.headers.map((_, ci) => (
               <td key={ci} className="border border-slate-300 px-2 py-1.5 text-slate-700">
-                {row[ci] || ''}
+                {formatInlineBold(row[ci] || '')}
               </td>
             ))}
           </tr>
@@ -33,27 +34,26 @@ export const PreviewTable: React.FC<{ table: DocumentTable }> = ({ table }) => (
   </div>
 );
 
-export const formatInlineBold = (text: string): React.ReactNode => {
-  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
-  return parts.map((part, index) => {
-    if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
+export const formatInlineBold = (text: string, boldClass = 'text-slate-900'): React.ReactNode => {
+  return splitInlineMarkdown(text).map((part, index) => {
+    if (part.code) {
       return (
         <code
           key={index}
           className="px-1 py-0.5 rounded bg-slate-800 text-emerald-300 font-mono text-[10px]"
         >
-          {part.slice(1, -1)}
+          {part.text}
         </code>
       );
     }
-    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+    if (part.bold) {
       return (
-        <strong key={index} className="font-bold text-slate-900">
-          {part.slice(2, -2)}
+        <strong key={index} className={`font-bold ${boldClass}`}>
+          {part.text}
         </strong>
       );
     }
-    return part;
+    return <React.Fragment key={index}>{part.text}</React.Fragment>;
   });
 };
 

@@ -28,7 +28,7 @@ import {
   OverlapType,
   HeightRule,
 } from 'docx';
-import { MetadataHeader, ProposalSection, UploadedImage, DocumentTable, getEffectiveTitles, getOperativoSectionOrder, COVER_SCOPE_MAX_ITEMS, getEffectiveCommercialPage, formatUsd, parseCommercialNumber, resolvePage2LogoDataUrl, getSubsections, subsectionHasContent, sectionHasBodyOrSubs, NestedSectionField, getOperativeStepLevel, getOperativeStepLabels } from '../types';
+import { MetadataHeader, ProposalSection, UploadedImage, DocumentTable, getEffectiveTitles, getOperativoSectionOrder, getProposalBodySectionNumbers, COVER_SCOPE_MAX_ITEMS, getEffectiveCommercialPage, formatUsd, parseCommercialNumber, resolvePage2LogoDataUrl, getSubsections, subsectionHasContent, sectionHasBodyOrSubs, NestedSectionField, getOperativeStepLevel, getOperativeStepLabels, getOperativeIndexItems } from '../types';
 import { getAdvansysBannerSvg, getCoverInfoCardSvg } from '../data/banner';
 import { formatFechaEs } from './dateFormat';
 import { fitImageSize } from './imageLayout';
@@ -260,15 +260,7 @@ function createContentTable(table: DocumentTable): Table {
         margins: { top: 80, bottom: 80, left: 80, right: 80 },
         children: [
           new Paragraph({
-            children: [
-              new TextRun({
-                text: h,
-                bold: true,
-                color: 'FFFFFF',
-                size: 18,
-                font: 'Calibri',
-              }),
-            ],
+            children: parseBoldRuns(h, 18, 'FFFFFF', true),
           }),
         ],
       })
@@ -284,14 +276,7 @@ function createContentTable(table: DocumentTable): Table {
           margins: { top: 60, bottom: 60, left: 80, right: 80 },
           children: [
             new Paragraph({
-              children: [
-                new TextRun({
-                  text: row[ci] || '',
-                  color: COLOR_TEXT_DARK,
-                  size: 18,
-                  font: 'Calibri',
-                }),
-              ],
+              children: parseBoldRuns(row[ci] || '', 18),
             }),
           ],
         })
@@ -313,7 +298,7 @@ function createContentTable(table: DocumentTable): Table {
   });
 }
 
-function parseBoldRuns(text: string, size = 22): TextRun[] {
+function parseBoldRuns(text: string, size = 22, color: string = COLOR_TEXT_DARK, alwaysBold = false): TextRun[] {
   const runs: TextRun[] = [];
   const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
   for (const part of parts) {
@@ -333,7 +318,7 @@ function parseBoldRuns(text: string, size = 22): TextRun[] {
         new TextRun({
           text: part.slice(2, -2),
           bold: true,
-          color: COLOR_TEXT_DARK,
+          color,
           size,
           font: 'Calibri',
         })
@@ -342,14 +327,15 @@ function parseBoldRuns(text: string, size = 22): TextRun[] {
       runs.push(
         new TextRun({
           text: part,
-          color: COLOR_TEXT_DARK,
+          bold: alwaysBold,
+          color,
           size,
           font: 'Calibri',
         })
       );
     }
   }
-  return runs.length > 0 ? runs : [new TextRun({ text: text, color: COLOR_TEXT_DARK, size, font: 'Calibri' })];
+  return runs.length > 0 ? runs : [new TextRun({ text, bold: alwaysBold, color, size, font: 'Calibri' })];
 }
 
 function pushCodeFenceParagraphs(docElements: (Paragraph | Table)[], content: string, lang = '') {
@@ -1491,58 +1477,7 @@ export async function generateAdvansysDocx(
 
   const laterElements: (Paragraph | Table)[] = [];
 
-  // 4. Objetivo (Página 3 si existe la página comercial)
-  const hasSection4 =
-    !titles.hideSection4 && sectionHasBodyOrSubs(proposal.objetivo, getSubsections(proposal, 'objetivo'));
-  if (hasSection4) {
-    laterElements.push(createSectionHeader(titles.section4, '4', getPageBreakForLaterSection()));
-    if (proposal.objetivo?.trim()) {
-      pushTextWithTables(laterElements, proposal.objetivo.trim(), contentTables, usedTables, imageMapByIndex);
-    }
-    appendSubsections(laterElements, proposal, 'objetivo', '4', contentTables, usedTables, imageMapByIndex);
-  }
-
-  // 5. Descripción
-  const hasSection5 =
-    !titles.hideSection5 && sectionHasBodyOrSubs(proposal.descripcion, getSubsections(proposal, 'descripcion'));
-  if (hasSection5) {
-    laterElements.push(createSectionHeader(titles.section5, '5', getPageBreakForLaterSection()));
-    if (proposal.descripcion?.trim()) {
-      pushTextWithTables(laterElements, proposal.descripcion.trim(), contentTables, usedTables, imageMapByIndex);
-    }
-    appendSubsections(laterElements, proposal, 'descripcion', '5', contentTables, usedTables, imageMapByIndex);
-  }
-
-  const { analysisFirst, indiceNumber, analisisNumber } = getOperativoSectionOrder(titles);
-
-  const validIndice = (proposal.indiceAnalisisOperativo || []).filter((item) => item && item.trim().length > 0);
-  const hasSection6 = !titles.hideSection6 && validIndice.length > 0;
-  const pushIndiceSection = () => {
-    if (!hasSection6) return;
-    laterElements.push(createSectionHeader(titles.section6, indiceNumber, getPageBreakForLaterSection()));
-    validIndice.forEach((item, idx) => {
-      laterElements.push(
-        new Paragraph({
-          spacing: { before: 60, after: 60 },
-          children: [
-            new TextRun({
-              text: `${idx + 1}. `,
-              bold: true,
-              color: COLOR_PRIMARY_BLUE,
-              size: 22,
-              font: 'Calibri',
-            }),
-            new TextRun({
-              text: item,
-              color: COLOR_TEXT_DARK,
-              size: 22,
-              font: 'Calibri',
-            }),
-          ],
-        })
-      );
-    });
-  };
+  const { analysisFirst } = getOperativoSectionOrder(titles);
 
   const validSteps = (proposal.analisisOperativo || []).filter((step, idx) => {
     const hasText =
@@ -1554,13 +1489,75 @@ export async function generateAdvansysDocx(
       Boolean(step.referenciaImagen && step.referenciaImagen !== 'none');
     return hasText || hasLinkedImage;
   });
+  const hasSection4 =
+    !titles.hideSection4 && sectionHasBodyOrSubs(proposal.objetivo, getSubsections(proposal, 'objetivo'));
+  const hasSection5 =
+    !titles.hideSection5 && sectionHasBodyOrSubs(proposal.descripcion, getSubsections(proposal, 'descripcion'));
   const hasSection7 = !titles.hideSection7 && validSteps.length > 0;
+  const hasSection6 = !titles.hideSection6 && validSteps.length > 0;
+  const hasSection8 =
+    !titles.hideSection8 && sectionHasBodyOrSubs(proposal.descargo, getSubsections(proposal, 'descargo'));
+  const bodyNums = getProposalBodySectionNumbers({
+    objetivo: hasSection4,
+    descripcion: hasSection5,
+    indice: hasSection6,
+    analisis: hasSection7,
+    descargo: hasSection8,
+    analysisFirst,
+  });
+  const indexItems = getOperativeIndexItems(validSteps, bodyNums.analisis || '1', titles.section7);
+
+  // 1. Objetivo (cuerpo del documento)
+  if (hasSection4) {
+    laterElements.push(createSectionHeader(titles.section4, bodyNums.objetivo, getPageBreakForLaterSection()));
+    if (proposal.objetivo?.trim()) {
+      pushTextWithTables(laterElements, proposal.objetivo.trim(), contentTables, usedTables, imageMapByIndex);
+    }
+    appendSubsections(laterElements, proposal, 'objetivo', bodyNums.objetivo, contentTables, usedTables, imageMapByIndex);
+  }
+
+  // 2. Descripción
+  if (hasSection5) {
+    laterElements.push(createSectionHeader(titles.section5, bodyNums.descripcion, getPageBreakForLaterSection()));
+    if (proposal.descripcion?.trim()) {
+      pushTextWithTables(laterElements, proposal.descripcion.trim(), contentTables, usedTables, imageMapByIndex);
+    }
+    appendSubsections(laterElements, proposal, 'descripcion', bodyNums.descripcion, contentTables, usedTables, imageMapByIndex);
+  }
+  const pushIndiceSection = () => {
+    if (!hasSection6 || indexItems.length === 0) return;
+    laterElements.push(createSectionHeader(titles.section6, bodyNums.indice, getPageBreakForLaterSection()));
+    indexItems.forEach((item) => {
+      laterElements.push(
+        new Paragraph({
+          spacing: { before: 60, after: 60 },
+          indent: item.level > 0 ? { left: 360 * item.level } : undefined,
+          children: [
+            new TextRun({
+              text: `${item.label}  `,
+              bold: true,
+              color: COLOR_PRIMARY_BLUE,
+              size: 22,
+              font: 'Calibri',
+            }),
+            new TextRun({
+              text: item.title,
+              bold: item.level === 0,
+              color: COLOR_TEXT_DARK,
+              size: 22,
+              font: 'Calibri',
+            }),
+          ],
+        })
+      );
+    });
+  };
 
   const pushAnalisisSection = () => {
     if (!hasSection7) return;
-    laterElements.push(createSectionHeader(titles.section7, analisisNumber, getPageBreakForLaterSection()));
+    laterElements.push(createSectionHeader(titles.section7, bodyNums.analisis, getPageBreakForLaterSection()));
 
-    const stepLabels = getOperativeStepLabels(validSteps, analisisNumber);
+    const stepLabels = getOperativeStepLabels(validSteps, bodyNums.analisis || '1');
     validSteps.forEach((step, originalIdx) => {
       const stepLabel = stepLabels[originalIdx];
       const stepTitle = step.titulo?.trim() || `Paso ${stepLabel}`;
@@ -1660,15 +1657,13 @@ export async function generateAdvansysDocx(
     });
   }
 
-  // 8. Descargo / Cláusula de Responsabilidad (Only rendered if user provided descargo text)
-  const hasSection8 =
-    !titles.hideSection8 && sectionHasBodyOrSubs(proposal.descargo, getSubsections(proposal, 'descargo'));
+  // Descargo / Cláusula de Responsabilidad
   if (hasSection8) {
-    laterElements.push(createSectionHeader(titles.section8, '8', getPageBreakForLaterSection()));
+    laterElements.push(createSectionHeader(titles.section8, bodyNums.descargo, getPageBreakForLaterSection()));
     if (proposal.descargo?.trim()) {
       pushTextWithTables(laterElements, proposal.descargo.trim(), contentTables, usedTables, imageMapByIndex);
     }
-    appendSubsections(laterElements, proposal, 'descargo', '8', contentTables, usedTables, imageMapByIndex);
+    appendSubsections(laterElements, proposal, 'descargo', bodyNums.descargo, contentTables, usedTables, imageMapByIndex);
   }
 
   laterElements.push(

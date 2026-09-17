@@ -76,6 +76,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [copiedNotification, setCopiedNotification] = useState<string | null>(null);
   const [aiStatus, setAiStatus] = useState<{
     provider: string;
+    resolvedProvider?: string | null;
+    resolvedLabel?: string | null;
+    resolvedModel?: string | null;
     fallbacks: string[];
     keys: Record<string, boolean>;
     models: Record<string, string>;
@@ -87,6 +90,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [aiKeys, setAiKeys] = useState<Record<string, string>>({});
   const [aiSaving, setAiSaving] = useState(false);
   const [aiMessage, setAiMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+
+  const applyAiStatus = (data: {
+    provider?: string;
+    fallbacks?: string[];
+    models?: Record<string, string>;
+    keys?: Record<string, boolean>;
+    providers?: { id: string; label: string; envKey: string; hint: string; defaultModel: string }[];
+    resolvedProvider?: string | null;
+    resolvedLabel?: string | null;
+    resolvedModel?: string | null;
+  }) => {
+    setAiStatus((prev) => ({
+      provider: data.provider || 'auto',
+      resolvedProvider: data.resolvedProvider ?? prev?.resolvedProvider ?? null,
+      resolvedLabel: data.resolvedLabel ?? prev?.resolvedLabel ?? null,
+      resolvedModel: data.resolvedModel ?? prev?.resolvedModel ?? null,
+      fallbacks: Array.isArray(data.fallbacks) ? data.fallbacks : prev?.fallbacks || [],
+      keys: data.keys || prev?.keys || {},
+      models: data.models || prev?.models || {},
+      providers: data.providers?.length ? data.providers : prev?.providers || DEFAULT_AI_PROVIDERS,
+    }));
+    setAiProvider(data.provider || 'auto');
+    setAiFallbacks(Array.isArray(data.fallbacks) ? data.fallbacks : []);
+    setAiModels(data.models || {});
+    setAiKeys({});
+  };
 
   useEffect(() => {
     if (!isOpen) return;
@@ -102,11 +131,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           });
           return;
         }
-        setAiStatus(data);
-        setAiProvider(data.provider || 'auto');
-        setAiFallbacks(Array.isArray(data.fallbacks) ? data.fallbacks : []);
-        setAiModels(data.models || {});
-        setAiKeys({});
+        applyAiStatus(data);
         setAiMessage(null);
       })
       .catch((err) => {
@@ -1835,8 +1860,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               )}
               {(() => {
                 const providers = aiStatus?.providers?.length ? aiStatus.providers : DEFAULT_AI_PROVIDERS;
+                const principalMeta = providers.find((p) => p.id === aiProvider);
+                const principalName =
+                  aiProvider === 'auto' ? 'Automático (primera clave disponible)' : principalMeta?.label || aiProvider;
+                const effectiveName = aiStatus?.resolvedLabel || principalName;
+                const effectiveModel =
+                  (aiProvider !== 'auto' && aiModels[aiProvider]) ||
+                  aiStatus?.resolvedModel ||
+                  '';
                 return (
               <>
+              <div className="bg-[#0A3D62] text-white rounded-xl p-3.5 space-y-1">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-blue-200">Motor en uso</p>
+                <p className="text-sm font-bold">{effectiveName}</p>
+                <p className="text-[11px] text-blue-100">
+                  Principal: {principalName}
+                  {effectiveModel ? ` · Modelo: ${effectiveModel}` : ''}
+                  {aiProvider === 'auto' && aiStatus?.resolvedLabel ? ` · Resuelve a ${aiStatus.resolvedLabel}` : ''}
+                </p>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-1.5">
                   <label className="block text-xs font-bold text-slate-800">Motor principal</label>
@@ -1876,20 +1918,35 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 </div>
               </div>
-              {providers.map((p) => (
-                <div key={p.id} className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-2">
+              {providers.map((p) => {
+                const isActive =
+                  aiProvider === p.id || (aiProvider === 'auto' && aiStatus?.resolvedProvider === p.id);
+                return (
+                <div
+                  key={p.id}
+                  className={`bg-white border rounded-xl p-3.5 space-y-2 ${
+                    isActive ? 'border-[#0A3D62] ring-1 ring-[#0A3D62]/30' : 'border-slate-200'
+                  }`}
+                >
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <h4 className="text-xs font-bold text-[#0A3D62]">{p.label}</h4>
                       <p className="text-[10px] text-slate-500">{p.envKey} · {p.hint}</p>
                     </div>
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        aiStatus?.keys?.[p.id] ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
-                      }`}
-                    >
-                      {aiStatus?.keys?.[p.id] ? 'Clave lista' : 'Sin clave'}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {isActive && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#0A3D62] text-white">
+                          En uso
+                        </span>
+                      )}
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          aiStatus?.keys?.[p.id] ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                        }`}
+                      >
+                        {aiStatus?.keys?.[p.id] ? 'Clave lista' : 'Sin clave'}
+                      </span>
+                    </div>
                   </div>
                   <input
                     type="password"
@@ -1921,7 +1978,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           });
                           const data = await readApiJson(res);
                           if (!res.ok || !data.success) throw new Error(data.error || 'No se pudo quitar la clave');
-                          setAiStatus(data);
+                          applyAiStatus(data);
                           setAiMessage({ kind: 'ok', text: `Clave de ${p.label} eliminada del servidor.` });
                         } catch (err: any) {
                           setAiMessage({ kind: 'error', text: err?.message || 'Error al quitar la clave' });
@@ -1934,7 +1991,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </button>
                   )}
                 </div>
-              ))}
+                );
+              })}
               <button
                 type="button"
                 disabled={aiSaving}
@@ -1958,9 +2016,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     });
                     const data = await readApiJson(res);
                     if (!res.ok || !data.success) throw new Error(data.error || 'No se pudo guardar');
-                    setAiStatus(data);
-                    setAiKeys({});
-                    setAiMessage({ kind: 'ok', text: 'Configuración de IA guardada en el servidor.' });
+                    applyAiStatus(data);
+                    const savedName =
+                      data.resolvedLabel ||
+                      providers.find((x) => x.id === (data.provider || aiProvider))?.label ||
+                      (data.provider === 'auto' || aiProvider === 'auto' ? 'Automático' : data.provider || aiProvider);
+                    setAiMessage({
+                      kind: 'ok',
+                      text: `Guardado. Motor en uso: ${savedName}${data.resolvedModel ? ` (${data.resolvedModel})` : ''}. Las claves no se muestran de nuevo por seguridad.`,
+                    });
                   } catch (err: any) {
                     setAiMessage({ kind: 'error', text: err?.message || 'Error al guardar' });
                   } finally {

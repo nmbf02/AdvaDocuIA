@@ -144,8 +144,17 @@ function resolveProviderChain(preferred?: string): AiProviderId[] {
 
 export async function getAiStatus() {
   await ensureSecrets();
+  const provider = getActiveProvider();
+  const chain = resolveProviderChain();
+  const resolvedProvider = chain[0] || null;
+  const resolvedMeta = resolvedProvider
+    ? AI_PROVIDER_META.find((p) => p.id === resolvedProvider)
+    : undefined;
   return {
-    provider: getActiveProvider(),
+    provider,
+    resolvedProvider,
+    resolvedLabel: resolvedMeta?.label || null,
+    resolvedModel: resolvedProvider ? envOrSecretModel(resolvedProvider) : null,
     fallbacks: getFallbackProviders(),
     keys: Object.fromEntries(AI_PROVIDER_META.map((p) => [p.id, providerHasKey(p.id)])) as Record<AiProviderId, boolean>,
     models: Object.fromEntries(AI_PROVIDER_META.map((p) => [p.id, envOrSecretModel(p.id)])) as Record<AiProviderId, string>,

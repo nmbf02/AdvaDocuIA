@@ -130,6 +130,43 @@ export function getOperativoSectionOrder(custom?: Pick<DocumentTitlesConfig, 'sw
   };
 }
 
+/** Numeración del cuerpo (vista previa y descarga): Objetivo = 1 y el resto correlativo. */
+export function getProposalBodySectionNumbers(visible: {
+  objetivo?: boolean;
+  descripcion?: boolean;
+  indice?: boolean;
+  analisis?: boolean;
+  descargo?: boolean;
+  analysisFirst?: boolean;
+}): {
+  objetivo: string;
+  descripcion: string;
+  indice: string;
+  analisis: string;
+  descargo: string;
+} {
+  let n = 0;
+  const next = (on?: boolean) => (on ? String(++n) : '');
+  const objetivo = next(visible.objetivo);
+  const descripcion = next(visible.descripcion);
+  let indice = '';
+  let analisis = '';
+  if (visible.analysisFirst) {
+    analisis = next(visible.analisis);
+    indice = next(visible.indice);
+  } else {
+    indice = next(visible.indice);
+    analisis = next(visible.analisis);
+  }
+  return {
+    objetivo,
+    descripcion,
+    indice,
+    analisis,
+    descargo: next(visible.descargo),
+  };
+}
+
 export function getEffectiveTitles(custom?: DocumentTitlesConfig): Required<Omit<DocumentTitlesConfig, 'hideSection1' | 'hideSection2' | 'hideSection3' | 'hideSection3_1' | 'hideSection3_2' | 'hideSection3_3' | 'hideSection4' | 'hideSection5' | 'hideSection6' | 'hideSection7' | 'hideSection8' | 'swapSection6And7' | 'hiddenSections' | 'techMainTitle' | 'techSection1' | 'techSection2' | 'techSection3' | 'techSection4' | 'techSection5' | 'hideTechMainTitle' | 'hideTechSection1' | 'hideTechSection2' | 'hideTechSection3' | 'hideTechSection4' | 'hideTechSection5' | 'defaultDescargo' | 'hideConfidentiality'>> & {
   hideSection1: boolean;
   hideSection2: boolean;
@@ -430,6 +467,44 @@ export function getOperativeStepLabels(steps: OperativeStep[], sectionNumber: nu
     for (let i = 0; i <= level; i++) parts.push(String(counters[i]));
     return parts.join('.');
   });
+}
+
+export interface OperativeIndexItem {
+  label: string;
+  title: string;
+  level: number;
+}
+
+/** Índice alineado con la numeración jerárquica: 4, 4.1, 4.1.1, … */
+export function getOperativeIndexItems(
+  steps: OperativeStep[],
+  sectionNumber: number | string,
+  sectionTitle?: string
+): OperativeIndexItem[] {
+  const labels = getOperativeStepLabels(steps, sectionNumber);
+  let prev = 0;
+  const items = steps.map((step, index) => {
+    let level = getOperativeStepLevel(step);
+    if (index === 0) level = 0;
+    else if (level > prev + 1) level = prev + 1;
+    prev = level;
+    const label = labels[index];
+    return {
+      label,
+      title: step.titulo?.trim() || `Paso ${label}`,
+      level: level + 1,
+    };
+  });
+  const heading = sectionTitle?.trim();
+  if (!heading && items.length === 0) return [];
+  return [
+    {
+      label: String(sectionNumber),
+      title: heading || 'Análisis operativo',
+      level: 0,
+    },
+    ...items,
+  ];
 }
 
 export function getOperativeSubtreeEnd(steps: OperativeStep[], index: number): number {

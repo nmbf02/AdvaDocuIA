@@ -56,6 +56,7 @@ import { createDefaultTechnicalDoc, isTechnicalDocUnfilled, proposalHasSubstance
 import { generateTechnicalDocDocx } from '../utils/technicalDocDocxGenerator';
 import { downloadTechnicalDocPdf } from '../utils/technicalDocPdfGenerator';
 import { TextFormattingToolbar, handleAutoBulletKeyDown, readTextareaCaret, insertSnippetAtCaret, TextCaret } from './TextFormattingToolbar';
+import { tryApplyPastedTables } from '../utils/markdownTable';
 import { RichTextBlock } from './DocumentPreviewBlocks';
 import { DocumentTablesEditor, createEmptyDocumentTable, tableTag } from './DocumentTablesEditor';
 import { ImageUploader } from './ImageUploader';
@@ -447,6 +448,23 @@ export const TechnicalDocEditor: React.FC<TechnicalDocEditorProps> = ({
     });
   };
 
+  const applyPastedMarkdownTables = (e: React.ClipboardEvent<HTMLTextAreaElement>, field: TechTextField) => {
+    const result = tryApplyPastedTables(e, String(docData[field] || ''), docData.tables || []);
+    if (!result) return;
+    caretByKeyRef.current[field] = { start: result.cursor, end: result.cursor };
+    onChange({
+      ...docData,
+      [field]: result.nextText,
+      tables: result.tables,
+      lastUpdated: new Date().toISOString(),
+    });
+    const el = e.currentTarget;
+    setTimeout(() => {
+      el.focus();
+      el.setSelectionRange(result.cursor, result.cursor);
+    }, 10);
+  };
+
   const renderInlineTables = (text: string) => {
     const all = docData.tables || [];
     const indexes = all
@@ -475,6 +493,17 @@ export const TechnicalDocEditor: React.FC<TechnicalDocEditorProps> = ({
       />
     );
   };
+
+  const mentionedTablesSource = [
+    docData.ruta,
+    docData.flujoOperativo,
+    docData.diseno,
+    docData.consideracionesTecnicas,
+  ].join('\n');
+  const additionalTableIndexes = (docData.tables || [])
+    .map((_, i) => i)
+    .filter((i) => !new RegExp(`\\[TABLA_${i + 1}\\]`, 'i').test(mentionedTablesSource));
+  const additionalTables = additionalTableIndexes.map((i) => (docData.tables || [])[i]);
 
   const tableToMarkdown = (table: DocumentTable): string => {
     const headers = table.headers?.length ? table.headers : ['Columna'];
@@ -1257,6 +1286,7 @@ export const TechnicalDocEditor: React.FC<TechnicalDocEditorProps> = ({
                 value={docData.ruta}
                 onChange={(e) => handleFieldChange('ruta', e.target.value)}
                 onKeyDown={(e) => handleAutoBulletKeyDown(e, docData.ruta, (v) => handleFieldChange('ruta', v))}
+                onPaste={(e) => applyPastedMarkdownTables(e, 'ruta')}
                 {...caretHandlers('ruta')}
                 placeholder="Ejemplo: Menú Principal > Operaciones > Facturación > frm_gestion_cobros.aspx"
                 className="w-full text-xs text-slate-800 bg-slate-50/70 border border-slate-200 rounded-xl p-3.5 focus:bg-white focus:border-[#0A3D62] focus:ring-1 focus:ring-[#0A3D62] outline-none transition-all resize-y leading-relaxed font-mono"
@@ -1387,6 +1417,7 @@ export const TechnicalDocEditor: React.FC<TechnicalDocEditorProps> = ({
                 value={docData.flujoOperativo}
                 onChange={(e) => handleFieldChange('flujoOperativo', e.target.value)}
                 onKeyDown={(e) => handleAutoBulletKeyDown(e, docData.flujoOperativo, (v) => handleFieldChange('flujoOperativo', v))}
+                onPaste={(e) => applyPastedMarkdownTables(e, 'flujoOperativo')}
                 {...caretHandlers('flujoOperativo')}
                 placeholder="1. Evento Disparador: El usuario presiona el botón...\n2. Validación Frontend...\n3. Procesamiento Backend..."
                 className="w-full text-xs text-slate-800 bg-slate-50/70 border border-slate-200 rounded-xl p-3.5 focus:bg-white focus:border-[#0A3D62] focus:ring-1 focus:ring-[#0A3D62] outline-none transition-all resize-y leading-relaxed"
@@ -1517,6 +1548,7 @@ export const TechnicalDocEditor: React.FC<TechnicalDocEditorProps> = ({
                 value={docData.diseno}
                 onChange={(e) => handleFieldChange('diseno', e.target.value)}
                 onKeyDown={(e) => handleAutoBulletKeyDown(e, docData.diseno, (v) => handleFieldChange('diseno', v))}
+                onPaste={(e) => applyPastedMarkdownTables(e, 'diseno')}
                 {...caretHandlers('diseno')}
                 placeholder="• Componentes Visuales: Formulario modal con grilla...\n• Tablas de BD: TBL_CLIENTE_CUENTAS (Id, ClienteId, Saldo, Estado)..."
                 className="w-full text-xs text-slate-800 bg-slate-50/70 border border-slate-200 rounded-xl p-3.5 focus:bg-white focus:border-[#0A3D62] focus:ring-1 focus:ring-[#0A3D62] outline-none transition-all resize-y leading-relaxed"
@@ -1647,6 +1679,7 @@ export const TechnicalDocEditor: React.FC<TechnicalDocEditorProps> = ({
                 value={docData.consideracionesTecnicas}
                 onChange={(e) => handleFieldChange('consideracionesTecnicas', e.target.value)}
                 onKeyDown={(e) => handleAutoBulletKeyDown(e, docData.consideracionesTecnicas, (v) => handleFieldChange('consideracionesTecnicas', v))}
+                onPaste={(e) => applyPastedMarkdownTables(e, 'consideracionesTecnicas')}
                 {...caretHandlers('consideracionesTecnicas')}
                 placeholder="• Seguridad: Requiere rol SUPERVISOR_OPERACIONES...\n• Transacciones: Ejecutar dentro de BEGIN TRANSACTION...\n• Auditoría: Registrar usuario e IP en TBL_LOG..."
                 className="w-full text-xs text-slate-800 bg-slate-50/70 border border-slate-200 rounded-xl p-3.5 focus:bg-white focus:border-[#0A3D62] focus:ring-1 focus:ring-[#0A3D62] outline-none transition-all resize-y leading-relaxed"
@@ -1664,7 +1697,7 @@ export const TechnicalDocEditor: React.FC<TechnicalDocEditorProps> = ({
           <ImageUploader compact images={images} onChange={onImagesChange} />
         )}
 
-        {/* Tablas del documento */}
+        {/* Tablas no mencionadas en el cuerpo */}
         <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-sm transition-all">
           <div className="flex items-center justify-between pb-2 border-b border-slate-100 gap-2">
             <div className="flex items-center space-x-2.5 min-w-0 flex-1">
@@ -1685,17 +1718,17 @@ export const TechnicalDocEditor: React.FC<TechnicalDocEditorProps> = ({
                   onClick={() => toggleSectionCollapse('techTables')}
                   className="text-sm font-bold text-slate-900 cursor-pointer hover:text-blue-900 truncate"
                 >
-                  Tablas del documento
+                  Tablas adicionales
                 </h3>
                 <p className="text-[11px] text-slate-500 truncate">
-                  Inserta una tabla en Ruta, Flujo, Diseño o Consideraciones. En el texto aparecen como [TABLA_1], [TABLA_2]…
+                  Solo se muestran aquí las tablas que no están referenciadas con [TABLA_n] en Ruta, Flujo, Diseño o Consideraciones.
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
               <span className="text-[11px] font-semibold text-slate-500 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-full">
-                {docData.tables?.length || 0} tabla{(docData.tables?.length || 0) === 1 ? '' : 's'}
+                {additionalTables.length} sin mencionar
               </span>
               <button
                 type="button"
@@ -1713,18 +1746,50 @@ export const TechnicalDocEditor: React.FC<TechnicalDocEditorProps> = ({
               className="mt-2 p-3 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-xs text-slate-600 cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-all flex items-center justify-between gap-2"
             >
               <p className="truncate italic text-slate-500 flex-1">
-                {docData.tables && docData.tables.length > 0
-                  ? docData.tables.map((t, i) => `[TABLA_${i+1}]: ${t.caption || 'Sin título'}`).join(' | ')
-                  : 'Sección comprimida (sin tablas creadas). Haz clic para expandir.'}
+                {additionalTables.length > 0
+                  ? additionalTables.map((t, i) => `[TABLA_${additionalTableIndexes[i] + 1}]: ${t.title || 'Sin título'}`).join(' | ')
+                  : 'No hay tablas adicionales: las existentes ya están mencionadas en el documento.'}
               </p>
               <span className="text-[10px] font-bold text-[#0A3D62] shrink-0">Expandir</span>
             </div>
           ) : (
-            <div className="mt-3">
-              <DocumentTablesEditor
-                tables={docData.tables || []}
-                onChange={(tables) => handleFieldChange('tables', tables)}
-              />
+            <div className="mt-3 space-y-3">
+              {additionalTables.length === 0 ? (
+                <>
+                  <p className="text-xs text-slate-500 bg-slate-50 border border-dashed border-slate-300 rounded-lg p-3">
+                    No hay tablas adicionales. Las que pegaste o insertaste en una sección ya están en el cuerpo y no se duplican aquí. Si creas una tabla sin [TABLA_n] en el texto, aparecerá en este bloque y en la exportación.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleFieldChange('tables', [
+                        ...(docData.tables || []),
+                        createEmptyDocumentTable((docData.tables || []).length + 1),
+                      ])
+                    }
+                    className="inline-flex items-center px-3 py-2 text-xs font-bold text-[#0A3D62] bg-white hover:bg-blue-50 border border-slate-300 rounded-xl"
+                  >
+                    Nueva tabla sin mencionar
+                  </button>
+                </>
+              ) : (
+                <DocumentTablesEditor
+                  tables={additionalTables}
+                  getTagIndex={(i) => additionalTableIndexes[i] + 1}
+                  onChange={(updated) => {
+                    const all = docData.tables || [];
+                    const shownIds = new Set(additionalTableIndexes.map((i) => all[i].id));
+                    const kept = all
+                      .map((t) => {
+                        if (!shownIds.has(t.id)) return t;
+                        return updated.find((u) => u.id === t.id) || null;
+                      })
+                      .filter((t): t is DocumentTable => t !== null);
+                    const added = updated.filter((u) => !all.some((t) => t.id === u.id));
+                    handleFieldChange('tables', [...kept, ...added]);
+                  }}
+                />
+              )}
             </div>
           )}
         </div>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ProposalSection, MetadataHeader, UploadedImage, getEffectiveTitles, getOperativoSectionOrder, getEffectiveProposalHeaderFooter, COVER_SCOPE_MAX_ITEMS, getEffectiveCommercialPage, formatUsd, parseCommercialNumber, resolvePage2LogoDataUrl, getSubsections, subsectionHasContent, sectionHasBodyOrSubs, NestedSectionField, getOperativeStepLevel, getOperativeStepLabels } from '../types';
+import { ProposalSection, MetadataHeader, UploadedImage, getEffectiveTitles, getOperativoSectionOrder, getProposalBodySectionNumbers, getEffectiveProposalHeaderFooter, COVER_SCOPE_MAX_ITEMS, getEffectiveCommercialPage, formatUsd, parseCommercialNumber, resolvePage2LogoDataUrl, getSubsections, subsectionHasContent, sectionHasBodyOrSubs, NestedSectionField, getOperativeStepLevel, getOperativeStepLabels, getOperativeIndexItems } from '../types';
 import { FileText, Clock, Calendar, DollarSign, Globe } from 'lucide-react';
 import { getAdvansysBannerSvg, getCoverInfoCardSvg } from '../data/banner';
 import { formatFechaEs } from '../utils/dateFormat';
@@ -13,7 +13,7 @@ interface DocxPreviewProps {
 
 export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, images }) => {
   const titles = getEffectiveTitles(metadata.customTitles);
-  const { analysisFirst, indiceNumber, analisisNumber } = getOperativoSectionOrder(titles);
+  const { analysisFirst } = getOperativoSectionOrder(titles);
   const headerFooter = getEffectiveProposalHeaderFooter(metadata);
   const bannerSvg = getAdvansysBannerSvg(
     headerFooter.headerBrandTag || 'ADVANSYS',
@@ -65,36 +65,57 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
   const hasLaterSections =
     (!titles.hideSection4 && sectionHasBodyOrSubs(proposal.objetivo, getSubsections(proposal, 'objetivo'))) ||
     (!titles.hideSection5 && sectionHasBodyOrSubs(proposal.descripcion, getSubsections(proposal, 'descripcion'))) ||
-    (!titles.hideSection6 && (proposal.indiceAnalisisOperativo || []).filter((i) => i && i.trim().length > 0).length > 0) ||
+    (!titles.hideSection6 && (proposal.analisisOperativo || []).some((s) => (s.titulo && s.titulo.trim().length > 0) || (s.explicacion && s.explicacion.trim().length > 0))) ||
     (!titles.hideSection7 &&
       (proposal.analisisOperativo || []).filter((s) => (s.titulo && s.titulo.trim().length > 0) || (s.explicacion && s.explicacion.trim().length > 0)).length > 0) ||
     (!titles.hideSection8 && sectionHasBodyOrSubs(proposal.descargo, getSubsections(proposal, 'descargo')));
 
-  const indicePreview = !titles.hideSection6 && (proposal.indiceAnalisisOperativo || []).filter(i => i && i.trim().length > 0).length > 0 ? (
+  const previewSteps = (proposal.analisisOperativo || []).filter(s => (s.titulo && s.titulo.trim().length > 0) || (s.explicacion && s.explicacion.trim().length > 0));
+  const hasObjetivo = !titles.hideSection4 && sectionHasBodyOrSubs(proposal.objetivo, getSubsections(proposal, 'objetivo'));
+  const hasDescripcion = !titles.hideSection5 && sectionHasBodyOrSubs(proposal.descripcion, getSubsections(proposal, 'descripcion'));
+  const hasAnalisis = !titles.hideSection7 && previewSteps.length > 0;
+  const hasIndice = !titles.hideSection6 && previewSteps.length > 0;
+  const hasDescargo = !titles.hideSection8 && sectionHasBodyOrSubs(proposal.descargo, getSubsections(proposal, 'descargo'));
+  const bodyNums = getProposalBodySectionNumbers({
+    objetivo: hasObjetivo,
+    descripcion: hasDescripcion,
+    indice: hasIndice,
+    analisis: hasAnalisis,
+    descargo: hasDescargo,
+    analysisFirst,
+  });
+  const indexItems = getOperativeIndexItems(previewSteps, bodyNums.analisis || '1', titles.section7);
+  const indicePreview = hasIndice && indexItems.length > 0 ? (
           <div key="indice-operativo">
             <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
-              {indiceNumber}. {titles.section6.toUpperCase()}
+              {bodyNums.indice}. {titles.section6.toUpperCase()}
             </h2>
-            <ol className="list-decimal list-inside space-y-1 text-xs text-slate-700 pl-2">
-              {proposal.indiceAnalisisOperativo
-                ?.filter(item => item && item.trim().length > 0)
-                .map((item, idx) => (
-                  <li key={idx}>{item}</li>
-                ))}
-            </ol>
+            <div className="space-y-1 text-xs text-slate-700 pl-2">
+              {indexItems.map((item, idx) => (
+                <div
+                  key={idx}
+                  style={{ paddingLeft: item.level * 16 }}
+                  className={item.level === 0 ? 'font-semibold' : ''}
+                >
+                  <span className="text-[#0A3D62] font-bold">{item.label}</span>
+                  {'  '}
+                  {item.title}
+                </div>
+              ))}
+            </div>
           </div>
         ) : null;
 
-  const analisisPreview = !titles.hideSection7 && (proposal.analisisOperativo || []).filter(s => (s.titulo && s.titulo.trim().length > 0) || (s.explicacion && s.explicacion.trim().length > 0)).length > 0 ? (
+  const analisisPreview = hasAnalisis ? (
           <div key="analisis-operativo">
             <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-3">
-              {analisisNumber}. {titles.section7.toUpperCase()}
+              {bodyNums.analisis}. {titles.section7.toUpperCase()}
             </h2>
 
             <div className="space-y-6 text-xs">
               {(() => {
-                const steps = (proposal.analisisOperativo || []).filter(step => (step.titulo && step.titulo.trim().length > 0) || (step.explicacion && step.explicacion.trim().length > 0));
-                const labels = getOperativeStepLabels(steps, analisisNumber);
+                const steps = previewSteps;
+                const labels = getOperativeStepLabels(steps, bodyNums.analisis || '1');
                 return steps.map((step, idx) => {
                   const isExplicitNone = step.imagenId === 'none' || step.referenciaImagen === 'none';
                   const linkedImg = isExplicitNone
@@ -439,29 +460,29 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
           </div>
         )}
 
-        {/* 4. Objetivo */}
-        {!titles.hideSection4 && sectionHasBodyOrSubs(proposal.objetivo, getSubsections(proposal, 'objetivo')) && (
+        {/* 1. Objetivo */}
+        {hasObjetivo && (
           <div>
             <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
-              4. {titles.section4.toUpperCase()}
+              {bodyNums.objetivo}. {titles.section4.toUpperCase()}
             </h2>
             {proposal.objetivo?.trim() ? (
               <RichTextBlock text={proposal.objetivo.trim()} tables={tables} images={images} />
             ) : null}
-            {previewSubs('objetivo', '4')}
+            {previewSubs('objetivo', bodyNums.objetivo)}
           </div>
         )}
 
-        {/* 5. Descripción */}
-        {!titles.hideSection5 && sectionHasBodyOrSubs(proposal.descripcion, getSubsections(proposal, 'descripcion')) && (
+        {/* 2. Descripción */}
+        {hasDescripcion && (
           <div>
             <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
-              5. {titles.section5.toUpperCase()}
+              {bodyNums.descripcion}. {titles.section5.toUpperCase()}
             </h2>
             {proposal.descripcion?.trim() ? (
               <RichTextBlock text={proposal.descripcion.trim()} tables={tables} images={images} />
             ) : null}
-            {previewSubs('descripcion', '5')}
+            {previewSubs('descripcion', bodyNums.descripcion)}
           </div>
         )}
 
@@ -508,18 +529,18 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({ metadata, proposal, im
           </div>
         )}
 
-        {/* 8. Descargo (Only shown if user entered descargo text) */}
-        {!titles.hideSection8 && sectionHasBodyOrSubs(proposal.descargo, getSubsections(proposal, 'descargo')) && (
+        {/* Descargo (Only shown if user entered descargo text) */}
+        {hasDescargo && (
           <div>
             <h2 className="text-sm font-bold text-[#0A3D62] uppercase border-b-2 border-[#2ECC71] pb-1 mb-2">
-              8. {titles.section8.toUpperCase()}
+              {bodyNums.descargo}. {titles.section8.toUpperCase()}
             </h2>
             {proposal.descargo?.trim() ? (
               <div className="text-slate-500 italic text-[11px] leading-relaxed bg-slate-50 p-3 rounded border border-slate-200">
                 <RichTextBlock text={proposal.descargo.trim()} tables={tables} images={images} className="text-slate-500 italic text-[11px] leading-relaxed text-justify" />
               </div>
             ) : null}
-            {previewSubs('descargo', '8')}
+            {previewSubs('descargo', bodyNums.descargo)}
           </div>
         )}
       </div>

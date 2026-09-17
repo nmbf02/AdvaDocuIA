@@ -1,6 +1,8 @@
 import React from 'react';
 import { DocumentTable } from '../types';
 import { Plus, Trash2, Table2, Columns3, Rows3 } from 'lucide-react';
+import { parseHtmlTables, parseMarkdownTables } from '../utils/markdownTable';
+import { handleFormattingKeyDown } from './TextFormattingToolbar';
 
 interface DocumentTablesEditorProps {
   tables: DocumentTable[];
@@ -73,6 +75,21 @@ export const DocumentTablesEditor: React.FC<DocumentTablesEditorProps> = ({
     updateTable(ti, { rows: tables[ti].rows.filter((_, i) => i !== ri) });
   };
 
+  const applyPastedMarkdownToGrid = (ti: number, e: React.ClipboardEvent<HTMLInputElement>) => {
+    const plain = e.clipboardData.getData('text/plain');
+    const html = e.clipboardData.getData('text/html');
+    const md = parseMarkdownTables(plain)[0]?.table;
+    const fromHtml = md ? null : parseHtmlTables(html)[0];
+    const parsed = md || fromHtml;
+    if (!parsed) return;
+    e.preventDefault();
+    updateTable(ti, {
+      headers: parsed.headers,
+      rows: parsed.rows,
+      ...(parsed.title ? { title: parsed.title } : {}),
+    });
+  };
+
   return (
     <div className="space-y-4">
       {tables.length === 0 && !compact && (
@@ -92,6 +109,7 @@ export const DocumentTablesEditor: React.FC<DocumentTablesEditorProps> = ({
                 type="text"
                 value={table.title}
                 onChange={(e) => updateTable(ti, { title: e.target.value })}
+                onPaste={(e) => applyPastedMarkdownToGrid(ti, e)}
                 className="flex-1 min-w-0 px-2 py-1 text-xs font-semibold bg-slate-50 border border-slate-200 rounded text-[#0A3D62]"
                 placeholder="Título de la tabla"
               />
@@ -136,6 +154,8 @@ export const DocumentTablesEditor: React.FC<DocumentTablesEditorProps> = ({
                         type="text"
                         value={h}
                         onChange={(e) => updateHeader(ti, ci, e.target.value)}
+                        onKeyDown={(e) => handleFormattingKeyDown(e, h, (v) => updateHeader(ti, ci, v))}
+                        onPaste={(e) => applyPastedMarkdownToGrid(ti, e)}
                         className="w-full px-2 py-1.5 bg-transparent text-white font-semibold placeholder:text-blue-200 focus:outline-none"
                       />
                       {table.headers.length > 1 && (
@@ -161,6 +181,8 @@ export const DocumentTablesEditor: React.FC<DocumentTablesEditorProps> = ({
                           type="text"
                           value={row[ci] || ''}
                           onChange={(e) => updateCell(ti, ri, ci, e.target.value)}
+                          onKeyDown={(e) => handleFormattingKeyDown(e, row[ci] || '', (v) => updateCell(ti, ri, ci, v))}
+                          onPaste={(e) => applyPastedMarkdownToGrid(ti, e)}
                           className="w-full px-2 py-1.5 bg-transparent text-slate-800 focus:outline-none focus:bg-white"
                           placeholder="—"
                         />

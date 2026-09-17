@@ -220,15 +220,7 @@ function createContentTable(table: DocumentTable): Table {
         margins: { top: 80, bottom: 80, left: 80, right: 80 },
         children: [
           new Paragraph({
-            children: [
-              new TextRun({
-                text: h,
-                bold: true,
-                color: 'FFFFFF',
-                size: 18,
-                font: 'Calibri',
-              }),
-            ],
+            children: parseBoldRuns(h, 18, 'FFFFFF', true),
           }),
         ],
       })
@@ -244,14 +236,7 @@ function createContentTable(table: DocumentTable): Table {
           margins: { top: 60, bottom: 60, left: 80, right: 80 },
           children: [
             new Paragraph({
-              children: [
-                new TextRun({
-                  text: row[ci] || '',
-                  color: COLOR_TEXT_DARK,
-                  size: 18,
-                  font: 'Calibri',
-                }),
-              ],
+              children: parseBoldRuns(row[ci] || '', 18),
             }),
           ],
         })
@@ -273,7 +258,7 @@ function createContentTable(table: DocumentTable): Table {
   });
 }
 
-function parseBoldRuns(text: string): TextRun[] {
+function parseBoldRuns(text: string, size = 22, color: string = COLOR_TEXT_DARK, alwaysBold = false): TextRun[] {
   const runs: TextRun[] = [];
   const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
   for (const part of parts) {
@@ -284,7 +269,7 @@ function parseBoldRuns(text: string): TextRun[] {
           text: part.slice(1, -1),
           font: 'Consolas',
           color: '0F766E',
-          size: 20,
+          size: Math.max(size - 2, 16),
           shading: { type: ShadingType.CLEAR, fill: 'ECFDF5' },
         })
       );
@@ -293,8 +278,8 @@ function parseBoldRuns(text: string): TextRun[] {
         new TextRun({
           text: part.slice(2, -2),
           bold: true,
-          color: COLOR_TEXT_DARK,
-          size: 22,
+          color,
+          size,
           font: 'Calibri',
         })
       );
@@ -302,14 +287,15 @@ function parseBoldRuns(text: string): TextRun[] {
       runs.push(
         new TextRun({
           text: part,
-          color: COLOR_TEXT_DARK,
-          size: 22,
+          bold: alwaysBold,
+          color,
+          size,
           font: 'Calibri',
         })
       );
     }
   }
-  return runs.length > 0 ? runs : [new TextRun({ text, color: COLOR_TEXT_DARK, size: 22, font: 'Calibri' })];
+  return runs.length > 0 ? runs : [new TextRun({ text, bold: alwaysBold, color, size, font: 'Calibri' })];
 }
 
 function createImageBlock(img: ProcessedImage): (Paragraph | Table)[] {

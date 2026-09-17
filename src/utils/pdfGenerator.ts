@@ -1,11 +1,12 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { MetadataHeader, ProposalSection, UploadedImage, DocumentTable, getEffectiveTitles, getOperativoSectionOrder, getEffectiveProposalHeaderFooter, COVER_SCOPE_MAX_ITEMS, getEffectiveCommercialPage, getSubsections, subsectionHasContent, sectionHasBodyOrSubs, NestedSectionField, getOperativeStepLevel, getOperativeStepLabels } from '../types';
+import { MetadataHeader, ProposalSection, UploadedImage, DocumentTable, getEffectiveTitles, getOperativoSectionOrder, getProposalBodySectionNumbers, getEffectiveProposalHeaderFooter, COVER_SCOPE_MAX_ITEMS, getEffectiveCommercialPage, getSubsections, subsectionHasContent, sectionHasBodyOrSubs, NestedSectionField, getOperativeStepLevel, getOperativeStepLabels, getOperativeIndexItems } from '../types';
 import { getAdvansysBannerSvg } from '../data/banner';
 import { formatFechaEs } from './dateFormat';
 import { fitImageSize, getImageAlign, pdfImageX } from './imageLayout';
 import { renderCommercialPagePng } from './commercialPageRender';
 import { splitMarkdownCodeFences } from './markdownCode';
+import { pdfAutoTableCell } from './inlineMarkdown';
 
 // Advansys Corporate Color Palette (RGB tuples for vector jsPDF)
 const COLOR_PRIMARY: [number, number, number] = [10, 61, 98]; // #0A3D62 Deep Corporate Blue
@@ -345,8 +346,8 @@ export async function generateAdvansysPdf(
       startY: cursorY,
       tableWidth: contentWidth,
       margin: { left: margin, right: margin },
-      head: [table.headers],
-      body: table.rows || [],
+      head: [table.headers.map((h) => pdfAutoTableCell(h))],
+      body: (table.rows || []).map((row) => table.headers.map((_, ci) => pdfAutoTableCell(row[ci] || ''))),
       theme: 'grid',
       headStyles: {
         fillColor: COLOR_PRIMARY,
@@ -626,50 +627,7 @@ export async function generateAdvansysPdf(
       doc.addImage(pageArt.dataUrl, 'PNG', 0, 0, pageWidth, pageHeight);
     }
   }
-  // ==========================================
-  // SECTION 4. OBJETIVO (Página 3 si hay página comercial)
-  // ==========================================
-  const hasSection4 =
-    !titles.hideSection4 && sectionHasBodyOrSubs(proposal.objetivo, getSubsections(proposal, 'objetivo'));
-  if (hasSection4) {
-    renderSectionHeader(titles.section4, '4', getPageBreakForLaterSection());
-    if (proposal.objetivo?.trim()) await renderRichTextWithTables(proposal.objetivo.trim(), docTables);
-    await renderNestedSubs('objetivo', '4');
-  }
-
-  // ==========================================
-  // SECTION 5. DESCRIPCIÓN DE LA SOLUCIÓN PROPUESTA
-  // ==========================================
-  const hasSection5 =
-    !titles.hideSection5 && sectionHasBodyOrSubs(proposal.descripcion, getSubsections(proposal, 'descripcion'));
-  if (hasSection5) {
-    renderSectionHeader(titles.section5, '5', getPageBreakForLaterSection());
-    if (proposal.descripcion?.trim()) await renderRichTextWithTables(proposal.descripcion.trim(), docTables);
-    await renderNestedSubs('descripcion', '5');
-  }
-  const { analysisFirst, indiceNumber, analisisNumber } = getOperativoSectionOrder(titles);
-  const validIndice = (proposal.indiceAnalisisOperativo || []).filter((item) => item && item.trim().length > 0);
-  const hasSection6 = !titles.hideSection6 && validIndice.length > 0;
-  const renderIndiceSection = () => {
-    if (!hasSection6) return;
-    renderSectionHeader(titles.section6, indiceNumber, getPageBreakForLaterSection());
-    for (let i = 0; i < validIndice.length; i++) {
-      const item = validIndice[i];
-
-      const numPrefix = `${i + 1}. `;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
-      doc.setTextColor(COLOR_TEXT_DARK[0], COLOR_TEXT_DARK[1], COLOR_TEXT_DARK[2]);
-
-      const lines = doc.splitTextToSize(`${numPrefix}${item}`, contentWidth - 4);
-      const needed = lines.length * 3.8 + 1.2;
-      checkPageBreak(needed);
-      doc.text(lines, margin + 2, cursorY);
-      cursorY += needed;
-    }
-    cursorY += 2;
-  };
-
+  const { analysisFirst } = getOperativoSectionOrder(titles);
   const validSteps = (proposal.analisisOperativo || []).filter(
     (step, idx) =>
       (step.titulo && step.titulo.trim().length > 0) ||
@@ -677,13 +635,65 @@ export async function generateAdvansysPdf(
       images[idx] ||
       (step.imagenId && images.some((img) => img.id === step.imagenId))
   );
+  const hasSection4 =
+    !titles.hideSection4 && sectionHasBodyOrSubs(proposal.objetivo, getSubsections(proposal, 'objetivo'));
+  const hasSection5 =
+    !titles.hideSection5 && sectionHasBodyOrSubs(proposal.descripcion, getSubsections(proposal, 'descripcion'));
   const hasSection7 = !titles.hideSection7 && validSteps.length > 0;
+  const hasSection6 = !titles.hideSection6 && validSteps.length > 0;
+  const hasSection8 =
+    !titles.hideSection8 && sectionHasBodyOrSubs(proposal.descargo, getSubsections(proposal, 'descargo'));
+  const bodyNums = getProposalBodySectionNumbers({
+    objetivo: hasSection4,
+    descripcion: hasSection5,
+    indice: hasSection6,
+    analisis: hasSection7,
+    descargo: hasSection8,
+    analysisFirst,
+  });
+  const indexItems = getOperativeIndexItems(validSteps, bodyNums.analisis || '1', titles.section7);
+  // ==========================================
+  // 1. OBJETIVO
+  // ==========================================
+  if (hasSection4) {
+    renderSectionHeader(titles.section4, bodyNums.objetivo, getPageBreakForLaterSection());
+    if (proposal.objetivo?.trim()) await renderRichTextWithTables(proposal.objetivo.trim(), docTables);
+    await renderNestedSubs('objetivo', bodyNums.objetivo);
+  }
+
+  // ==========================================
+  // 2. DESCRIPCIÓN DE LA SOLUCIÓN PROPUESTA
+  // ==========================================
+  if (hasSection5) {
+    renderSectionHeader(titles.section5, bodyNums.descripcion, getPageBreakForLaterSection());
+    if (proposal.descripcion?.trim()) await renderRichTextWithTables(proposal.descripcion.trim(), docTables);
+    await renderNestedSubs('descripcion', bodyNums.descripcion);
+  }
+  const renderIndiceSection = () => {
+    if (!hasSection6 || indexItems.length === 0) return;
+    renderSectionHeader(titles.section6, bodyNums.indice, getPageBreakForLaterSection());
+    for (let i = 0; i < indexItems.length; i++) {
+      const item = indexItems[i];
+      const indentX = margin + 2 + item.level * 5;
+      const line = `${item.label}  ${item.title}`;
+      doc.setFont('helvetica', item.level === 0 ? 'bold' : 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(COLOR_TEXT_DARK[0], COLOR_TEXT_DARK[1], COLOR_TEXT_DARK[2]);
+
+      const lines = doc.splitTextToSize(line, contentWidth - 4 - item.level * 5);
+      const needed = lines.length * 3.8 + 1.2;
+      checkPageBreak(needed);
+      doc.text(lines, indentX, cursorY);
+      cursorY += needed;
+    }
+    cursorY += 2;
+  };
 
   const renderAnalisisSection = async () => {
     if (!hasSection7) return;
-    renderSectionHeader(titles.section7, analisisNumber, getPageBreakForLaterSection());
+    renderSectionHeader(titles.section7, bodyNums.analisis, getPageBreakForLaterSection());
 
-    const stepLabels = getOperativeStepLabels(validSteps, analisisNumber);
+    const stepLabels = getOperativeStepLabels(validSteps, bodyNums.analisis || '1');
     for (let idx = 0; idx < validSteps.length; idx++) {
       const step = validSteps[idx];
       const stepLevel = getOperativeStepLevel(step);
@@ -782,15 +792,13 @@ export async function generateAdvansysPdf(
   // ==========================================
   // SECTION 8. DESCARGO Y CLÁUSULA ESTÁNDAR (Only if user provided descargo text)
   // ==========================================
-  const hasSection8 =
-    !titles.hideSection8 && sectionHasBodyOrSubs(proposal.descargo, getSubsections(proposal, 'descargo'));
   if (hasSection8) {
-    renderSectionHeader(titles.section8, '8', getPageBreakForLaterSection());
+    renderSectionHeader(titles.section8, bodyNums.descargo, getPageBreakForLaterSection());
     const descargoText = proposal.descargo?.trim() || '';
     if (descargoText) {
       await renderRichTextWithTables(descargoText, docTables);
     }
-    await renderNestedSubs('descargo', '8');
+    await renderNestedSubs('descargo', bodyNums.descargo);
   }
 
   // ==========================================

@@ -5,6 +5,7 @@ import { getAdvansysBannerSvg } from '../data/banner';
 import { loadSvgOrImageToCanvasPng } from './imageExport';
 import { fitImageSize, getImageAlign, pdfImageX } from './imageLayout';
 import { splitMarkdownCodeFences } from './markdownCode';
+import { pdfAutoTableCell } from './inlineMarkdown';
 
 const COLOR_PRIMARY: [number, number, number] = [10, 61, 98]; // #0A3D62
 const COLOR_ACCENT: [number, number, number] = [46, 204, 113]; // #2ECC71
@@ -263,8 +264,8 @@ export async function generateTechnicalDocPdf(
       startY: cursorY,
       tableWidth: contentWidth,
       margin: { left: margin, right: margin },
-      head: [table.headers],
-      body: table.rows || [],
+      head: [table.headers.map((h) => pdfAutoTableCell(h))],
+      body: (table.rows || []).map((row) => table.headers.map((_, ci) => pdfAutoTableCell(row[ci] || ''))),
       theme: 'grid',
       headStyles: {
         fillColor: COLOR_PRIMARY,
